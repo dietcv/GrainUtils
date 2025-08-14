@@ -1,0 +1,155 @@
+#include "UnitShapers.hpp"
+
+// ===== HELPER FUNCTIONS =====
+
+UnitTriangle::UnitTriangle() {
+    mCalcFunc = make_calc_function<UnitTriangle, &UnitTriangle::next>();
+    next(1);
+}
+
+void UnitTriangle::next(int nSamples) {
+    const float* phaseIn = in(0);
+    const float* skewIn = in(1);
+    float* outbuf = out(0);
+    
+    for (int i = 0; i < nSamples; ++i) {
+        float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
+        float skew = sc_clip(skewIn[i], 0.0f, 1.0f);
+        outbuf[i] = HelperFunctions::triangle(phase, skew);
+    }
+}
+
+UnitKink::UnitKink() {
+    mCalcFunc = make_calc_function<UnitKink, &UnitKink::next>();
+    next(1);
+}
+
+void UnitKink::next(int nSamples) {
+    const float* phaseIn = in(0);
+    const float* skewIn = in(1);
+    float* outbuf = out(0);
+    
+    for (int i = 0; i < nSamples; ++i) {
+        float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
+        float skew = sc_clip(skewIn[i], 0.0f, 1.0f);
+        outbuf[i] = HelperFunctions::kink(phase, skew);
+    }
+}
+
+// ===== WINDOW FUNCTIONS =====
+
+HanningWindow::HanningWindow() {
+    mCalcFunc = make_calc_function<HanningWindow, &HanningWindow::next>();
+    next(1);
+}
+
+void HanningWindow::next(int nSamples) {
+    const float* phaseIn = in(0);
+    const float* skewIn = in(1);
+    float* outbuf = out(0);
+    
+    for (int i = 0; i < nSamples; ++i) {
+        float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
+        float skew = sc_clip(skewIn[i], 0.0f, 1.0f);
+        outbuf[i] = WindowFunctions::hanningWindow(phase, skew);
+    }
+}
+
+GaussianWindow::GaussianWindow() {
+    mCalcFunc = make_calc_function<GaussianWindow, &GaussianWindow::next>();
+    next(1);
+}
+
+void GaussianWindow::next(int nSamples) {
+    const float* phaseIn = in(0);
+    const float* skewIn = in(1);
+    const float* indexIn = in(2);
+    float* outbuf = out(0);
+    
+    for (int i = 0; i < nSamples; ++i) {
+        float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
+        float skew = sc_clip(skewIn[i], 0.0f, 1.0f);
+        float index = indexIn[i];
+        outbuf[i] = WindowFunctions::gaussianWindow(phase, skew, index);
+    }
+}
+
+TrapezoidalWindow::TrapezoidalWindow() {
+    mCalcFunc = make_calc_function<TrapezoidalWindow, &TrapezoidalWindow::next>();
+    next(1);
+}
+
+void TrapezoidalWindow::next(int nSamples) {
+    const float* phaseIn = in(0);
+    const float* skewIn = in(1);
+    const float* widthIn = in(2);
+    const float* dutyIn = in(3);
+    float* outbuf = out(0);
+    
+    for (int i = 0; i < nSamples; ++i) {
+        float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
+        float skew = sc_clip(skewIn[i], 0.0f, 1.0f);
+        float width = sc_clip(widthIn[i], 0.0f, 1.0f);
+        float duty = sc_clip(dutyIn[i], 0.0f, 1.0f);
+        outbuf[i] = WindowFunctions::trapezoidalWindow(phase, skew, width, duty);
+    }
+}
+
+TukeyWindow::TukeyWindow() {
+    mCalcFunc = make_calc_function<TukeyWindow, &TukeyWindow::next>();
+    next(1);
+}
+
+void TukeyWindow::next(int nSamples) {
+    const float* phaseIn = in(0);
+    const float* skewIn = in(1);
+    const float* widthIn = in(2);
+    float* outbuf = out(0);
+    
+    for (int i = 0; i < nSamples; ++i) {
+        float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
+        float skew = sc_clip(skewIn[i], 0.0f, 1.0f);
+        float width = sc_clip(widthIn[i], 0.0f, 1.0f);
+        outbuf[i] = WindowFunctions::tukeyWindow(phase, skew, width);
+    }
+}
+
+ExponentialWindow::ExponentialWindow() {
+    mCalcFunc = make_calc_function<ExponentialWindow, &ExponentialWindow::next>();
+    next(1);
+}
+
+void ExponentialWindow::next(int nSamples) {
+    const float* phaseIn = in(0);
+    const float* skewIn = in(1);
+    const float* shapeIn = in(2);
+    float* outbuf = out(0);
+    
+    for (int i = 0; i < nSamples; ++i) {
+        float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
+        float skew = sc_clip(skewIn[i], 0.0f, 1.0f);
+        float shape = sc_clip(shapeIn[i], 0.0f, 1.0f);
+        outbuf[i] = WindowFunctions::exponentialWindow(phase, skew, shape);
+    }
+}
+
+// ===== INTERP FUNCTIONS =====
+
+SCurve::SCurve() {
+    mCalcFunc = make_calc_function<SCurve, &SCurve::next>();
+    next(1);
+}
+
+void SCurve::next(int nSamples) {
+    const float* phaseIn = in(0);
+    const float* shapeIn = in(1);
+    const float* inflectionIn = in(2);
+    float* outbuf = out(0);
+    
+    for (int i = 0; i < nSamples; ++i) {
+        float phase = sc_clip(phaseIn[i], 0.0f, 1.0f);
+        float shape = sc_clip(shapeIn[i], 0.0f, 1.0f);
+        float inflection = sc_clip(inflectionIn[i], 0.0f, 1.0f);
+        outbuf[i] = InterpFunctions::sCurve(phase, shape, inflection, EasingCores::quintic);
+    }
+}

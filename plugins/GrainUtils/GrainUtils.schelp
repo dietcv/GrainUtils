@@ -1,0 +1,26 @@
+class:: GrainUtils
+summary:: a collection of utilities for granulation
+related:: TODO
+categories:: UGens>TODO
+
+description::
+
+a collection of utilities for granulation
+
+
+classmethods::
+
+method::ar, kr
+
+argument::TODO
+
+argument::TODO
+
+
+examples::
+
+code::
+
+{ GrainUtils.ar(/* TODO */) }.play
+
+::
