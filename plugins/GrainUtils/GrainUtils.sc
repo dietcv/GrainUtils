@@ -1,9 +1,39 @@
+// ===== EVENT DATA =====
+
+EventDataUGen : MultiOutUGen {
+	*ar { |phase|
+		if(phase.rate != 'audio') { phase = K2A.ar(phase) };
+		^this.multiNew('audio', phase)
+	}
+
+	init { |... theInputs|
+		inputs = theInputs;
+		^this.initOutputs(3, rate);
+	}
+
+	checkInputs {
+		^this.checkValidInputs
+	}
+}
+
+EventData {
+	*ar { |phase|
+		var events = EventDataUGen.ar(phase);
+		^(
+			trigger: events[0],
+			rate: events[1],
+			subSampleOffset: events[2],
+			//ramp: events[3],
+		);
+	}
+}
+
 // ===== EVENT SCHEDULER =====
 
 EventSchedulerUGen : MultiOutUGen {
 	*ar { |triggerRate, reset|
 		if(triggerRate.rate != 'audio') { triggerRate = K2A.ar(triggerRate) };
-		if(reset.rate != 'audio') { reset = T2A.ar(reset) };
+		//if(reset.rate != 'audio') { reset = K2A.ar(reset) };
 		^this.multiNew('audio', triggerRate, reset)
 	}
 
@@ -23,7 +53,8 @@ EventScheduler {
 		^(
 			trigger: events[0],
 			rate: events[1],
-			subSampleOffset: events[2]
+			subSampleOffset: events[2],
+			//ramp: events[3]
 		);
 	}
 }
@@ -32,7 +63,7 @@ EventScheduler {
 
 VoiceAllocatorUGen : MultiOutUGen {
 	*ar { |numChannels, trig, rate, subSampleOffset|
-		if(trig.rate != 'audio') { trig = T2A.ar(trig) };
+		//if(trig.rate != 'audio') { trig = K2A.ar(trig) };
 		if(rate.rate != 'audio') { rate = K2A.ar(rate) };
 		if(subSampleOffset.rate != 'audio') { subSampleOffset = K2A.ar(subSampleOffset) };
 		^this.multiNew('audio', numChannels, trig, rate, subSampleOffset)
@@ -62,7 +93,7 @@ VoiceAllocator {
 
 RampIntegrator : UGen {
 	*ar { |trig, rate, subSampleOffset|
-		if(trig.rate != 'audio') { trig = T2A.ar(trig) };
+		//if(trig.rate != 'audio') { trig = K2A.ar(trig) };
 		if(rate.rate != 'audio') { rate = K2A.ar(rate) };
 		if(subSampleOffset.rate != 'audio') { subSampleOffset = K2A.ar(subSampleOffset) };
 		^this.multiNew('audio', trig, rate, subSampleOffset)
@@ -70,6 +101,44 @@ RampIntegrator : UGen {
 
 	checkInputs {
 		^this.checkValidInputs
+	}
+}
+
+// ===== SHIFT REGISTER =====
+
+ShiftRegisterUgen : MultiOutUGen {
+    *ar { |freq, chance, length, rotate, fbIndex, fbSource, seed, reset|
+
+		if(freq.rate != 'audio') { freq = K2A.ar(freq) };
+		if(chance.rate != 'audio') { chance = K2A.ar(chance) };
+		if(length.rate != 'audio') { length = K2A.ar(length) };
+		if(rotate.rate != 'audio') { rotate = K2A.ar(rotate) };
+		if(fbIndex.rate != 'audio') { fbIndex = K2A.ar(fbIndex) };
+		if(fbSource.rate != 'audio') { fbSource = K2A.ar(fbSource) };
+		//if(seed.rate != 'audio') { seed = K2A.ar(seed) };
+		//if(reset.rate != 'audio') { reset = K2A.ar(reset) };
+
+        ^this.multiNew('audio', freq, chance, length, rotate, fbIndex, fbSource, seed, reset);
+    }
+
+    init { arg ... theInputs;
+        inputs = theInputs;
+        ^this.initOutputs(3, rate);
+    }
+
+    checkInputs {
+        ^this.checkValidInputs;
+    }
+}
+
+ShiftRegister {
+	*ar { |freq, chance, length, rotate, fbIndex, fbSource, seed, reset|
+		var register = ShiftRegisterUgen.ar(freq, chance, length, rotate, fbIndex, fbSource, seed, reset);
+		^(
+			bit3: register[0],
+			bit8: register[1],
+			phase: register[2]
+		);
 	}
 }
 

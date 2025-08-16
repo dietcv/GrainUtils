@@ -1,10 +1,47 @@
 #include "EventSystem.hpp"
 
+// ===== EVENT DATA =====
+
+EventData::EventData() : m_sampleRate(static_cast<float>(sampleRate()))
+{
+    mCalcFunc = make_calc_function<EventData, &EventData::next_aa>();
+    next_aa(1);
+}
+
+EventData::~EventData() = default;
+
+void EventData::next_aa(int nSamples) {
+    // Input parameters
+    const float* rampIn = in(Ramp);
+   
+    // Output pointers
+    float* triggerOut = out(Trigger);
+    float* rateOut = out(Rate);
+    float* offsetOut = out(SubSampleOffset);
+    //float* phaseOut = out(Phase);
+   
+    for (int i = 0; i < nSamples; ++i) {
+        // Process event scheduler
+        auto event = m_data.process(
+            rampIn[i],
+            m_sampleRate
+        );
+        // Output values
+        triggerOut[i] = event.trigger;
+        //phaseOut[i] = event.phase;
+        rateOut[i] = event.rate;
+        offsetOut[i] = event.subSampleOffset;
+    }
+}
+
+void EventData::reset() {
+    m_data.reset();
+}
+
 // ===== EVENT SCHEDULER =====
 
 EventScheduler::EventScheduler() : m_sampleRate(static_cast<float>(sampleRate()))
 {
-    m_scheduler.reset();
     mCalcFunc = make_calc_function<EventScheduler, &EventScheduler::next_aa>();
     next_aa(1);
 }
@@ -20,18 +57,20 @@ void EventScheduler::next_aa(int nSamples) {
     float* triggerOut = out(Trigger);
     float* rateOut = out(Rate);
     float* offsetOut = out(SubSampleOffset);
+    //float* phaseOut = out(Phase);
    
     for (int i = 0; i < nSamples; ++i) {
         // Process event scheduler
-        auto result = m_scheduler.process(
+        auto event = m_scheduler.process(
             triggerRateIn[i],
             resetTrigger,
             m_sampleRate
         );
         // Output values
-        triggerOut[i] = result.trigger;
-        rateOut[i] = result.rate;
-        offsetOut[i] = result.subSampleOffset;
+        triggerOut[i] = event.trigger;
+        //phaseOut[i] = event.phase;
+        rateOut[i] = event.rate;
+        offsetOut[i] = event.subSampleOffset;
     }
 }
 
@@ -44,7 +83,7 @@ void EventScheduler::reset() {
 VoiceAllocator::VoiceAllocator() : m_sampleRate(static_cast<float>(sampleRate()))
 {
     // Get number of channels and initialize
-    m_numChannels = sc_clip(static_cast<int>(in0(NumChannels)), 1, 32);
+    m_numChannels = sc_clip(static_cast<int>(in0(NumChannels)), 1, 64);
     m_allocator = Utils::VoiceAllocator(m_numChannels);
     m_allocator.reset();
    
@@ -85,7 +124,6 @@ void VoiceAllocator::reset() {
 
 RampIntegrator::RampIntegrator() : m_sampleRate(static_cast<float>(sampleRate()))
 {
-    m_integrator.reset();
     mCalcFunc = make_calc_function<RampIntegrator, &RampIntegrator::next_aa>();
     next_aa(1);
 }

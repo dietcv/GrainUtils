@@ -2,6 +2,40 @@
 #include "SC_PlugIn.hpp"
 #include "Utils.hpp"
 
+// ===== EVENT DATA =====
+
+class EventData : public SCUnit {
+public:
+    EventData();
+    ~EventData();
+
+private:
+    void next_aa(int nSamples);
+    void reset();
+
+    // Core processing
+    Utils::EventData m_data;
+
+    // Constants
+    const float m_sampleRate;
+
+    // Input parameters
+    enum InputParams {
+        Ramp,    // ramp signal between 0 and 1
+
+        NumInputParams
+    };
+   
+    enum Outputs {
+        Trigger,            // derived trigger
+        Rate,               // derived and latched frequency in hz
+        SubSampleOffset,    // sub-sample offset
+        //Phase,
+       
+        NumOutputParams
+    };
+};
+
 // ===== EVENT SCHEDULER =====
 
 class EventScheduler : public SCUnit {
@@ -31,6 +65,7 @@ private:
         Trigger,            // derived trigger
         Rate,               // derived and latched frequency in hz
         SubSampleOffset,    // sub-sample offset
+        //Phase,
        
         NumOutputParams
     };

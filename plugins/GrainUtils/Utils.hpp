@@ -6,102 +6,300 @@
 
 namespace Utils {
 
+// ===== BIT MANIPULATION UTILITIES =====
+
+inline float randomFloat() {
+    return static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+}
+
+inline int rotateBits(int value, int rotation, int length) {
+    // Use wrap instead of % to handle negative rotation amount
+    int normalizedRotation = sc_wrap(rotation, 0, length - 1);
+    int complementRotation = length - normalizedRotation;
+        
+    // Calculate bit ranges for the given length
+    int maxValueForLength = static_cast<int>(std::pow(2, length));
+    double leftShiftMultiplier = std::pow(2, normalizedRotation);
+    double rightShiftDivisor = std::pow(2, -complementRotation);
+        
+    // Perform the bit shifts
+    double leftShifted = value * leftShiftMultiplier;
+    double rightShifted = value * rightShiftDivisor;
+        
+    // Extract the relevant parts
+    int leftPart = static_cast<int>(leftShifted) % maxValueForLength;
+    int rightPart = static_cast<int>(std::floor(rightShifted));
+        
+    // Combine both parts to get the rotated result
+    return leftPart + rightPart;
+}
+
+// Extract top numBits and apply LSB weighting (bit5*1 + bit6*2 + bit7*4)
+inline float getMSBBits(int value, int numBits, int totalBits) {
+    int startBit = totalBits - numBits;  // Calculate start bit for MSB
+    int result = 0;
+        
+    for (int i = 0; i < numBits; i++) {
+        int bitIndex = startBit + i;
+            
+        // Extract the bit using power/modulus
+        int divisor = static_cast<int>(std::pow(2, bitIndex));
+        int bit = (value / divisor) % 2;
+            
+        // Apply LSB-first weighting
+        int weight = static_cast<int>(std::pow(2, i));
+        result += bit * weight;
+    }
+        
+    // Normalize to 0-1 range
+    int maxValue = static_cast<int>(std::pow(2, numBits)) - 1;
+    return static_cast<float>(result) / static_cast<float>(maxValue);
+}
+
+// Extract bottom numBits and apply MSB weighting (bit0*128 + bit1*64 + ... + bit7*1)
+inline float getLSBBits(int value, int numBits, int totalBits) {
+    int result = 0;
+        
+    for (int i = 0; i < numBits; i++) {
+        int bitIndex = i;  // Start from bit 0
+            
+        // Extract the bit using power/modulus
+        int divisor = static_cast<int>(std::pow(2, bitIndex));
+        int bit = (value / divisor) % 2;
+            
+        // Apply MSB-first weighting
+        int weight = static_cast<int>(std::pow(2, numBits - 1 - i));
+        result += bit * weight;
+    }
+        
+    // Normalize to 0-1 range
+    int maxValue = static_cast<int>(std::pow(2, numBits)) - 1;
+    return static_cast<float>(result) / static_cast<float>(maxValue);
+}
+
+// ===== SHIFT REGISTER =====
+
+struct ShiftRegister {
+    int m_register{0};
+    float m_currentOut3Bit{0.0f};  // Current unipolar output [0, 1]
+    float m_currentOut8Bit{0.0f};  // Current unipolar output [0, 1]
+    float m_prevOut3Bit{0.0f};     // Previous sample's output (for FM)
+    float m_prevOut8Bit{0.0f};     // Previous sample's output (for FM)
+    bool m_initialized{false};     // No output until first trigger
+    
+    void process(bool trigger, float chance, int length, int rotation, int seed) {
+
+        // Update state for next sample
+        m_prevOut3Bit = m_currentOut3Bit;
+        m_prevOut8Bit = m_currentOut8Bit;
+
+        if (trigger) {
+            if (!m_initialized) {
+                // output the initial register state for the first ramp cycle
+                m_register = seed;
+                m_currentOut3Bit = getMSBBits(m_register, 3, 8);
+                m_currentOut8Bit = 1.0f - getLSBBits(m_register, 8, 8);
+                m_initialized = true;
+            } else {
+                // Rotate shift register
+                int rotated = rotateBits(m_register, rotation, length);
+
+                // Extract LSB for feedback
+                int extractedBit = rotated % 2; // Get LSB
+                int withoutLSB = rotated - extractedBit; // Remove LSB
+
+                // XOR with random value
+                bool feedbackBit = (randomFloat() < chance);
+                int newBit = extractedBit ^ (feedbackBit ? 1 : 0);
+
+                // Update Shift Register
+                m_register = withoutLSB + newBit;
+
+                // Calculate normalized Shift Register output
+                m_currentOut3Bit = getMSBBits(m_register, 3, 8);
+                m_currentOut8Bit = 1.0f - getLSBBits(m_register, 8, 8);
+            }
+        }
+    }
+
+    void reset() {
+        m_register = 0;
+        m_currentOut3Bit = 0.0f;
+        m_currentOut8Bit = 0.0f;
+        m_prevOut3Bit = 0.0f;
+        m_prevOut8Bit = 0.0f;
+        m_initialized = false;
+    }
+};
+
 // ===== TRIGGER AND TIMING UTILITIES =====
 
+struct RampToSlope {
+    double m_lastPhase{0.0};
+   
+    double process(double currentPhase) {
+        // Calculate ramp slope
+        double delta = currentPhase - m_lastPhase;
+
+        // Wrap delta to recenter between -0.5 and 0.5, for corrected slope during wrap
+        if (delta > 0.5)
+            delta -= 1.0;
+        else if (delta < -0.5)
+            delta += 1.0;    
+    
+        // Update state for next sample
+        m_lastPhase = currentPhase;
+
+        return delta;
+    }
+   
+    void reset() {
+        m_lastPhase = 0.0;
+    }
+};
+
 struct RampToTrig {
-    double lastPhase = 0.0f;
-    bool lastWrap = false;
+    double m_lastPhase{0.0};
+    bool m_lastWrap{false};
     
     bool process(double currentPhase) {
         // Detect wrap using current vs last phase
-        double delta = currentPhase - lastPhase;
-        double sum = currentPhase + lastPhase;
+        double delta = currentPhase - m_lastPhase;
+        double sum = currentPhase + m_lastPhase;
         bool currentWrap = (sum != 0.0f) && (std::abs(delta / sum) > 0.5f);
         
         // Edge detection - only trigger on rising edge of wrap
-        bool trigger = currentWrap && !lastWrap;
+        bool trigger = currentWrap && !m_lastWrap;
         
         // Update state for next sample
-        lastPhase = currentPhase;
-        lastWrap = currentWrap;
+        m_lastPhase = currentPhase;
+        m_lastWrap = currentWrap;
         
         return trigger;
     }
     
     void reset() {
-        lastPhase = 0.0f;
-        lastWrap = false;
+        m_lastPhase = 0.0;
+        m_lastWrap = false;
     }
 };
 
-// ===== EVENT SCHEDULER =====
-
-struct EventScheduler {
+struct EventData {
     // Core timing components
+    RampToSlope slopeDetect;
     RampToTrig trigDetect;
     
     // Ramp state
-    double phase = 0.0f;        // Current ramp position [0,1)
-    double prevPhase = 0.0f;    // Previous sample's ramp position
-    double slope = 0.0f;        // Current slope (rate/sampleRate)
-    bool wrapNext = false;     // Flag: will wrap on next sample
-    
+    double m_prevPhase{0.0};
+
     struct EventOutput {
         bool trigger = false;
+        float phase = 0.0f;
         float rate = 0.0f;
         float subSampleOffset = 0.0f;
     };
     
-    EventOutput process(float triggerRate, bool resetTrigger, float sampleRate) {
+    EventOutput process(float phase, float sampleRate) {
         EventOutput output;
         
-        // Handle reset
-        if (resetTrigger) {
-            reset();
-        }
+        // 1. Calculate slope using current samples phase
+        double slope = slopeDetect.process(phase);
         
-        // Initialize on first sample
-        if (slope == 0.0f) {
-            slope = triggerRate / sampleRate;
-        }
-        
-        // 1. Handle wrap from previous sample
-        if (wrapNext) {
-            phase -= 1.0f;                      // Wrap the phase
-            slope = triggerRate / sampleRate;   // Latch new slope for next period
-            wrapNext = false;
-        }
-        
-        // 2. Detect trigger using previous sample's phase
-        bool trigger = trigDetect.process(prevPhase);
+        // 2. Detect trigger using previous samples phase
+        bool trigger = trigDetect.process(m_prevPhase);
         
         // 3. Calculate subsample offset when trigger occurs
-        double subSampleOffset = 0.0f;
+        double subSampleOffset = 0.0;
         if (trigger) {
-            subSampleOffset = prevPhase / slope;
+            subSampleOffset = m_prevPhase / slope;
         }
         
         // 4. Prepare output
         output.trigger = trigger;
+        output.phase = static_cast<float>(m_prevPhase);
         output.rate = static_cast<float>(slope * sampleRate);
         output.subSampleOffset = static_cast<float>(subSampleOffset);
         
         // 5. Update for next sample
-        prevPhase = phase;          // Store current as previous
-        phase += slope;             // Increment current
-        
-        // 6. Check for wrap
-        if (phase >= 1.0f) {
-            wrapNext = true;
-        }
+        m_prevPhase = phase;          // Store current as previous
         
         return output;
     }
     
     void reset() {
-        phase = prevPhase = 0.0f;
-        slope = 0.0f;
-        wrapNext = false;
+        m_prevPhase = 0.0;
+        slopeDetect.reset();
+        trigDetect.reset();
+    }
+};
+
+struct EventScheduler {
+    // Core timing components
+    RampToTrig trigDetect;
+   
+    // Ramp state
+    double m_phase{0.0};        // Current ramp position [0,1)
+    double m_slope{0.0};        // Current slope (rate/sampleRate)
+    bool m_wrapNext{false};     // Flag: will wrap on next sample
+   
+    struct EventOutput {
+        bool trigger = false;
+        float phase = 0.0f;
+        float rate = 0.0f;
+        float subSampleOffset = 0.0f;
+    };
+   
+    EventOutput process(float triggerRate, bool resetTrigger, float sampleRate) {
+        EventOutput output;
+       
+        // Handle reset
+        if (resetTrigger) {
+            reset();
+            return output; // Early exit on reset
+        }
+      
+        // Initialize on first sample
+        if (m_slope == 0.0) {
+            m_slope = triggerRate / sampleRate;
+        }
+       
+        // 1. Handle wrap from previous sample
+        if (m_wrapNext) {
+            m_phase -= 1.0;                         // Wrap the phase
+            m_slope = triggerRate / sampleRate;     // Latch new slope for next period
+            m_wrapNext = false;
+        }
+       
+        // 2. Detect trigger
+        bool trigger = trigDetect.process(m_phase);
+       
+        // 3. Calculate subsample offset when trigger occurs
+        double subSampleOffset = 0.0;
+        if (trigger && m_slope != 0.0) {
+            subSampleOffset = m_phase / m_slope;
+        }
+       
+        // 4. Prepare output
+        output.trigger = trigger;
+        output.phase = static_cast<float>(m_phase);
+        output.rate = static_cast<float>(m_slope * sampleRate);
+        output.subSampleOffset = static_cast<float>(subSampleOffset);
+       
+        // 5. Update for next sample
+        m_phase += m_slope;             // Increment phase
+       
+        // 6. Check for wrap
+        if (m_phase >= 1.0) {
+            m_wrapNext = true;
+        }
+       
+        return output;
+    }
+   
+    void reset() {
+        m_phase = 0.0;
+        m_slope = 0.0;
+        m_wrapNext = false;
         trigDetect.reset();
     }
 };
@@ -183,8 +381,8 @@ struct VoiceAllocator {
 // ===== RAMP INTEGRATOR =====
 
 struct RampIntegrator {
-    double phase = 0.0f;
-    bool hasTriggered = false;
+    double m_phase{0.0};
+    bool m_hasTriggered{false};
     
     float process(bool trigger, float rate, float subSampleOffset, float sampleRate) {
 
@@ -192,20 +390,20 @@ struct RampIntegrator {
         
         // Handle trigger - reset phase with subsample offset
         if (trigger) {
-            phase = slope * subSampleOffset;
-            hasTriggered = true;
+            m_phase = slope * subSampleOffset;
+            m_hasTriggered = true;
         }
         
         // Output current phase, then increment
-        float output = hasTriggered ? sc_wrap(static_cast<float>(phase), 0.0f, 1.0f) : 0.0f;
-        phase += slope;
+        float output = m_hasTriggered ? sc_wrap(static_cast<float>(m_phase), 0.0f, 1.0f) : 0.0f;
+        m_phase += slope;
         
         return output;
     }
     
     void reset() {
-        phase = 0.0f;
-        hasTriggered = false;
+        m_phase = 0.0;
+        m_hasTriggered = false;
     }
 };
 

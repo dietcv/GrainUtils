@@ -1,6 +1,7 @@
 # Build the GrainUtils plugins 
 add_library(GrainUtils MODULE 
     EventSystem.cpp
+    ShiftRegister.cpp
     UnitShapers.cpp
     GrainUtils.cpp
 )
