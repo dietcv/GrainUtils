@@ -29,14 +29,20 @@ set(CMAKE_SHARED_MODULE_SUFFIX ".scx")
 
 add_subdirectory(plugins/GrainUtils)
 
-# Create proper SuperCollider plugin structure during install
 # Install .sc files to Classes subdirectory
-install(FILES plugins/GrainUtils/GrainUtils.sc 
-        DESTINATION ${CMAKE_INSTALL_PREFIX}/Classes)
+install(DIRECTORY plugins/GrainUtils/Classes
+        DESTINATION ${CMAKE_INSTALL_PREFIX}
+        FILES_MATCHING PATTERN "*.sc")
 
 # Install .schelp files to HelpSource subdirectory  
-install(FILES plugins/GrainUtils/GrainUtils.schelp 
-        DESTINATION ${CMAKE_INSTALL_PREFIX}/HelpSource)
+install(DIRECTORY plugins/GrainUtils/HelpSource
+        DESTINATION ${CMAKE_INSTALL_PREFIX}
+        FILES_MATCHING PATTERN "*.schelp")
+
+# Install .schelp files to Guides subdirectory
+install(DIRECTORY plugins/GrainUtils/Guides
+        DESTINATION ${CMAKE_INSTALL_PREFIX}
+        FILES_MATCHING PATTERN "*.schelp")   
 
 # Install .scx file to root plugin directory with platform-specific paths
 if(APPLE OR UNIX)

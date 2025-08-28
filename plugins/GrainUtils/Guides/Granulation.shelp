@@ -1,0 +1,1287 @@
+TITLE::Granulation
+summary::phasor based sub-sample accurate granulation
+categories::UGens>Granular, Libraries>Synthesis, Streams-Patterns-Events>Granular
+related::Classes/GrainBuf, Classes/Phasor, Classes/PulseDivider, Classes/PanAz
+
+DESCRIPTION::
+
+Granular synthesis is a type of amplitude modulation synthesis that applies window functions like envelopes to carriers on a micro time scale. 
+This implementation focuses on sub-sample accurate, phasor-based granulation using continuous ramps for precise timing control.
+
+There are three main types of granular synthesis:
+list::
+## strong::Single cycle carrier:: Pulsar, glisson, trainlet synthesis using oscillators
+## strong::Audio file carrier:: Buffer granulation using recorded material
+## strong::Live input carrier:: Grain delay using circular buffers for real-time processing
+::
+
+This guide demonstrates phasor-based granulation with sub-sample accuracy, multichannel expansion for overlapping grains, and advanced modulation techniques.
+
+SECTION::1) Stateless Window Functions
+
+subsection::1a) Basic Window Functions
+
+Stateless functions can be modulated at audio rate and only depend on the instantaneous input of the ramp signal. The ramp must be linear and between 0 and 1.
+
+The Hanning window is symmetrical with continuous slope, perfect for overlapping grains without amplitude modulation artifacts.
+
+// - stateless functions can be modulated at audio rate
+// - the output of a stateless function only depends on the instantaneous input of the ramp signal
+// - the ramp signal has to be linear and between 0 and 1
+
+// the most basic granular window - the hanning window
+// It is symmetrical and has a continious slope -
+// perfect for overlapping grains without introducing amplitude modulational artifacts.
+
+code::
+(
+var triangle = { |phase, skew|
+    var warpedPhase = Select.ar(BinaryOpUGen('>', phase, skew), [
+        phase / skew,
+        1 - ((phase - skew) / (1 - skew))
+    ]);
+    Select.ar(BinaryOpUGen('==', skew, 0), [warpedPhase, 1 - phase]);
+};
+
+var unitHanning = { |phase|
+    1 - cos(phase * pi) * 0.5;
+};
+
+{
+    var phase = Phasor.ar(DC.ar(0), 50 * SampleDur.ir);
+    var warpedPhase = triangle.(phase, \skew.kr(0.5));
+    var hanning = unitHanning.(warpedPhase);
+    [phase, warpedPhase, hanning];
+}.plot(0.021);
+)
+
+(
+{
+	var phase = Phasor.ar(DC.ar(0), 50 * SampleDur.ir);
+	HanningWindow.ar(phase, \skew.kr(0.5));
+}.plot(0.02);
+)
+
+(
+{
+	var phase = Phasor.ar(DC.ar(0), 50 * SampleDur.ir);
+	GaussianWindow.ar(phase, \skew.kr(0.5), \index.kr(5));
+}.plot(0.02);
+)
+
+(
+{
+	var phase = Phasor.ar(DC.ar(0), 50 * SampleDur.ir);
+	TukeyWindow.ar(phase, \skew.kr(0.5), \width.kr(0.5));
+}.plot(0.02);
+)
+::
+
+SECTION::2) Sub-Sample Accurate Granulation
+
+subsection::2a) Hard Sync
+
+Granulation starts with hard sync where the carrier waveform gets reset by triggers derived from the scheduling phasor. 
+A window function smooths the phase reset (windowed sync).
+
+// - the carrier waveform needs a phase reset
+// - the carrier gets reset by the trigger derived from the scheduling phasor (hard sync)
+// - to smooth out the phase reset a window function is applied to the carrier (windowed sync)
+
+code::
+(
+var rampToTrig = { |phase|
+	var history = Delay1.ar(phase);
+	var delta = phase - history;
+	var sum = phase + history;
+	var trig = (delta / sum).abs > 0.5;
+	Trig1.ar(trig, SampleDur.ir);
+};
+
+var rampToSlope = { |phase|
+	var history = Delay1.ar(phase);
+	var delta = phase - history;
+	delta.wrap(-0.5, 0.5);
+};
+
+var getSubSampleOffset = { |phase, slope, trig|
+	var sampleCount = phase / slope;
+	Latch.ar(sampleCount, trig);
+};
+
+var accumSubSample = { |trig, subSampleOffset|
+	var hasTriggered = PulseCount.ar(trig) > 0;
+	var accum = Duty.ar(SampleDur.ir, trig, Dseries(0, 1)) * hasTriggered;
+	accum + subSampleOffset;
+};
+
+{
+	var reset, eventPhase, eventSlope, eventTrigger;
+	var subSampleOffset, accumulator;
+	var windowSlope, windowPhase, grainWindow;
+	var grainFreq, grainSlope, grainPhase;
+	var carrier, grain;
+
+	reset = Trig1.ar(\reset.tr(0), SampleDur.ir);
+
+	eventPhase = RampCycle.ar(\tFreq.kr(100), reset);
+	eventSlope = rampToSlope.(eventPhase);
+
+	eventPhase = Delay1.ar(eventPhase);
+	eventTrigger = rampToTrig.(eventPhase);
+
+	subSampleOffset = getSubSampleOffset.(eventPhase, eventSlope, eventTrigger);
+	accumulator = accumSubSample.(eventTrigger, subSampleOffset);
+
+	windowSlope = Latch.ar(eventSlope, eventTrigger) / max(0.001, \overlap.kr(1));
+	windowPhase = (windowSlope * accumulator).clip(0, 1);
+	grainWindow = HanningWindow.ar(windowPhase, \skew.kr(0.5));
+
+	grainFreq = \freq.kr(440);
+	grainSlope = grainFreq * SampleDur.ir;
+	grainPhase = (grainSlope * accumulator).wrap(0, 1);
+
+	carrier = SinOsc.ar(DC.ar(0), grainPhase * 2pi);
+
+	grain = carrier * grainWindow;
+
+	[windowPhase.wrap(0, 1), eventTrigger, grainPhase, carrier, grain];
+}.plot(0.021);
+)
+::
+
+subsection::2b) Hard Sync vs No Hard Sync Comparison
+
+Compare the difference between hard sync (phase reset) and free-running oscillators:
+
+code::
+(
+var rampToTrig = { |phase|
+	var history = Delay1.ar(phase);
+	var delta = phase - history;
+	var sum = phase + history;
+	var trig = (delta / sum).abs > 0.5;
+	Trig1.ar(trig, SampleDur.ir);
+};
+
+var rampToSlope = { |phase|
+	var history = Delay1.ar(phase);
+	var delta = phase - history;
+	delta.wrap(-0.5, 0.5);
+};
+
+var getSubSampleOffset = { |phase, slope, trig|
+	var sampleCount = phase / slope;
+	Latch.ar(sampleCount, trig);
+};
+
+var accumSubSample = { |trig, subSampleOffset|
+	var hasTriggered = PulseCount.ar(trig) > 0;
+	var accum = Duty.ar(SampleDur.ir, trig, Dseries(0, 1)) * hasTriggered;
+	accum + subSampleOffset;
+};
+
+{
+	var reset, eventPhase, eventSlope, eventTrigger;
+	var subSampleOffset, accumulator;
+	var windowSlope, windowPhase, grainWindow;
+	var grainFreq, grainSlope, grainPhase;
+	var carrier, grain;
+
+	reset = Trig1.ar(\reset.tr(0), SampleDur.ir);
+
+	eventPhase = RampCycle.ar(\tFreq.kr(100), reset);
+	eventSlope = rampToSlope.(eventPhase);
+
+	eventPhase = Delay1.ar(eventPhase);
+	eventTrigger = rampToTrig.(eventPhase);
+
+	subSampleOffset = getSubSampleOffset.(eventPhase, eventSlope, eventTrigger);
+	accumulator = accumSubSample.(eventTrigger, subSampleOffset);
+
+	windowSlope = Latch.ar(eventSlope, eventTrigger) / max(0.001, \overlap.kr(1));
+	windowPhase = (windowSlope * accumulator).clip(0, 1);
+	grainWindow = HanningWindow.ar(windowPhase, \skew.kr(0.5));
+
+	grainFreq = \freq.kr(440);
+	grainSlope = grainFreq * SampleDur.ir;
+	grainPhase = (grainSlope * accumulator).wrap(0, 1);
+
+	carrier = SinOsc.ar(DC.ar(0), grainPhase * 2pi);
+	//carrier = SinOsc.ar(grainFreq);
+
+	grain = carrier * grainWindow;
+
+	grain = LeakDC.ar(grain);
+	grain!2 * 0.1;
+
+}.play;
+)
+::
+
+SECTION::3) Multichannel Expansion and Polyphony
+
+subsection::3a) The Round-Robin Method
+
+When grain durations are longer than trigger periods, multiple grains must play simultaneously. 
+The round-robin method distributes triggers across channels to enable overlapping grains.
+
+// 1.3.1.) handle grain durations longer then the trigger period
+
+// if the current grain duration is longer then the trigger period the ramp doesnt reach 1
+// and therefore doesnt read through the entire window function
+// we have to setup multichannel expansion / polyphony
+// e.g. to play a three note chord on the piano you need three fingers,
+// to play three grains simultaneously you need three channels!
+
+code::
+(
+var rampToTrig = { |phase|
+	var history = Delay1.ar(phase);
+	var delta = phase - history;
+	var sum = phase + history;
+	var trig = (delta / sum).abs > 0.5;
+	Trig1.ar(trig, SampleDur.ir);
+};
+
+var rampToSlope = { |phase|
+	var history = Delay1.ar(phase);
+	var delta = phase - history;
+	delta.wrap(-0.5, 0.5);
+};
+
+var getSubSampleOffset = { |phase, slope, trig|
+	var sampleCount = phase / slope;
+	Latch.ar(sampleCount, trig);
+};
+
+var accumSubSample = { |trig, subSampleOffset|
+	var hasTriggered = PulseCount.ar(trig) > 0;
+	var accum = Duty.ar(SampleDur.ir, trig, Dseries(0, 1)) * hasTriggered;
+	accum + subSampleOffset;
+};
+
+{
+	var reset, eventPhase, eventSlope, eventTrigger;
+	var subSampleOffset, accumulator, overlap;
+	var windowSlope, windowPhase, grainWindow;
+
+	reset = Trig1.ar(\reset.tr(0), SampleDur.ir);
+
+	eventPhase = RampCycle.ar(\tFreq.kr(50), reset);
+	eventSlope = rampToSlope.(eventPhase);
+
+	eventPhase = Delay1.ar(eventPhase);
+	eventTrigger = rampToTrig.(eventPhase);
+
+	subSampleOffset = getSubSampleOffset.(eventPhase, eventSlope, eventTrigger);
+	accumulator = accumSubSample.(eventTrigger, subSampleOffset);
+
+	windowSlope = Latch.ar(eventSlope, eventTrigger) / max(0.001, \overlap.kr(2));
+	windowPhase = (windowSlope * accumulator).clip(0, 1);
+	grainWindow = HanningWindow.ar(windowPhase, \skew.kr(0.5));
+
+	[windowPhase.wrap(0, 1), grainWindow];
+}.plot(0.041);
+)
+::
+
+subsection::3b) Multichannel Trigger Distribution
+
+// 1.3.2.) overlap grains when the grain duration is longer then the trigger period
+
+// create a multichannel trigger based on PulseDivider for overlapping grains (round-robin method)
+// the round-robin method increments a counter by 1 when receiving a trigger
+// and distributes the next event to next channel and wraps around at the last channel
+
+// - the next grain can already start before the current one has finished without truncation
+// - the maximum polyphony / overlap is specified by numChannels (fixed with SynthDef evaluation)
+
+code::
+(
+var rampToTrig = { |phase|
+	var history = Delay1.ar(phase);
+	var delta = phase - history;
+	var sum = phase + history;
+	var trig = (delta / sum).abs > 0.5;
+	Trig1.ar(trig, SampleDur.ir);
+};
+
+var rampToSlope = { |phase|
+	var history = Delay1.ar(phase);
+	var delta = phase - history;
+	delta.wrap(-0.5, 0.5);
+};
+
+var multiChannelTrigger = { |numChannels, trig|
+	numChannels.collect{ |chan|
+		PulseDivider.ar(trig, numChannels, numChannels - 1 - chan);
+	};
+};
+/*
+var multiChannelTrigger = { |numChannels, trig|
+	var count = Demand.ar(trig, DC.ar(0), Dseries(0, 1));
+	numChannels.collect{ |chan|
+		trig * BinaryOpUGen('==', (count + (numChannels - 1 - chan) + 1) % numChannels, 0);
+	};
+};
+*/
+var getSubSampleOffset = { |phase, slope, trig|
+	var sampleCount = phase / slope;
+	Latch.ar(sampleCount, trig);
+};
+
+var accumulatorSubSample = { |trig, subSampleOffset|
+	var hasTriggered = PulseCount.ar(trig) > 0;
+	var accum = Duty.ar(SampleDur.ir, trig, Dseries(0, 1)) * hasTriggered;
+	accum + subSampleOffset;
+};
+
+var multiChannelAccumulator = { |triggers, subSampleOffsets|
+	triggers.collect{ |localTrig, i|
+		accumulatorSubSample.(localTrig, subSampleOffsets[i]);
+	};
+};
+
+{
+	var numChannels = 5;
+
+	var reset, tFreqMod, modDepth, tFreq;
+	var eventPhase, eventTrigger, eventSlope;
+	var triggers, subSampleOffsets, accumulator, overlap, maxOverlap;
+	var windowSlopes, windowPhases, grainWindows;
+
+	reset = Trig1.ar(\reset.tr(0), SampleDur.ir);
+
+	tFreq = \tFreq.kr(500);
+
+	eventPhase = RampCycle.ar(tFreq, reset);
+	eventSlope = rampToSlope.(eventPhase);
+
+	eventPhase = Delay1.ar(eventPhase);
+	eventTrigger = rampToTrig.(eventPhase);
+
+	///////////////////////////////////////////////////////////////////
+
+	// distribute triggers round-robin across the channels
+	triggers = multiChannelTrigger.(numChannels, eventTrigger);
+
+	// calculate sub-sample offset per multichannel trigger
+	subSampleOffsets = getSubSampleOffset.(eventPhase, eventSlope, triggers);
+
+	// create a multichannel accumulator with sub-sample accuracy
+	accumulator = multiChannelAccumulator.(triggers, subSampleOffsets);
+
+	///////////////////////////////////////////////////////////////////
+
+	overlap = \overlap.ar(1);
+	maxOverlap = min(overlap, numChannels); // maximum polyphony
+
+	windowSlopes = Latch.ar(eventSlope, triggers) / max(0.001, Latch.ar(maxOverlap, triggers));
+	windowPhases = (windowSlopes * accumulator).clip(0, 1);
+	grainWindows = HanningWindow.ar(windowPhases, \skew.kr(0.5));
+
+}.plot(0.021);
+)
+::
+
+subsection::3c) Handling Unequal Grain Durations
+
+When using modulation, grain durations become unequal. Compensate by reducing maximum overlap based on modulation depth:
+
+// 1.3.3.) overlapping grains with durations of unequal lengths
+
+// the round-robin method doesnt know about the state of its channels (busy or not)
+// if the grains are of unequal lenghts e.g modulation of trigger frequency,
+// we cant know about the maximum possible overlap per channel in advance
+
+// We can additionally multiply maxOverlap with 2 ** modDepth.neg
+// This makes sure grains of unequal length (modulation of trigger frequency) doesnt cause any truncation
+// The tradeoff however is that the maximum possible overlap is small for high modulational indices.
+
+code::
+(
+var rampToTrig = { |phase|
+	var history = Delay1.ar(phase);
+	var delta = phase - history;
+	var sum = phase + history;
+	var trig = (delta / sum).abs > 0.5;
+	Trig1.ar(trig, SampleDur.ir);
+};
+
+var rampToSlope = { |phase|
+	var history = Delay1.ar(phase);
+	var delta = phase - history;
+	delta.wrap(-0.5, 0.5);
+};
+
+var multiChannelTrigger = { |numChannels, trig|
+	numChannels.collect{ |chan|
+		PulseDivider.ar(trig, numChannels, numChannels - 1 - chan);
+	};
+};
+
+var getSubSampleOffset = { |phase, slope, trig|
+	var sampleCount = phase / slope;
+	Latch.ar(sampleCount, trig);
+};
+
+var accumulatorSubSample = { |trig, subSampleOffset|
+	var hasTriggered = PulseCount.ar(trig) > 0;
+	var accum = Duty.ar(SampleDur.ir, trig, Dseries(0, 1)) * hasTriggered;
+	accum + subSampleOffset;
+};
+
+var multiChannelAccumulator = { |triggers, subSampleOffsets|
+	triggers.collect{ |localTrig, i|
+		accumulatorSubSample.(localTrig, subSampleOffsets[i]);
+	};
+};
+
+{
+	var numChannels = 5;
+
+	var reset, tFreqMod, modDepth, tFreq;
+	var eventPhase, eventTrigger, eventSlope;
+	var triggers, subSampleOffsets, accumulator, overlap, maxOverlap;
+	var windowSlopes, windowPhases, grainWindows;
+
+	reset = Trig1.ar(\reset.tr(0), SampleDur.ir);
+
+	modDepth = \modMD.kr(1);
+	tFreqMod = 2 ** (SinOsc.ar(\modMF.kr(50)) * modDepth);
+	tFreq = \tFreq.kr(500) * tFreqMod;
+
+	eventPhase = RampCycle.ar(tFreq, reset);
+	eventSlope = rampToSlope.(eventPhase);
+
+	eventPhase = Delay1.ar(eventPhase);
+	eventTrigger = rampToTrig.(eventPhase);
+
+	///////////////////////////////////////////////////////////////////
+
+	// distribute triggers round-robin across the channels
+	triggers = multiChannelTrigger.(numChannels, eventTrigger);
+
+	// calculate sub-sample offset per multichannel trigger
+	subSampleOffsets = getSubSampleOffset.(eventPhase, eventSlope, triggers);
+
+	// create a multichannel accumulator with sub-sample accuracy
+	accumulator = multiChannelAccumulator.(triggers, subSampleOffsets);
+
+	///////////////////////////////////////////////////////////////////
+
+	overlap = \overlap.ar(1);
+	maxOverlap = min(overlap, 2 ** modDepth.neg * numChannels); // maxOverlap tradeoff
+
+	windowSlopes = Latch.ar(eventSlope, triggers) / max(0.001, Latch.ar(maxOverlap, triggers));
+	windowPhases = (windowSlopes * accumulator).clip(0, 1);
+	grainWindows = HanningWindow.ar(windowPhases, \skew.kr(0.5));
+
+}.plot(0.021);
+)
+::
+
+SECTION::4) Advanced Applications
+
+// 1.4.) extending the setup
+
+// - exchange carrier or window for BufRd, OscOS or stateless window functions etc.
+// - add sequencing and modulation
+// - add Frequency Modulation, Phase Modulation, Phase Shaping etc.
+// - add Panning
+// - add multichannel fx
+
+// 1.4.1) example: multichannel Dwhite
+
+subsection::4a) Multichannel Demand Patterns
+
+Integrate demand patterns for per-grain parameter control:
+
+code::
+(
+var rampToTrig = { |phase|
+	var history = Delay1.ar(phase);
+	var delta = phase - history;
+	var sum = phase + history;
+	var trig = (delta / sum).abs > 0.5;
+	Trig1.ar(trig, SampleDur.ir);
+};
+
+var rampToSlope = { |phase|
+	var history = Delay1.ar(phase);
+	var delta = phase - history;
+	delta.wrap(-0.5, 0.5);
+};
+
+var multiChannelTrigger = { |numChannels, trig|
+	numChannels.collect{ |chan|
+		PulseDivider.ar(trig, numChannels, numChannels - 1 - chan);
+	};
+};
+
+var getSubSampleOffset = { |phase, slope, trig|
+	var sampleCount = phase / slope;
+	Latch.ar(sampleCount, trig);
+};
+
+var accumulatorSubSample = { |trig, subSampleOffset|
+	var hasTriggered = PulseCount.ar(trig) > 0;
+	var accum = Duty.ar(SampleDur.ir, trig, Dseries(0, 1)) * hasTriggered;
+	accum + subSampleOffset;
+};
+
+var multiChannelAccumulator = { |triggers, subSampleOffsets|
+	triggers.collect{ |localTrig, i|
+		accumulatorSubSample.(localTrig, subSampleOffsets[i]);
+	};
+};
+
+var multiChannelDwhite = { |triggers|
+	var demand = Dwhite(-1.0, 1.0);
+	triggers.collect{ |localTrig|
+		Demand.ar(localTrig, DC.ar(0), demand)
+	};
+};
+
+{
+	var numChannels = 5;
+
+	var reset, tFreqMod, modDepth, tFreq;
+	var eventPhase, eventTrigger, eventSlope;
+	var triggers, subSampleOffsets, accumulator, overlap, maxOverlap;
+	var windowSlopes, windowPhases, grainWindows;
+	var grainFreqMod, grainFreqs, grainSlopes, grainPhases, sigs;
+
+	reset = Trig1.ar(\reset.tr(0), SampleDur.ir);
+
+	modDepth = \modMD.kr(0);
+	tFreqMod = 2 ** (SinOsc.ar(\modMF.kr(50)) * modDepth);
+	tFreq = \tFreq.kr(200) * tFreqMod;
+
+	eventPhase = RampCycle.ar(tFreq, reset);
+	eventSlope = rampToSlope.(eventPhase);
+
+	eventPhase = Delay1.ar(eventPhase);
+	eventTrigger = rampToTrig.(eventPhase);
+
+	///////////////////////////////////////////////////////////////////
+
+	// distribute triggers round-robin across the channels
+	triggers = multiChannelTrigger.(numChannels, eventTrigger);
+
+	// calculate sub-sample offset per multichannel trigger
+	subSampleOffsets = getSubSampleOffset.(eventPhase, eventSlope, triggers);
+
+	// create a multichannel accumulator with sub-sample accuracy
+	accumulator = multiChannelAccumulator.(triggers, subSampleOffsets);
+
+	///////////////////////////////////////////////////////////////////
+
+	overlap = \overlap.ar(3);
+	maxOverlap = min(overlap, 2 ** modDepth.neg * numChannels);
+
+	windowSlopes = Latch.ar(eventSlope, triggers) / max(0.001, Latch.ar(maxOverlap, triggers));
+	windowPhases = (windowSlopes * accumulator).clip(0, 1);
+	grainWindows = HanningWindow.ar(windowPhases, \skew.kr(0.5));
+
+	///////////////////////////////////////////////////////////////////
+
+	grainFreqMod = multiChannelDwhite.(triggers);
+	grainFreqs = \freq.kr(800) * (2 ** (grainFreqMod * \freqMD.kr(2)));
+	grainSlopes = grainFreqs * SampleDur.ir;
+	grainPhases = (grainSlopes * accumulator).wrap(0, 1);
+
+	sigs = SinOsc.ar(DC.ar(0), grainPhases * 2pi);
+	sigs * grainWindows;
+
+}.plot(0.041);
+)
+
+(
+var rampToTrig = { |phase|
+	var history = Delay1.ar(phase);
+	var delta = phase - history;
+	var sum = phase + history;
+	var trig = (delta / sum).abs > 0.5;
+	Trig1.ar(trig, SampleDur.ir);
+};
+
+var rampToSlope = { |phase|
+	var history = Delay1.ar(phase);
+	var delta = phase - history;
+	delta.wrap(-0.5, 0.5);
+};
+
+var multiChannelTrigger = { |numChannels, trig|
+	numChannels.collect{ |chan|
+		PulseDivider.ar(trig, numChannels, numChannels - 1 - chan);
+	};
+};
+
+var getSubSampleOffset = { |phase, slope, trig|
+	var sampleCount = phase / slope;
+	Latch.ar(sampleCount, trig);
+};
+
+var accumulatorSubSample = { |trig, subSampleOffset|
+	var hasTriggered = PulseCount.ar(trig) > 0;
+	var accum = Duty.ar(SampleDur.ir, trig, Dseries(0, 1)) * hasTriggered;
+	accum + subSampleOffset;
+};
+
+var multiChannelAccumulator = { |triggers, subSampleOffsets|
+	triggers.collect{ |localTrig, i|
+		accumulatorSubSample.(localTrig, subSampleOffsets[i]);
+	};
+};
+
+var multiChannelDwhite = { |triggers|
+	var demand = Dwhite(-1.0, 1.0);
+	triggers.collect{ |localTrig|
+		Demand.ar(localTrig, DC.ar(0), demand)
+	};
+};
+
+{
+	var numChannels = 5;
+
+	var reset, tFreqMod, modDepth, tFreq;
+	var eventPhase, eventTrigger, eventSlope;
+	var triggers, subSampleOffsets, accumulator, overlap, maxOverlap;
+	var windowSlopes, windowPhases, grainWindows;
+	var grainFreqMod, grainFreqs, grainSlopes, grainPhases;
+	var sigs, sig;
+
+	reset = Trig1.ar(\reset.tr(0), SampleDur.ir);
+
+	modDepth = \modMD.kr(2);
+	tFreqMod = 2 ** (LFDNoise3.ar(\modMF.kr(0.3)) * modDepth);
+	tFreq = \tFreq.kr(10) * tFreqMod;
+
+	eventPhase = RampCycle.ar(tFreq, reset);
+	eventSlope = rampToSlope.(eventPhase);
+
+	eventPhase = Delay1.ar(eventPhase);
+	eventTrigger = rampToTrig.(eventPhase);
+
+	///////////////////////////////////////////////////////////////////
+
+	// distribute triggers round-robin across the channels
+	triggers = multiChannelTrigger.(numChannels, eventTrigger);
+
+	// calculate sub-sample offset per multichannel trigger
+	subSampleOffsets = getSubSampleOffset.(eventPhase, eventSlope, triggers);
+
+	// create a multichannel accumulator with sub-sample accuracy
+	accumulator = multiChannelAccumulator.(triggers, subSampleOffsets);
+
+	///////////////////////////////////////////////////////////////////
+
+	overlap = \overlap.ar(4);
+	maxOverlap = min(overlap, 2 ** modDepth.neg * numChannels);
+
+	windowSlopes = Latch.ar(eventSlope, triggers) / max(0.001, Latch.ar(maxOverlap, triggers));
+	windowPhases = (windowSlopes * accumulator).clip(0, 1);
+	grainWindows = HanningWindow.ar(windowPhases, LFDNoise3.ar(0.3).linlin(-1, 1, 0.01, 0.99));
+
+	///////////////////////////////////////////////////////////////////
+
+	grainFreqMod = multiChannelDwhite.(triggers);
+	grainFreqs = \freq.kr(440) * (2 ** (grainFreqMod * \freqMD.kr(2)));
+	grainSlopes = grainFreqs * SampleDur.ir;
+	grainPhases = (grainSlopes * accumulator).wrap(0, 1);
+
+	sigs = SinOsc.ar(DC.ar(0), grainPhases * 2pi);
+	sigs = sigs * grainWindows;
+
+	sigs = PanAz.ar(2, sigs, \pan.kr(0));
+	sig = sigs.sum;
+
+	sig * 0.1;
+
+}.play;
+)
+::
+
+SECTION::5) Pulsar Ratchets and Physical Modeling
+
+subsection::5a) Grain Duration Depending on Grain Frequency
+
+// - the grain duration can depent on the grain frequency instead of the trigger frequency
+// - high grain frequencies then lead to short grain durations and vice versa
+// - This creates a cheap physical modelling effect!
+
+// We can still add an overlap factor to adjust the grain duration to compensate for that effect
+
+// There are two design problems with this approach:
+// 1.) There is no fixed maximum overlap value
+// The maximum overlap possible depents on the ratio between the grain frequency and the trigger frequency.
+
+// 2.) You barely get overlapping grains
+// The grain frequency is often multiple times higher then the trigger frequency,
+// so the grain durations are really short and the grains dont overlap.
+// This is not very versatile and mostly interesting for ratchets.
+
+The grain duration can depend on grain frequency instead of trigger frequency, 
+creating a physical modeling effect where high frequencies produce short grains and vice versa.
+
+code::
+(
+var rampToTrig = { |phase|
+	var history = Delay1.ar(phase);
+	var delta = phase - history;
+	var sum = phase + history;
+	var trig = (delta / sum).abs > 0.5;
+	Trig1.ar(trig, SampleDur.ir);
+};
+
+var rampToSlope = { |phase|
+	var history = Delay1.ar(phase);
+	var delta = phase - history;
+	delta.wrap(-0.5, 0.5);
+};
+
+var getSubSampleOffset = { |phase, slope, trig|
+	var sampleCount = phase / slope;
+	Latch.ar(sampleCount, trig);
+};
+
+var accumSubSample = { |trig, subSampleOffset|
+	var hasTriggered = PulseCount.ar(trig) > 0;
+	var accum = Duty.ar(SampleDur.ir, trig, Dseries(0, 1)) * hasTriggered;
+	accum + subSampleOffset;
+};
+
+{
+	var reset, eventPhase, eventSlope, eventTrigger;
+	var subSampleOffset, accumulator, overlap, maxOverlap;
+	var windowSlope, windowPhase, grainWindow;
+	var grainFreq, grainSlope, grainPhase;
+	var carrier, grain;
+
+	reset = Trig1.ar(\reset.tr(0), SampleDur.ir);
+
+	eventPhase = RampCycle.ar(\tFreq.kr(50), reset);
+	eventSlope = rampToSlope.(eventPhase);
+
+	eventPhase = Delay1.ar(eventPhase);
+	eventTrigger = rampToTrig.(eventPhase);
+
+	grainFreq = \freq.ar(400);
+	grainSlope = grainFreq * SampleDur.ir;
+
+	subSampleOffset = getSubSampleOffset.(eventPhase, eventSlope, eventTrigger);
+	accumulator = accumSubSample.(eventTrigger, subSampleOffset);
+
+	overlap = \overlap.kr(4);
+	maxOverlap = min(overlap, Latch.ar(grainSlope / eventSlope, eventTrigger));
+
+	windowSlope = Latch.ar(grainSlope, eventTrigger) / max(0.001, maxOverlap);
+	windowPhase = (windowSlope * accumulator).clip(0, 1);
+	grainWindow = HanningWindow.ar(windowPhase, \skew.kr(0.5));
+
+	grainPhase = (grainSlope * accumulator).wrap(0, 1);
+	carrier = sin(grainPhase * 2pi);
+
+	grain = carrier * grainWindow;
+
+	[windowPhase.wrap(0, 1), grainWindow, carrier, grain];
+}.plot(0.04);
+)
+::
+
+code::
+(
+var rampToTrig = { |phase|
+	var history = Delay1.ar(phase);
+	var delta = phase - history;
+	var sum = phase + history;
+	var trig = (delta / sum).abs > 0.5;
+	Trig1.ar(trig, SampleDur.ir);
+};
+
+var rampToSlope = { |phase|
+	var history = Delay1.ar(phase);
+	var delta = (phase - history);
+	delta.wrap(-0.5, 0.5);
+};
+
+var multiChannelTrigger = { |numChannels, trig|
+	numChannels.collect{ |chan|
+		PulseDivider.ar(trig, numChannels, numChannels - 1 - chan);
+	};
+};
+
+var getSubSampleOffset = { |phase, slope, trig|
+	var sampleCount = phase / slope;
+	Latch.ar(sampleCount, trig);
+};
+
+var accumulatorSubSample = { |trig, subSampleOffset|
+	var hasTriggered = PulseCount.ar(trig) > 0;
+	var accum = Duty.ar(SampleDur.ir, trig, Dseries(0, 1)) * hasTriggered;
+	accum + subSampleOffset;
+};
+
+var multiChannelAccumulator = { |triggers, subSampleOffsets|
+	triggers.collect{ |localTrig, i|
+		accumulatorSubSample.(localTrig, subSampleOffsets[i]);
+	};
+};
+
+{
+	var numChannels = 5;
+
+	var reset, flux, tFreqMod, tFreq;
+	var eventPhase, eventTrigger, eventSlope;
+	var triggers, subSampleOffsets, accumulator;
+	var overlap, maxOverlap;
+	var windowSlopes, windowPhases, grainWindows;
+	var grainFreq, grainSlope, grainPhases;
+	var carriers, grains, sig;
+
+	reset = Trig1.ar(\reset.tr(0), SampleDur.ir);
+
+	flux = LFDNoise3.ar(\fluxMF.kr(1));
+	flux = 2 ** (flux * \fluxMD.kr(0.5));
+
+	tFreqMod = SinOsc.ar(1, 1.5pi).lincurve(-1, 1, 0.1, 3.0, 2) * 
+				SinOsc.ar(0.5, 0.75pi).linlin(-1, 1, 0.1, 1.0);
+	tFreq = \tFreq.kr(300) * tFreqMod * flux;
+
+	eventPhase = RampCycle.ar(tFreq, reset);
+	eventSlope = rampToSlope.(eventPhase);
+
+	eventPhase = Delay1.ar(eventPhase);
+	eventTrigger = rampToTrig.(eventPhase);
+
+	//////////////////////////////////////////////////////////////////////////////////////////
+
+	// distribute triggers round-robin across the channels
+	triggers = multiChannelTrigger.(numChannels, eventTrigger);
+
+	// calculate sub-sample offset per multichannel trigger
+	subSampleOffsets = getSubSampleOffset.(eventPhase, eventSlope, triggers);
+
+	// create a multichannel accumulator with sub-sample accuracy
+	accumulator = multiChannelAccumulator.(triggers, subSampleOffsets);
+
+	//////////////////////////////////////////////////////////////////////////////////////////
+
+	grainFreq = \freq.ar(1200);
+	grainFreq = grainFreq * flux;
+	grainSlope = grainFreq * SampleDur.ir;
+
+	//////////////////////////////////////////////////////////////////////////////////////////
+
+	overlap = \overlap.kr(4);
+	maxOverlap = min(overlap, numChannels * Latch.ar(grainSlope / eventSlope, triggers));
+
+	windowSlopes = Latch.ar(grainSlope, triggers) / max(0.001, maxOverlap);
+	windowPhases = (windowSlopes * accumulator).clip(0, 1);
+	grainWindows = HanningWindow.ar(windowPhases, \skew.kr(0.01));
+
+	//////////////////////////////////////////////////////////////////////////////////////////
+
+	grainPhases = JCurve.ar(windowPhases, \shape.kr(0));
+	grainPhases = (grainPhases * maxOverlap).wrap(0, 1);
+
+	carriers = sin(grainPhases * 2pi);
+	grains = carriers * grainWindows;
+
+	grains = PanAz.ar(2, grains, \pan.kr(0));
+	sig = grains.sum;
+
+	sig!2 * 0.1;
+
+}.play;
+)
+::
+
+SECTION::7) Extensions and Variations
+
+subsection::7a) Buffer Granulation
+
+Replace sine wave carriers with buffer readers for audio file granulation:
+
+code::
+(
+SynthDef(\grains, { |sndBuf|
+
+	var numChannels = 8;
+
+	var reset, tFreqMD, tFreqMod, tFreq, events;
+	var subSampleOffsets, triggers, accumulator;
+	var overlapMod, overlap, maxOverlap;
+	var windowSlopes, windowPhases, grainWindows;
+	var posRate, posRateMod, pos;
+	var rate, rateMod, grainPhases;
+	var panMF, panMod, pan;
+	var fltCutOffs, fltMod;
+	var sigs, sig;
+
+	reset = Trig1.ar(\reset.tr(0), SampleDur.ir);
+
+	tFreqMD = \tFreqMD.kr(0, spec: ControlSpec(0, 2));
+	tFreqMod = SinOsc.ar(\tFreqMF.kr(1, spec: ControlSpec(0.1, 5)));
+
+	tFreq = \tFreq.kr(1, spec: ControlSpec(1, 1000, \exp));
+	tFreq = tFreq * (2 ** (tFreqMod * tFreqMD));
+
+	events = ~grainFunctions.eventsCircular[\events].(tFreq, reset);
+
+	///////////////////////////////////////////////////////////////////////////////////
+
+	// distribute triggers round-robin across the channels
+	triggers = ~grainFunctions.multiChannel[\trigger].(numChannels, events[\trigger]);
+
+	// calculate sub-sample offset per multichannel trigger
+	subSampleOffsets = ~grainFunctions.helperFunctions[\subSampleOffset].(
+		events[\phase],
+		events[\slope],
+		triggers
+	);
+
+	// create a multichannel accumulator with sub-sample accuracy
+	accumulator = ~grainFunctions.multiChannel[\accumSubSample].(triggers, subSampleOffsets);
+
+	///////////////////////////////////////////////////////////////////////////////////
+
+	overlap = \overlap.kr(1, spec: ControlSpec(0.125, numChannels));
+	overlapMod = ~grainFunctions.multiChannel[\dwhite].(triggers);
+	overlap = overlap * (2 ** (overlapMod * \overlapMD.kr(0, spec: ControlSpec(0, 1))));
+
+	maxOverlap = min(overlap, 2 ** tFreqMD.neg * numChannels);
+
+	windowSlopes = Latch.ar(events[\slope] / max(0.001, maxOverlap), triggers);
+	windowPhases = (windowSlopes * accumulator).clip(0, 1);
+
+	///////////////////////////////////////////////////////////////////////////////////
+
+	grainWindows = ~unitShapers.windowFunctions[\gaussian].(
+		windowPhases,
+		\windowSkew.kr(0.5, spec: ControlSpec(0, 1)),
+		\windowIndex.kr(0, spec: ControlSpec(0, 5)),
+	);
+
+	///////////////////////////////////////////////////////////////////////////////////
+
+	posRate = \posRate.kr(1, spec: ControlSpec(0.125, 4));
+	posRateMod = SinOsc.ar(\posRateMF.kr(1, spec: ControlSpec(0.01, 1)));
+	posRate = posRate + (posRate * posRateMod * \posRateMD.kr(0, spec: ControlSpec(0, 2)));
+
+	pos = Phasor.ar(
+		trig: DC.ar(0),
+		rate: posRate * BufRateScale.kr(sndBuf) * SampleDur.ir / BufDur.kr(sndBuf),
+		start: \posLo.kr(0, spec: ControlSpec(0, 1)),
+		end: \posHi.kr(1, spec: ControlSpec(0, 1))
+	);
+
+	///////////////////////////////////////////////////////////////////////////////////
+
+	rate = \rate.kr(1, spec: ControlSpec(0.125, 4));
+	rateMod = SinOsc.ar(\rateMF.kr(1, spec: ControlSpec(0.01, 1)));
+	rate = rate * (2 ** (rateMod * \rateMD.kr(0, spec: ControlSpec(0, 2))));
+
+	///////////////////////////////////////////////////////////////////////////////////
+
+	grainPhases = Latch.ar(rate, triggers) * accumulator;
+	grainPhases = grainPhases + (Latch.ar(pos, triggers) * BufFrames.kr(sndBuf));
+
+	sigs = BufRd.ar(
+		numChannels: 1,
+		bufnum: sndBuf,
+		phase: grainPhases,
+		loop: 1,
+		interpolation: 4
+	);
+
+	sigs = sigs * grainWindows;
+
+	///////////////////////////////////////////////////////////////////////////////////
+
+	// panning
+	panMF = \panMF.kr(0.3, spec: ControlSpec(0.01, 1));
+	panMod = { |phase|
+		SinOsc.ar(panMF, phase * pi)
+	};
+
+	pan = ~unitShapers.helperFunctions[\modScaleBipolar].(
+		modulator: panMod.(0.5),
+		value: \pan.kr(0.5, spec: ControlSpec(0, 1)),
+		amount: \panMD.kr(0, spec: ControlSpec(0, 1)),
+		direction: \full
+	);
+
+	sigs = PanAz.ar(2, sigs, pan.linlin(0, 1, -0.5, 0.5));
+	sig = sigs.sum;
+
+	///////////////////////////////////////////////////////////////////////////////////
+
+	sig = sig * ~unitShapers.helperFunctions[\modScaleBipolar].(
+		modulator: SinOsc.ar(\ampMF.kr(5, spec: ControlSpec(1, 10))),
+		value: \amp.kr(-25, spec: ControlSpec(-35, -5)).dbamp,
+		amount: \ampMD.kr(0, spec: ControlSpec(0, 1)),
+		direction: \down
+	);
+
+	sig = sig * Env.asr(0.001, 1, 0.001).ar(Done.freeSelf, \gate.kr(1));
+
+	sig = LeakDC.ar(sig);
+	sig = Limiter.ar(sig);
+	Out.ar(\out.kr(0), sig);
+}).add;
+)
+
+(
+~grainsMLP = Prototype(\makeMLP) {
+
+	~synthDefName = \grains;
+
+	~initArgs = [
+
+		\tFreq, 100,
+		\tFreqMF, 1,
+		\tFreqMD, 0,
+
+		\overlap, 4,
+		\overlapMD, 0,
+
+		\windowSkew, 0.5,
+		\windowIndex, 0,
+
+		\rate, 1.0,
+		\rateMF, 1,
+		\rateMD, 0,
+
+		\posRate, 1,
+		\posRateMF, 1,
+		\posRateMD, 0,
+
+		\posLo, 0,
+		\posHi, 1,
+
+		\sndBuf, topEnvironment[\buffers][\laser][0].bufnum,
+
+		\ampMF, 5,
+		\ampMD, 0,
+
+		\amp, -20,
+
+	];
+
+	~excludeParams = [
+
+		\sndBuf,
+		\reset,
+
+	];
+
+	~ignoreParams = [
+
+		\amp,
+
+	];
+
+};
+)
+::
+
+subsection::7b) Frequency Modulation Integration
+
+Add frequency modulation to grain carriers:
+
+code::
+(
+var multiChannelDwhite = { |triggers|
+	var demand = Dwhite(-1.0, 1.0);
+	triggers.collect{ |localTrig|
+		Demand.ar(localTrig, DC.ar(0), demand)
+	};
+};
+
+{
+	var numChannels = 8;
+
+	var reset, tFreqMD, tFreq;
+	var overlapMD, overlap;
+	var scheduler, events, voices, windowPhases, triggers;
+
+	var grainFreqMod, grainFreqs, grainPhases, grainWindows;
+	var grainOscs, grains, sig;
+	var fmods, modPhases, pmods;
+
+	reset = Trig1.ar(\reset.tr(0), SampleDur.ir);
+
+	tFreqMD = \tFreqMD.kr(2);
+	tFreq = \tFreq.kr(10) * (2 ** (SinOsc.ar(0.3) * tFreqMD));
+
+	overlapMD = \overlapMD.kr(0);
+	overlap = \overlap.kr(1) * (2 ** (LFDNoise3.ar(0.1) * overlapMD));
+
+	scheduler = RampCycle.ar(tFreq, reset);
+	events = EventData.ar(scheduler);
+
+	voices = VoiceAllocator.ar(
+		numChannels: numChannels,
+		trig: events[\trigger],
+		rate: events[\rate] / overlap,
+		subSampleOffset: events[\subSampleOffset],
+	);
+
+	grainWindows = HanningWindow.ar(
+		phase: voices[\phases],
+		skew: \skew.kr(0.05)
+	);
+
+	grainFreqMod = multiChannelDwhite.(voices[\triggers]);
+	grainFreqs = \freq.kr(440) * (2 ** (grainFreqMod * \freqMD.kr(1)));
+
+	fmods = ExponentialWindow.ar(
+		phase: voices[\phases],
+		skew: \pitchSkew.kr(0.03),
+		shape: \pitchShape.kr(0)
+	);
+
+	grainPhases = RampIntegrator.ar(
+		trig: voices[\triggers],
+		rate: grainFreqs * (1 + (fmods * \pitchMD.kr(0))),
+		subSampleOffset: events[\subSampleOffset]
+	);
+
+	modPhases = RampIntegrator.ar(
+		trig: voices[\triggers],
+		rate: grainFreqs * \pmRatio.kr(1.5),
+		subSampleOffset: events[\subSampleOffset]
+	);
+	pmods = SinOsc.ar(DC.ar(0), modPhases * 2pi);
+
+	grainPhases = (grainPhases + (pmods * \pmIndex.kr(1))).wrap(0, 1);
+	grainOscs = SinOsc.ar(DC.ar(0), grainPhases * 2pi);
+
+	grains = grainOscs * grainWindows;
+
+	grains = PanAz.ar(2, grains, \pan.kr(0));
+	sig = grains.sum;
+
+	sig = LeakDC.ar(sig);
+
+	sig = sig * 0.1;
+
+}.play
+)
+
+(
+{
+	var numChannels = 8;
+
+	var reset, flux, tFreqMod, tFreq, windowRatio;
+	var scheduler, events, voices, windowPhases, triggers;
+	var grainFreq, grainPhases, grainWindows;
+	var grainOscs, grains, sig;
+
+	reset = Trig1.ar(\reset.tr(0), SampleDur.ir);
+
+	flux = LFDNoise3.ar(\fluxMF.kr(1));
+	flux = 2 ** (flux * \fluxMD.kr(0.5));
+
+	tFreqMod = SinOsc.ar(1, 1.5pi).lincurve(-1, 1, 0.1, 3.0, 2) * SinOsc.ar(0.5, 0.75pi).linlin(-1, 1, 0.1, 1.0);
+	tFreq = \tFreq.kr(300) * flux * tFreqMod;
+
+	grainFreq = \freq.kr(1200) * flux;
+	windowRatio = \windowRatio.ar(4); // this has to be audio rate, we will latch that later
+
+	scheduler = RampCycle.ar(tFreq, reset);
+	events = EventData.ar(scheduler);
+
+	voices = VoiceAllocator.ar(
+		numChannels: numChannels,
+		trig: events[\trigger],
+		rate: grainFreq / windowRatio, // grain duration depending on grainFreq scaled by windowRatio
+		subSampleOffset: events[\subSampleOffset],
+	);
+
+	grainWindows = HanningWindow.ar(
+		phase: voices[\phases],
+		skew: \skew.kr(0.01)
+	);
+
+	// phase shaping for a frequency trajectory per grain:
+	// using normalized windowPhases into JCurve,
+	// then scaling to number of cycles by windowRatio before wrapping between 0 and 1
+	// important to latch windowRatio per trigger here!!!
+	grainPhases = JCurve.ar(voices[\phases], \shape.kr(0));
+	grainPhases = (grainPhases * Latch.ar(windowRatio, voices[\triggers])).wrap(0, 1);
+
+	grainOscs = SinOsc.ar(DC.ar(0), grainPhases * 2pi);
+
+	grains = grainOscs * grainWindows;
+
+	grains = PanAz.ar(2, grains, \pan.kr(0));
+	sig = grains.sum;
+
+	sig = LeakDC.ar(sig);
+
+	sig = sig * 0.1;
+
+}.play;
+)
+::
+
+subsection::7c) Spatial Distribution
+
+Enhance spatialization with per-grain positioning:
+
+code::
+(
+{
+	var numChannels = 8;
+	var numSpeakers = 2;
+
+	var reset, tFreq;
+	var scheduler, events, voices, windowPhases;
+	var grainFreq, grainPhases, grainWindows;
+	var grainOscs, grains, sig, chanMask;
+
+	reset = Trig1.ar(\reset.tr(0), SampleDur.ir);
+
+	tFreq = \tFreq.kr(2);
+	grainFreq = \freq.kr(440);
+
+	scheduler = RampCycle.ar(tFreq, reset);
+	events = EventData.ar(scheduler);
+
+	voices = VoiceAllocator.ar(
+		numChannels: numChannels,
+		trig: events[\trigger],
+		rate: events[\rate] / \overlap.kr(0.5),
+		subSampleOffset: events[\subSampleOffset],
+	);
+
+	grainWindows = HanningWindow.ar(
+		phase: voices[\phases],
+		skew: \skew.kr(0.03)
+	);
+
+	grainPhases = RampIntegrator.ar(
+		trig: voices[\triggers],
+		rate: grainFreq,
+		subSampleOffset: events[\subSampleOffset]
+	);
+	grainOscs = SinOsc.ar(DC.ar(0), grainPhases * 2pi);
+
+	grains = grainOscs * grainWindows;
+
+	grains = PanAz.ar(
+		numChans: numSpeakers,
+		in: grains,
+		pos: MouseX.kr(0, 1).linlin(0, 1, -1 / numSpeakers, (2 * numSpeakers - 3) / numSpeakers);
+	);
+	sig = grains.sum;
+
+	sig = LeakDC.ar(sig);
+	sig = sig * 0.1;
+}.play;
+)
+::

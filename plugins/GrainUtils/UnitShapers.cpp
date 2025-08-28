@@ -1,6 +1,6 @@
 #include "UnitShapers.hpp"
 
-// ===== HELPER FUNCTIONS =====
+// ===== UNIT SHAPERS =====
 
 UnitTriangle::UnitTriangle() {
     mCalcFunc = make_calc_function<UnitTriangle, &UnitTriangle::next>();
@@ -15,7 +15,7 @@ void UnitTriangle::next(int nSamples) {
     for (int i = 0; i < nSamples; ++i) {
         float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
         float skew = sc_clip(skewIn[i], 0.0f, 1.0f);
-        outbuf[i] = HelperFunctions::triangle(phase, skew);
+        outbuf[i] = UnitShapers::triangle(phase, skew);
     }
 }
 
@@ -32,7 +32,24 @@ void UnitKink::next(int nSamples) {
     for (int i = 0; i < nSamples; ++i) {
         float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
         float skew = sc_clip(skewIn[i], 0.0f, 1.0f);
-        outbuf[i] = HelperFunctions::kink(phase, skew);
+        outbuf[i] = UnitShapers::kink(phase, skew);
+    }
+}
+
+UnitCubic::UnitCubic() {
+    mCalcFunc = make_calc_function<UnitCubic, &UnitCubic::next>();
+    next(1);
+}
+
+void UnitCubic::next(int nSamples) {
+    const float* phaseIn = in(0);
+    const float* indexIn = in(1);
+    float* outbuf = out(0);
+   
+    for (int i = 0; i < nSamples; ++i) {
+        float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
+        float index = sc_clip(indexIn[i], 0.0f, 1.0f);
+        outbuf[i] = UnitShapers::cubic(phase, index);
     }
 }
 
@@ -52,6 +69,25 @@ void HanningWindow::next(int nSamples) {
         float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
         float skew = sc_clip(skewIn[i], 0.0f, 1.0f);
         outbuf[i] = WindowFunctions::hanningWindow(phase, skew);
+    }
+}
+
+RaisedCosWindow::RaisedCosWindow() {
+    mCalcFunc = make_calc_function<RaisedCosWindow, &RaisedCosWindow::next>();
+    next(1);
+}
+
+void RaisedCosWindow::next(int nSamples) {
+    const float* phaseIn = in(0);
+    const float* skewIn = in(1);
+    const float* indexIn = in(2);
+    float* outbuf = out(0);
+    
+    for (int i = 0; i < nSamples; ++i) {
+        float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
+        float skew = sc_clip(skewIn[i], 0.0f, 1.0f);
+        float index = indexIn[i];
+        outbuf[i] = WindowFunctions::raisedCosWindow(phase, skew, index);
     }
 }
 
@@ -134,6 +170,23 @@ void ExponentialWindow::next(int nSamples) {
 }
 
 // ===== INTERP FUNCTIONS =====
+
+JCurve::JCurve() {
+    mCalcFunc = make_calc_function<JCurve, &JCurve::next>();
+    next(1);
+}
+
+void JCurve::next(int nSamples) {
+    const float* phaseIn = in(0);
+    const float* shapeIn = in(1);
+    float* outbuf = out(0);
+    
+    for (int i = 0; i < nSamples; ++i) {
+        float phase = sc_clip(phaseIn[i], 0.0f, 1.0f);
+        float shape = sc_clip(shapeIn[i], 0.0f, 1.0f);
+        outbuf[i] = InterpFunctions::jCurve(phase, shape, EasingCores::quintic);
+    }
+}
 
 SCurve::SCurve() {
     mCalcFunc = make_calc_function<SCurve, &SCurve::next>();

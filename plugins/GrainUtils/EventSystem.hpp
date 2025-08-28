@@ -2,75 +2,67 @@
 #include "SC_PlugIn.hpp"
 #include "Utils.hpp"
 
-// ===== EVENT DATA =====
+// ===== SCHEDULER CYCLE =====
 
-class EventData : public SCUnit {
+class SchedulerCycle : public SCUnit {
 public:
-    EventData();
-    ~EventData();
+    SchedulerCycle();
+    ~SchedulerCycle();
 
 private:
     void next_aa(int nSamples);
-    void reset();
-
-    // Core processing
-    Utils::EventData m_data;
-
-    // Constants
-    const float m_sampleRate;
-
-    // Input parameters
-    enum InputParams {
-        Ramp,    // ramp signal between 0 and 1
-
-        NumInputParams
-    };
-   
-    enum Outputs {
-        Trigger,            // derived trigger
-        Rate,               // derived and latched frequency in hz
-        SubSampleOffset,    // sub-sample offset
-        //Phase,
-       
-        NumOutputParams
-    };
-};
-
-// ===== EVENT SCHEDULER =====
-
-class EventScheduler : public SCUnit {
-public:
-    EventScheduler();
-    ~EventScheduler();
-
-private:
-    void next_aa(int nSamples);
-    void reset();
    
     // Core processing
-    Utils::EventScheduler m_scheduler;
+    Utils::SchedulerCycle m_scheduler;
 
     // Constants
     const float m_sampleRate;
    
     // Input parameters
     enum InputParams {
-        TriggerRate,    // Trigger rate in Hz
+        Rate,           // Trigger rate in Hz
         Reset,          // Reset trigger
-       
-        NumInputParams
     };
    
     enum Outputs {
         Trigger,            // derived trigger
-        Rate,               // derived and latched frequency in hz
+        RateLatched,        // derived and latched frequency in hz
         SubSampleOffset,    // sub-sample offset
-        //Phase,
-       
-        NumOutputParams
+        Phase,             
     };
 };
 
+/*
+// ===== SCHEDULER BURST =====
+class SchedulerBurst : public SCUnit {
+public:
+    SchedulerBurst();
+    ~SchedulerBurst();
+    
+private:
+    void next_aa(int nSamples);
+    
+    // Core processing
+    Utils::SchedulerBurst m_scheduler;
+    
+    // Constants
+    const float m_sampleRate;
+    
+    // Input parameters
+    enum InputParams {
+        InitTrigger,    // 0 - Trigger to start sequence
+        Duration,       // 1 - Duration of one cycle
+        Cycles          // 2 - Number of cycles/events to generate
+    };
+    
+    enum Outputs {
+        Trigger,            // Event triggers
+        RateLatched,        // Event rate in Hz
+        SubSampleOffset,    // sub-sample offset
+        Phase               // Event phase [0,cycles)
+    };
+};
+*/
 // ===== VOICE ALLOCATOR =====
 
 class VoiceAllocator : public SCUnit {
@@ -91,12 +83,10 @@ private:
    
     // Input parameters
     enum InputParams {
-        NumChannels,    // Number of output channels (init-rate)
-        Trigger,        // Trigger input from EventScheduler
-        Rate,           // Rate from EventScheduler / overlap
-        SubSampleOffset,// Subsample offset from EventScheduler
-       
-        NumInputParams
+        NumChannels,        // Number of output channels (init-rate)
+        Trigger,            // Trigger input from EventScheduler
+        Rate,               // Rate from EventScheduler / overlap
+        SubSampleOffset     // Subsample offset from EventScheduler
     };
    
     // Outputs: numChannels phases and triggers
@@ -112,7 +102,6 @@ public:
 
 private:
     void next_aa(int nSamples);
-    void reset();
    
     // Core processing
     Utils::RampIntegrator m_integrator;
@@ -124,14 +113,10 @@ private:
     enum InputParams {
         Trigger,            // Trigger input
         Rate,               // Rate in Hz
-        SubSampleOffset,    // Subsample offset
-       
-        NumInputParams
+        SubSampleOffset     // Subsample offset
     };
    
     enum Outputs {
-        Phase,          // Wrapped phase output [0,1)
-       
-        NumOutputParams
+        Phase               // Wrapped phase output [0,1)
     };
 };

@@ -1,83 +1,82 @@
 #include "EventSystem.hpp"
 
-// ===== EVENT DATA =====
+// ===== SCHEDULER CYCLE =====
 
-EventData::EventData() : m_sampleRate(static_cast<float>(sampleRate()))
+SchedulerCycle::SchedulerCycle() : m_sampleRate(static_cast<float>(sampleRate()))
 {
-    mCalcFunc = make_calc_function<EventData, &EventData::next_aa>();
+    mCalcFunc = make_calc_function<SchedulerCycle, &SchedulerCycle::next_aa>();
     next_aa(1);
+    m_scheduler.init();
 }
 
-EventData::~EventData() = default;
+SchedulerCycle::~SchedulerCycle() = default;
 
-void EventData::next_aa(int nSamples) {
+void SchedulerCycle::next_aa(int nSamples) {
     // Input parameters
-    const float* rampIn = in(Ramp);
-   
-    // Output pointers
-    float* triggerOut = out(Trigger);
-    float* rateOut = out(Rate);
-    float* offsetOut = out(SubSampleOffset);
-    //float* phaseOut = out(Phase);
-   
-    for (int i = 0; i < nSamples; ++i) {
-        // Process event scheduler
-        auto event = m_data.process(
-            rampIn[i],
-            m_sampleRate
-        );
-        // Output values
-        triggerOut[i] = event.trigger;
-        //phaseOut[i] = event.phase;
-        rateOut[i] = event.rate;
-        offsetOut[i] = event.subSampleOffset;
-    }
-}
-
-void EventData::reset() {
-    m_data.reset();
-}
-
-// ===== EVENT SCHEDULER =====
-
-EventScheduler::EventScheduler() : m_sampleRate(static_cast<float>(sampleRate()))
-{
-    mCalcFunc = make_calc_function<EventScheduler, &EventScheduler::next_aa>();
-    next_aa(1);
-}
-
-EventScheduler::~EventScheduler() = default;
-
-void EventScheduler::next_aa(int nSamples) {
-    // Input parameters
-    const float* triggerRateIn = in(TriggerRate);
+    const float* rateIn = in(Rate);
     const bool resetTrigger = in0(Reset) > 0.5f;
    
     // Output pointers
     float* triggerOut = out(Trigger);
-    float* rateOut = out(Rate);
+    float* rateOut = out(RateLatched);
     float* offsetOut = out(SubSampleOffset);
-    //float* phaseOut = out(Phase);
+    float* phaseOut = out(Phase);
    
     for (int i = 0; i < nSamples; ++i) {
         // Process event scheduler
         auto event = m_scheduler.process(
-            triggerRateIn[i],
+            rateIn[i],
             resetTrigger,
             m_sampleRate
         );
+        
         // Output values
         triggerOut[i] = event.trigger;
-        //phaseOut[i] = event.phase;
+        phaseOut[i] = event.phase;
         rateOut[i] = event.rate;
         offsetOut[i] = event.subSampleOffset;
     }
 }
+/*
+// ===== SCHEDULER BURST =====
 
-void EventScheduler::reset() {
-    m_scheduler.reset();
+SchedulerBurst::SchedulerBurst() : m_sampleRate(static_cast<float>(sampleRate()))
+{
+    mCalcFunc = make_calc_function<SchedulerBurst, &SchedulerBurst::next_aa>();
+    next_aa(1);
 }
 
+SchedulerBurst::~SchedulerBurst() = default;
+
+void SchedulerBurst::next_aa(int nSamples) {
+    // Input parameters
+    const float* initTriggerIn = in(InitTrigger);
+    const float* durationIn = in(Duration);
+    const float* cyclesIn = in(Cycles);
+    
+    // Output pointers
+    float* triggerOut = out(Trigger);
+    float* rateOut = out(RateLatched);
+    float* offsetOut = out(SubSampleOffset);
+    float* phaseOut = out(Phase);
+    
+    for (int i = 0; i < nSamples; ++i) {
+        // Process event scheduler
+        auto event = m_scheduler.process(
+            initTriggerIn[i] > 0.5f,
+            durationIn[i],
+            cyclesIn[i],
+            m_sampleRate
+        );
+        
+        // Output values
+        triggerOut[i] = event.trigger;
+        phaseOut[i] = event.phase;
+        rateOut[i] = event.rate;
+        offsetOut[i] = event.subSampleOffset;
+    }
+}
+*/
 // ===== VOICE ALLOCATOR =====
 
 VoiceAllocator::VoiceAllocator() : m_sampleRate(static_cast<float>(sampleRate()))
@@ -116,10 +115,6 @@ void VoiceAllocator::next_aa(int nSamples) {
     }
 }
 
-void VoiceAllocator::reset() {
-    m_allocator.reset();
-}
-
 // ===== RAMP INTEGRATOR =====
 
 RampIntegrator::RampIntegrator() : m_sampleRate(static_cast<float>(sampleRate()))
@@ -148,8 +143,4 @@ void RampIntegrator::next_aa(int nSamples) {
             m_sampleRate
         );
     }
-}
-
-void RampIntegrator::reset() {
-    m_integrator.reset();
 }

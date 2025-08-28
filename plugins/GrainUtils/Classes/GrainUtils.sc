@@ -1,14 +1,14 @@
-// ===== EVENT DATA =====
+// ===== EVENT SCHEDULER =====
 
-EventDataUGen : MultiOutUGen {
-	*ar { |phase|
-		if(phase.rate != 'audio') { phase = K2A.ar(phase) };
-		^this.multiNew('audio', phase)
+SchedulerCycleUGen : MultiOutUGen {
+	*ar { |rate, reset = 0|
+		if(rate.rate != 'audio') { rate = K2A.ar(rate) };
+		^this.multiNew('audio', rate, reset)
 	}
 
 	init { |... theInputs|
 		inputs = theInputs;
-		^this.initOutputs(3, rate);
+		^this.initOutputs(4, rate);
 	}
 
 	checkInputs {
@@ -16,30 +16,31 @@ EventDataUGen : MultiOutUGen {
 	}
 }
 
-EventData {
-	*ar { |phase|
-		var events = EventDataUGen.ar(phase);
+SchedulerCycle {
+	*ar { |rate, reset = 0|
+		var events = SchedulerCycleUGen.ar(rate, reset);
 		^(
 			trigger: events[0],
 			rate: events[1],
 			subSampleOffset: events[2],
-			//ramp: events[3],
+			phase: events[3]
 		);
 	}
 }
 
-// ===== EVENT SCHEDULER =====
+// ===== SCHEDULER BURST =====
 
-EventSchedulerUGen : MultiOutUGen {
-	*ar { |triggerRate, reset|
-		if(triggerRate.rate != 'audio') { triggerRate = K2A.ar(triggerRate) };
-		//if(reset.rate != 'audio') { reset = K2A.ar(reset) };
-		^this.multiNew('audio', triggerRate, reset)
+SchedulerBurstUGen : MultiOutUGen {
+	*ar { |trig, duration, cycles|
+		if(trig.rate != 'audio') { trig = K2A.ar(trig) };
+		if(duration.rate != 'audio') { duration = K2A.ar(duration) };
+		if(cycles.rate != 'audio') { cycles = K2A.ar(cycles) };
+		^this.multiNew('audio', trig, duration, cycles)
 	}
 
 	init { |... theInputs|
 		inputs = theInputs;
-		^this.initOutputs(3, rate);
+		^this.initOutputs(4, rate);
 	}
 
 	checkInputs {
@@ -47,14 +48,14 @@ EventSchedulerUGen : MultiOutUGen {
 	}
 }
 
-EventScheduler {
-	*ar { |triggerRate, reset|
-		var events = EventSchedulerUGen.ar(triggerRate, reset);
+SchedulerBurst {
+	*ar { |trig, duration, cycles|
+		var events = SchedulerBurstUGen.ar(trig, duration, cycles);
 		^(
 			trigger: events[0],
 			rate: events[1],
 			subSampleOffset: events[2],
-			//ramp: events[3]
+			phase: events[3]
 		);
 	}
 }
@@ -63,7 +64,7 @@ EventScheduler {
 
 VoiceAllocatorUGen : MultiOutUGen {
 	*ar { |numChannels, trig, rate, subSampleOffset|
-		//if(trig.rate != 'audio') { trig = K2A.ar(trig) };
+		if(trig.rate != 'audio') { trig = K2A.ar(trig) };
 		if(rate.rate != 'audio') { rate = K2A.ar(rate) };
 		if(subSampleOffset.rate != 'audio') { subSampleOffset = K2A.ar(subSampleOffset) };
 		^this.multiNew('audio', numChannels, trig, rate, subSampleOffset)
@@ -93,7 +94,7 @@ VoiceAllocator {
 
 RampIntegrator : UGen {
 	*ar { |trig, rate, subSampleOffset|
-		//if(trig.rate != 'audio') { trig = K2A.ar(trig) };
+		if(trig.rate != 'audio') { trig = K2A.ar(trig) };
 		if(rate.rate != 'audio') { rate = K2A.ar(rate) };
 		if(subSampleOffset.rate != 'audio') { subSampleOffset = K2A.ar(subSampleOffset) };
 		^this.multiNew('audio', trig, rate, subSampleOffset)
@@ -107,23 +108,19 @@ RampIntegrator : UGen {
 // ===== SHIFT REGISTER =====
 
 ShiftRegisterUgen : MultiOutUGen {
-    *ar { |freq, chance, length, rotate, fbIndex, fbSource, seed, reset|
+    *ar { |trig, chance, length, rotate, reset = 0|
 
-		if(freq.rate != 'audio') { freq = K2A.ar(freq) };
+		if(trig.rate != 'audio') { trig = K2A.ar(trig) };
 		if(chance.rate != 'audio') { chance = K2A.ar(chance) };
 		if(length.rate != 'audio') { length = K2A.ar(length) };
 		if(rotate.rate != 'audio') { rotate = K2A.ar(rotate) };
-		if(fbIndex.rate != 'audio') { fbIndex = K2A.ar(fbIndex) };
-		if(fbSource.rate != 'audio') { fbSource = K2A.ar(fbSource) };
-		//if(seed.rate != 'audio') { seed = K2A.ar(seed) };
-		//if(reset.rate != 'audio') { reset = K2A.ar(reset) };
 
-        ^this.multiNew('audio', freq, chance, length, rotate, fbIndex, fbSource, seed, reset);
+        ^this.multiNew('audio', trig, chance, length, rotate, reset);
     }
 
     init { arg ... theInputs;
         inputs = theInputs;
-        ^this.initOutputs(3, rate);
+        ^this.initOutputs(2, rate);
     }
 
     checkInputs {
@@ -132,17 +129,16 @@ ShiftRegisterUgen : MultiOutUGen {
 }
 
 ShiftRegister {
-	*ar { |freq, chance, length, rotate, fbIndex, fbSource, seed, reset|
-		var register = ShiftRegisterUgen.ar(freq, chance, length, rotate, fbIndex, fbSource, seed, reset);
+	*ar { |trig, chance, length, rotate, reset = 0|
+		var register = ShiftRegisterUgen.ar(trig, chance, length, rotate, reset);
 		^(
 			bit3: register[0],
-			bit8: register[1],
-			phase: register[2]
+			bit8: register[1]
 		);
 	}
 }
 
-// ===== HELPER FUNCTIONS =====
+// ===== UNIT SHAPERS =====
 
 UnitTriangle : UGen {
     *ar { |phase, skew = 0.5|
@@ -160,6 +156,14 @@ UnitKink : UGen {
     }
 }
 
+UnitCubic : UGen {
+    *ar { |phase, index = 0|
+        if(phase.rate != 'audio') { phase = K2A.ar(phase) };
+        if(index.rate != 'audio') { index = K2A.ar(index) };
+        ^this.multiNew('audio', phase, index)
+    }
+}
+
 // ===== WINDOW FUNCTIONS =====
 
 HanningWindow : UGen {
@@ -167,6 +171,15 @@ HanningWindow : UGen {
 		if(phase.rate!='audio'){phase = K2A.ar(phase)};
 		if(skew.rate!='audio'){skew = K2A.ar(skew)};
         ^this.multiNew('audio', phase, skew)
+    }
+}
+
+RaisedCosWindow : UGen {
+    *ar { |phase, skew = 0.5, index = 0|
+        if(phase.rate != 'audio') { phase = K2A.ar(phase) };
+        if(skew.rate != 'audio') { skew = K2A.ar(skew) };
+        if(index.rate != 'audio') { index = K2A.ar(index) };
+        ^this.multiNew('audio', phase, skew, index)
     }
 }
 
@@ -208,6 +221,14 @@ ExponentialWindow : UGen {
 }
 
 // ===== INTERP FUNCTIONS =====
+
+JCurve : UGen {
+	*ar { |phase, shape = 0.5|
+		if(phase.rate!='audio'){phase = K2A.ar(phase)};
+		if(shape.rate!='audio'){shape = K2A.ar(shape)};
+		^this.multiNew('audio', phase, shape)
+	}
+}
 
 SCurve : UGen {
 	*ar { |phase, shape = 0.5, inflection = 0.5|

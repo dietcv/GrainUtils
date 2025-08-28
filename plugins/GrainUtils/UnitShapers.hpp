@@ -8,80 +8,80 @@ inline constexpr float SAFE_DENOM_EPSILON = 1e-10f;
 inline constexpr float TWO_PI = 6.28318530717958647692f;
 inline constexpr float PI = 3.14159265358979323846f;
 
-// ===== HELPER FUNCTIONS =====
-namespace HelperFunctions {
-
-inline float triangle(float phase, float skew) {
-
-    // Add epsilon to prevent division by zero
-    float safeSkew = std::max(skew, SAFE_DENOM_EPSILON);
-    float safeInvSkew = std::max(1.0f - skew, SAFE_DENOM_EPSILON);
-        
-    float warpedPhase;
-        
-    if (phase <= skew) {
-        warpedPhase = phase / safeSkew;
-    } else {
-        warpedPhase = 1.0f - ((phase - skew) / safeInvSkew);
-    }
-        
-    // Handle edge case when skew is exactly 0
-    if (skew < SAFE_DENOM_EPSILON) {
-        warpedPhase = 1.0f - phase;
-    }
-        
-    return warpedPhase;
-}
-
-inline float kink(float phase, float skew) {
-    
-    // Add epsilon to prevent division by zero
-    float safeSkew = std::max(skew, SAFE_DENOM_EPSILON);
-    float safeInvSkew = std::max(1.0f - skew, SAFE_DENOM_EPSILON);
-        
-    float warpedPhase;
-        
-    if (phase <= skew) {
-        warpedPhase = 0.5f * (phase / safeSkew);
-    } else {
-        warpedPhase = 0.5f * (1.0f + ((phase - skew) / safeInvSkew));
-    }
-        
-    // Handle edge case when skew is exactly 0
-    if (skew < SAFE_DENOM_EPSILON) {
-        warpedPhase = 0.5f * (1.0f + phase);
-    }
-        
-    return warpedPhase;
-}
-
-template<typename EasingFuncA, typename EasingFuncB>
-inline float interpEasing(float x, float shape, EasingFuncA easeA, EasingFuncB easeB) {
-
-    auto easingToLinear = [&](float x, float shape, float easeValue) {
-        float mix = shape * 2.0f;
-        return easeValue * (1.0f - mix) + x * mix;
-    };
-        
-    auto linearToEasing = [&](float x, float shape, float easeValue) {
-        float mix = (shape - 0.5f) * 2.0f;
-        return x * (1.0f - mix) + easeValue * mix;
-    };
-        
-    if (shape <= 0.5f) {
-        return easingToLinear(x, shape, easeA(x));
-    } else {
-        return linearToEasing(x, shape, easeB(x));
-    }
-}
-
-} // namespace HelperFunctions
-
 // ===== UNIT SHAPERS =====
 namespace UnitShapers {
 
+    inline float triangle(float phase, float skew) {
+
+        // Add epsilon to prevent division by zero
+        float safeSkew = std::max(skew, SAFE_DENOM_EPSILON);
+        float safeInvSkew = std::max(1.0f - skew, SAFE_DENOM_EPSILON);
+            
+        float warpedPhase;
+            
+        if (phase <= skew) {
+            warpedPhase = phase / safeSkew;
+        } else {
+            warpedPhase = 1.0f - ((phase - skew) / safeInvSkew);
+        }
+            
+        // Handle edge case when skew is exactly 0
+        if (skew < SAFE_DENOM_EPSILON) {
+            warpedPhase = 1.0f - phase;
+        }
+            
+        return warpedPhase;
+    }
+
+    inline float kink(float phase, float skew) {
+        
+        // Add epsilon to prevent division by zero
+        float safeSkew = std::max(skew, SAFE_DENOM_EPSILON);
+        float safeInvSkew = std::max(1.0f - skew, SAFE_DENOM_EPSILON);
+            
+        float warpedPhase;
+            
+        if (phase <= skew) {
+            warpedPhase = 0.5f * (phase / safeSkew);
+        } else {
+            warpedPhase = 0.5f * (1.0f + ((phase - skew) / safeInvSkew));
+        }
+            
+        // Handle edge case when skew is exactly 0
+        if (skew < SAFE_DENOM_EPSILON) {
+            warpedPhase = 0.5f * (1.0f + phase);
+        }
+            
+        return warpedPhase;
+    }
+
+    inline float cubic(float phase, float index) {
+        float indexScaled = index * 48.0f;
+        float x = phase;
+        float x2 = x * x;
+        float x3 = x2 * x;
+        
+        return (x * (1.0f + (indexScaled / 6.0f))) +
+               (x2 * (-indexScaled / 2.0f)) +
+               (x3 * (indexScaled / 3.0f));
+    }
+
     inline float hanning(float phase) {
         return 0.5f * (1.0f - std::cos(phase * PI));
+    }
+
+    inline float welch(float phase) {
+        float term = phase - 1.0f;
+        return 1.0f - (term * term);
+    }
+
+    inline float circular(float phase) {
+        return std::sqrt(phase * (2.0f - phase));
+    }
+
+    inline float raisedCos(float phase, float index) {
+        float cosine = std::cos(phase * PI);
+        return std::exp(std::abs(index) * (-cosine - 1.0f));
     }
 
     inline float gaussian(float phase, float index) {
@@ -198,12 +198,33 @@ namespace EasingFunctions {
 // ===== INTERPOLATION FUNCTIONS =====
 namespace InterpFunctions {
 
+    // InterpEasing: linear interpolation of easing functions
+    template<typename EasingFuncA, typename EasingFuncB>
+    inline float interpEasing(float x, float shape, EasingFuncA easeA, EasingFuncB easeB) {
+
+        auto easingToLinear = [&](float x, float shape, float easeValue) {
+            float mix = shape * 2.0f;
+            return easeValue * (1.0f - mix) + x * mix;
+        };
+            
+        auto linearToEasing = [&](float x, float shape, float easeValue) {
+            float mix = (shape - 0.5f) * 2.0f;
+            return x * (1.0f - mix) + easeValue * mix;
+        };
+            
+        if (shape <= 0.5f) {
+            return easingToLinear(x, shape, easeA(x));
+        } else {
+            return linearToEasing(x, shape, easeB(x));
+        }
+    }
+
     // J-Curve: interpolate between easeOut and easeIn for any core
     template<typename CoreFunc>
     inline float jCurve(float x, float shape, CoreFunc core) {
         auto easeOutFunc = [&core](float t) { return EasingFunctions::easeOut(t, core); };
         auto easeInFunc = [&core](float t) { return EasingFunctions::easeIn(t, core); };
-        return HelperFunctions::interpEasing(x, shape, easeOutFunc, easeInFunc);
+        return interpEasing(x, shape, easeOutFunc, easeInFunc);
     }
 
     // S-Curve: interpolate between sigmoid and seat for any core
@@ -211,7 +232,7 @@ namespace InterpFunctions {
     inline float sCurve(float x, float shape, float inflection, CoreFunc core) {
         auto sigmoidFunc = [&core, inflection](float t) { return EasingFunctions::easeInOut(t, inflection, core); };
         auto seatFunc = [&core, inflection](float t) { return EasingFunctions::easeOutIn(t, inflection, core); };
-        return HelperFunctions::interpEasing(x, shape, sigmoidFunc, seatFunc);
+        return interpEasing(x, shape, sigmoidFunc, seatFunc);
     }
 
 } // namespace InterpFunctions
@@ -220,29 +241,46 @@ namespace InterpFunctions {
 namespace WindowFunctions {
 
     inline float hanningWindow(float phase, float skew) {
-        float warpedPhase = HelperFunctions::triangle(phase, skew);
+        float warpedPhase = UnitShapers::triangle(phase, skew);
         return UnitShapers::hanning(warpedPhase);
     }
 
+    inline float welchWindow(float phase, float skew) {
+        float warpedPhase = UnitShapers::triangle(phase, skew);
+        return UnitShapers::welch(warpedPhase);
+    }
+
+    inline float circularWindow(float phase, float skew) {
+        float warpedPhase = UnitShapers::triangle(phase, skew);
+        return UnitShapers::circular(warpedPhase);
+    }
+
+    inline float raisedCosWindow(float phase, float skew, float index) {
+        float warpedPhase = UnitShapers::triangle(phase, skew);
+        float raisedCos = UnitShapers::raisedCos(warpedPhase, index);
+        float hanning = UnitShapers::hanning(warpedPhase);
+        return raisedCos * hanning;
+    }
+
     inline float gaussianWindow(float phase, float skew, float index) {
-        float warpedPhase = HelperFunctions::triangle(phase, skew);
+        float warpedPhase = UnitShapers::triangle(phase, skew);
         float gaussian = UnitShapers::gaussian(warpedPhase, index);
         float hanning = UnitShapers::hanning(warpedPhase);
         return gaussian * hanning;
     }
 
     inline float trapezoidalWindow(float phase, float skew, float width, float duty) {
-        float warpedPhase = HelperFunctions::triangle(phase, skew);
+        float warpedPhase = UnitShapers::triangle(phase, skew);
         return UnitShapers::trapezoid(warpedPhase, width, duty);
     }
 
     inline float tukeyWindow(float phase, float skew, float width) {
-        float warpedPhase = HelperFunctions::triangle(phase, skew);
+        float warpedPhase = UnitShapers::triangle(phase, skew);
         return UnitShapers::tukey(warpedPhase, width);
     }
 
     inline float exponentialWindow(float phase, float skew, float shape) {
-        float warpedPhase = HelperFunctions::triangle(phase, skew);
+        float warpedPhase = UnitShapers::triangle(phase, skew);
         return InterpFunctions::jCurve(warpedPhase, 1.0f - shape, EasingCores::pseudoExp);
     }
 
@@ -263,9 +301,23 @@ private:
     void next(int nSamples);
 };
 
+class UnitCubic : public SCUnit {
+public:
+    UnitCubic();
+private:
+    void next(int nSamples);
+};
+
 class HanningWindow : public SCUnit {
 public:
     HanningWindow();
+private:
+    void next(int nSamples);
+};
+
+class RaisedCosWindow : public SCUnit {
+public:
+    RaisedCosWindow();
 private:
     void next(int nSamples);
 };
@@ -294,6 +346,13 @@ private:
 class ExponentialWindow : public SCUnit {
 public:
     ExponentialWindow();
+private:
+    void next(int nSamples);
+};
+
+class JCurve : public SCUnit {
+public:
+    JCurve();
 private:
     void next(int nSamples);
 };
