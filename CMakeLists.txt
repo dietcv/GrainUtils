@@ -39,11 +39,6 @@ install(DIRECTORY plugins/GrainUtils/HelpSource
         DESTINATION ${CMAKE_INSTALL_PREFIX}
         FILES_MATCHING PATTERN "*.schelp")
 
-# Install .schelp files to Guides subdirectory
-install(DIRECTORY plugins/GrainUtils/Guides
-        DESTINATION ${CMAKE_INSTALL_PREFIX}
-        FILES_MATCHING PATTERN "*.schelp")   
-
 # Install .scx file to root plugin directory with platform-specific paths
 if(APPLE OR UNIX)
   install(FILES ${CMAKE_BINARY_DIR}/plugins/GrainUtils/GrainUtils.scx 

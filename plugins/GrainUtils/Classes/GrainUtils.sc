@@ -1,4 +1,4 @@
-// ===== EVENT SCHEDULER =====
+// ===== SCHEDULER CYCLE =====
 
 SchedulerCycleUGen : MultiOutUGen {
 	*ar { |rate, reset = 0|

@@ -1,17 +1,17 @@
 TITLE::Event Scheduling
 summary::sub-sample accurate event scheduling
 categories::UGens>Triggers, Libraries>Timing, Streams-Patterns-Events>Timing
-related::Classes/Phasor, Classes/Impulse, Classes/GrainBuf
+related::Classes/Phasor, Classes/GrainBuf
 
 DESCRIPTION::
 
-Sub-sample accurate phasor-based scheduling provides precise timing control for audio events by using continuous, linear ramps instead of discrete triggers. 
-This approach offers significant advantages over trigger-based scheduling by providing continuous time information and sub-sample timing accuracy.
+Sub-sample accurate phasor-based scheduling provides precise timing control for audio events by using continuous, linear ramps instead of discrete triggers. This approach offers significant advantages over trigger-based scheduling by providing continuous time information and sub-sample timing accuracy.
 
 Unlike trigger-based systems that only provide timing information at discrete moments, phasor-based scheduling gives you continuous access to:
+
 list::
 ## Elapsed time since the last event
-## Remaining time until the next event  
+## Remaining time until the next event
 ## Fractional sample positions for precise timing
 ::
 
@@ -19,11 +19,9 @@ This technique is particularly valuable for any application requiring high-timin
 
 SECTION::1) Continuous Linear Ramps as a Source of Time
 
-subsection::1a) The Scheduling Phasor
+subsection::1.1) The Scheduling Phasor
 
-The source of time (our clock) is a Phasor creating continuous, linear ramps between 0 and 1. 
-The rate parameter of the Phasor determines the density of events - how frequently the phasor completes each cycle and wraps back around, 
-with each wrap representing a timing event.
+The source of time (our clock) is a Phasor creating continuous, linear ramps between 0 and 1. The rate parameter of the Phasor determines the density of events - how frequently the phasor completes each cycle and wraps back around, with each wrap representing a timing event.
 
 list::
 ## strong::Continuous:: continuously wrapping between 0 and 1 (no phase reset) - This preserves the fractional sample position where the wrap occurs, which contains the sub-sample timing information
@@ -40,14 +38,13 @@ code::
 )
 ::
 
-subsection::1b) Deriving Triggers from a Scheduling Phasor
+subsection::1.2) Deriving Triggers from a Scheduling Phasor
 
 To convert the continuous ramp into discrete timing events, we need to derive a trigger from our scheduling phasor at the moment it wraps around.
 
-subsubsection::Magnitude Delta Method
+subsection::Magnitude Delta Method
 
-The simplest method of deriving a trigger from a phasor's wrap, is to calculate its slope (rate of change per sample) 
-and compare that with a threshold. When the phasor wraps from 1 to 0, the absolute delta becomes large (approximately 1) and we output a trigger.
+The simplest method of deriving a trigger from a phasor's wrap, is to calculate its slope (rate of change per sample) and compare that with a threshold. When the phasor wraps from 1 to 0, the absolute delta becomes large (approximately 1) and we output a trigger.
 
 code::
 (
@@ -66,15 +63,11 @@ var rampToTrig = { |phase|
 )
 ::
 
-subsubsection::Proportional Change Method (Recommended)
+subsection::Proportional Change Method
 
-You may have noticed on the prior plot that we don't get an initial trigger from the magnitude delta method. 
-We additionally don't get a trigger if we would manually reset our scheduling phasor in the first half of its duty cycle. 
-But we can handle both of these limitations with the proportional change method.
+You may have noticed on the prior plot that we don't get an initial trigger from the magnitude delta method. We additionally don't get a trigger if we would manually reset our scheduling phasor in the first half of its duty cycle. But we can handle both of these limitations with the proportional change method.
 
-Instead of comparing the raw delta with a threshold, we calculate the proportional change by dividing the delta by the sum of the current and previous sample values, 
-and then compare this absolute proportional change with our threshold to detect a significant change.
-To make sure we only get triggers on false-to-true transitions (extreme inputs do not cause double triggers), we wrap our trigger into link::Classes/Trig1::.
+Instead of comparing the raw delta with a threshold, we calculate the proportional change by dividing the delta by the sum of the current and previous sample values, and then compare this absolute proportional change with our threshold to detect a significant change. To make sure we only get triggers on false-to-true transitions (extreme inputs do not cause double triggers), we wrap our trigger into link::Classes/Trig1::.
 
 code::
 (
@@ -95,13 +88,9 @@ var rampToTrig = { |phase|
 )
 ::
 
-subsection::1c) Deriving Slopes from a Scheduling Phasor
+subsection::1.3) Deriving Slopes from a Scheduling Phasor
 
-Deriving the slope of the phasor gives us its rate of change per sample (normalized frequency).
-At the phasor's wrap we get a discontinuity in slope, which we used earlier for our trigger detection.
-Our derived slope should be a continuous value for each phasor's cycle without any discontinuities. 
-To achieve that we can wrap the derived slope between -0.5 and 0.5 (nyquist frequency). 
-The slope multiplied by the sample rate gives us frequency in Hz.
+Deriving the slope of the phasor gives us its rate of change per sample (normalized frequency). At the phasor's wrap we get a discontinuity in slope, which we used earlier for our trigger detection. Our derived slope should be a continuous value for each phasor's cycle without any discontinuities. To achieve that we can wrap the derived slope between -0.5 and 0.5 (nyquist frequency). The slope multiplied by the sample rate gives us frequency in Hz.
 
 code::
 (
@@ -123,16 +112,18 @@ var rampToSlope = { |phase|
 
 SECTION::2) Accumulating vs Integrating Ramps from a Scheduling Phasor
 
+subsection::2.1) General
+
 The crucial distinction between these two approaches is their handling of frequency modulation:
+
 list::
 ## strong::Accumulation:: counts samples and scales running total with slope. The slope has to be sampled and held for each cycle - no frequency modulation possible
 ## strong::Integration:: adds up slope values for every sample - supports frequency modulation
 ::
 
-subsection::2a) Using Duty for Accumulation
+subsection::2.2) Using Duty for Accumulation
 
-We first derive the slope and triggers from our scheduling phasor. 
-Then we count samples with Duty and scale the running total of the accumulator by the derived slope and reset it by the derived trigger.
+We first derive the slope and triggers from our scheduling phasor. Then we count samples with Duty and scale the running total of the accumulator by the derived slope and reset it by the derived trigger.
 
 code::
 (
@@ -157,22 +148,22 @@ var accum = { |trig|
 
 {
     var phase, trig, slope, accumulator, accumulatedRamp;
-    
+
     phase = Phasor.ar(DC.ar(0), 1000 * SampleDur.ir);
     trig = rampToTrig.(phase);
     slope = rampToSlope.(phase);
-    
+
     accumulator = accum.(trig);
     accumulatedRamp = Latch.ar(slope, trig) * accumulator; // Constant slope per cycle
-    
+
     [phase, trig, accumulatedRamp];
 }.plot(0.0021).plotMode_(\plines);
 )
 ::
 
-subsection::2b) Using Sweep for Integration
+subsection::2.3) Using Sweep for Integration
 
-We first derive the slope and triggers from our scheduling phasor. 
+We first derive the slope and triggers from our scheduling phasor.
 Then we integrate the derived slope values with Sweep and reset the integrator by the derived trigger.
 
 code::
@@ -198,13 +189,13 @@ var ramp = { |trig, slope|
 
 {
     var phase, trig, slope, integratedRamp;
-    
+
     phase = Phasor.ar(DC.ar(0), 1000 * SampleDur.ir);
     trig = rampToTrig.(phase);
     slope = rampToSlope.(phase);
-    
+
     integratedRamp = ramp.(trig, slope); // Continuous integration
-    
+
     [phase, trig, integratedRamp];
 }.plot(0.0021).plotMode_(\plines);
 )
@@ -212,12 +203,14 @@ var ramp = { |trig, slope|
 
 SECTION::3) Ramp Division
 
-In the prior section we have recreated our initial scheduling phasor by accumulation or integration. 
+subsection::3.1) General
+
+In the prior section we have recreated our initial scheduling phasor by accumulation or integration.
 Instead of just recreating our scheduling phasor, we can accumulate or integrate ramps which are subdivisions of our scheduling phasor.
 This is similiar to a Clock Divider. However the advantage of ramp division vs clock division is that ramp division is possible
 with non-integer ratios and the derived events can be sub-sample accurate (we will look at this more closely in section 4).
 
-subsection::3a) Multiply and Wrap
+subsection::3.2) Multiply and Wrap
 
 The simplest way of ramp division is to multiply the phasor by a ratio and wrap the result between 0 and 1.
 
@@ -232,10 +225,10 @@ code::
 )
 ::
 
-subsection::3b) Accumulation with Triggered Reset
+subsection::3.3) Accumulation with Triggered Reset
 
 With the simple multiply and wrap approach, we cant ensure that our subvidided ramps stay perfectly in sync with our scheduling phasor.
-To make sure our subdivided ramps stay perfectly in sync, we can derive the slope and triggers from our scheduling phasor, 
+To make sure our subdivided ramps stay perfectly in sync, we can derive the slope and triggers from our scheduling phasor,
 run an accumulator and multiply it by the slope and a ratio, reset it by the derived triggers and wrap it between 0 and 1.
 The triggered reset is the only way of keeping the subdivided ramps perfectly in sync with our scheduling phasor. Thats what we are going to use for granulation.
 
@@ -257,24 +250,24 @@ var rampToTrig = { |phase|
 
 {
     var phase, slope, trig, accumulator, subdividedRamp;
-    
+
     phase = Phasor.ar(DC.ar(0), \rate.kr(100) * SampleDur.ir);
     slope = rampToSlope.(phase);
     trig = rampToTrig.(phase);
-    
+
     accumulator = Duty.ar(SampleDur.ir, trig, Dseries(0, 1));
     subdividedRamp = (slope * \ratio.kr(4) * accumulator).wrap(0, 1);
-    
+
     [phase, subdividedRamp];
 }.plot(0.021);
 )
 ::
 
-subsection::3c) Accumulation without Triggered Reset
+subsection::3.4) Accumulation without Triggered Reset
 
-The only way we can accumulate ramps which are slower than our scheduling phasor, 
-is either to use multichannel expansion which we are going to use for granulation or to simply run an accumulator without a triggered reset. 
-To make sure our accumulated ramps can be slower, we can derive the slope from our scheduling phasor, run an accumulator and multiply it by the slope 
+The only way we can accumulate ramps which are slower than our scheduling phasor,
+is either to use multichannel expansion which we are going to use for granulation or to simply run an accumulator without a triggered reset.
+To make sure our accumulated ramps can be slower, we can derive the slope from our scheduling phasor, run an accumulator and multiply it by the slope
 and a ratio and wrap it between 0 and 1. But there is no guarantee that these accumulated ramps will stay in sync with the scheduling phasor.
 
 code::
@@ -287,13 +280,13 @@ var rampToSlope = { |phase|
 
 {
     var phase, slope, accumulator, subdividedRamp;
-    
+
     phase = Phasor.ar(DC.ar(0), \rate.kr(100) * SampleDur.ir);
     slope = rampToSlope.(phase);
-    
+
     accumulator = Duty.ar(SampleDur.ir, DC.ar(0), Dseries(0, 1));
     subdividedRamp = (slope * \ratio.kr(0.5) * accumulator).wrap(0, 1);
-    
+
     [phase, subdividedRamp];
 }.plot(0.021);
 )
@@ -301,16 +294,18 @@ var rampToSlope = { |phase|
 
 SECTION::4) Sub-Sample Offset Calculation
 
+subsection::4.1) General
+
 If we run our scheduling phasor at high trigger rates which are non-integer divisions of our sample rate we get aliasing.
-Our scheduling phasor has a fractional value of non-zero at the moment it wraps around (sub-sample offset). 
-To make sure our accumulated or integrated ramps are sub-sample accurate, we want to calculate the sub-sample offset of our scheduling phasor and add it to 
+Our scheduling phasor has a fractional value of non-zero at the moment it wraps around (sub-sample offset).
+To make sure our accumulated or integrated ramps are sub-sample accurate, we want to calculate the sub-sample offset of our scheduling phasor and add it to
 our accumulated or integrated ramps on each triggered phase reset.
 
-For each sample frame where our scheduling phasor wraps around, we can calculate the sub-sample offset with a fractional sample counter 
-(scheduling phasor divided by its own slope), sample and hold the fractional sample count with the derived trigger 
+For each sample frame where our scheduling phasor wraps around, we can calculate the sub-sample offset with a fractional sample counter
+(scheduling phasor divided by its own slope), sample and hold the fractional sample count with the derived trigger
 and add the fractional sample count (sub-sample offset) to our accumulated or integrated ramps on each triggered phase reset.
 
-subsection::4a) Sub-Sample Offset Calculation (accumulator with Duty)
+subsection::4.2) Sub-Sample Offset Calculation (accumulator with Duty)
 
 code::
 (
@@ -357,7 +352,7 @@ var accumSubSample = { |trig, subSampleOffset|
 )
 ::
 
-subsection::4b) Sub-Sample Offset Calculation (integrator with Sweep)
+subsection::4.3) Sub-Sample Offset Calculation (integrator with Sweep)
 
 code::
 (
@@ -402,10 +397,10 @@ var integSubSample = { |trig, slope, subSampleOffset|
 )
 ::
 
-subsection::4c) sub-sample accurate scheduling vs trigger-based scheduling
+subsection::4.4) sub-sample accurate scheduling vs trigger-based scheduling
 
 You can compare our sub-sample accurate phasor-based scheduling with ordinary trigger-based scheduling with the following examples.
-The first example uses our sub-sample accurate phasor-based scheduling, where the other uses trigger-based scheduling. 
+The first example uses our sub-sample accurate phasor-based scheduling, where the other uses trigger-based scheduling.
 Running both examples, you will hear and see the difference on the freqscope.
 
 code::
@@ -414,7 +409,7 @@ code::
 
 (
 var rampToSlope = { |phase|
-	var history = Delay1.ar(phase); 
+	var history = Delay1.ar(phase);
 	var delta = (phase - history);
 	delta.wrap(-0.5, 0.5);
 };
@@ -507,11 +502,11 @@ s.freqscope;
 
 SECTION::5) Modulating the rate of a Scheduling Phasor
 
-subsection::5a) Modulating the rate of Phasor UGen
+subsection::5.1) Modulating the rate of Phasor UGen
 
-The modulation of the scheduling phasor's rate creates discontinuities in slope, 
-if we accumulate ramps with the derived slope which has to be sampled and held per derived trigger, 
-the latched slope doesnt match the duration of the current cycle of the scheduling phasor, 
+The modulation of the scheduling phasor's rate creates discontinuities in slope,
+if we accumulate ramps with the derived slope which has to be sampled and held per derived trigger,
+the latched slope doesnt match the duration of the current cycle of the scheduling phasor,
 which leads to a truncation of our stateless window functions.
 
 code::
@@ -568,16 +563,16 @@ var accumulatorSubSample = { |trig, subSampleOffset|
 )
 ::
 
-subsection::5b) Modulating the rate of SchedulerCycle UGen
+subsection::5.2) Modulating the rate of SchedulerCycle UGen
 
 The scheduling phasor has to be linear even when its rate is beeing modulated.
-The SchedulerCycle UGen solves this with a sample and hold of its own rate for each of its cycles within a single-sample feedback loop. 
+The SchedulerCycle UGen solves this with a sample and hold of its own rate for each of its cycles within a single-sample feedback loop.
 Internally the SchedulerCycle UGen makes sure our next slope is known at the moment our next ramp cycle starts.
 If the slope would be updated in the middle of a ramp cycle we would get a discontinuity for our accumulated or integrated ramp signals.
 Beside the phase, the SchedulerCycle UGen also outputs a derived trigger, the latched rate and the subSampleOffset, so you dont have to worry about all these calculations.
 
 Maybe you have already noticed but with this library you have access to a selection of stateless window functions, so we dont have to create them manually.
-Before we have used 1 - cos(windowPhase * 2pi) * 0.5; to create a Hanning Window, 
+Before we have used 1 - cos(windowPhase * 2pi) * 0.5; to create a Hanning Window,
 but from now on we can just use the HanningWindow UGen and additionally have the possibility to skew its shape to the left or the right via the skew parameter.
 
 code::
@@ -591,19 +586,19 @@ var accumSubSample = { |trig, subSampleOffset|
 {
     var tFreqMod, tFreq, events, accumulator;
     var windowSlope, windowPhase, grainWindow;
-    
+
     // Modulated frequency
     tFreqMod = SinOsc.ar(10, 1.5pi);
     tFreq = \tFreq.kr(200) * (2 ** (tFreqMod * \modDepth.kr(2)));
-	
+
 	events = SchedulerCycle.ar(tFreq);
 
 	accumulator = accumSubSample.(events[\trigger], events[\subSampleOffset]);
-    
+
 	windowSlope = Latch.ar(events[\rate] * SampleDur.ir, events[\trigger]) / max(0.001, \overlap.kr(1));
     windowPhase = (windowSlope * accumulator).clip(0, 1);
 	grainWindow = HanningWindow.ar(windowPhase, \skew.kr(0.5));
-    
+
 	[events[\phase], grainWindow];
 }.plot(0.041);
 )
