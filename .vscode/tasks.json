@@ -1,0 +1,57 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "type": "shell",
+            "label": "CMake: Configure",
+            "command": "cmake",
+            "args": [
+                "-S", ".",
+                "-B", "build",
+                "-DSC_PATH=C:/Users/jlkle/Documents/C++Projects/supercollider"
+            ],
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "type": "shell",
+            "label": "CMake: Build Debug",
+            "command": "cmake",
+            "args": [
+                "--build", "build",
+                "--config", "Debug"
+            ],
+            "group": "build",
+            "dependsOn": "CMake: Configure",
+            "problemMatcher": ["$gcc", "$msCompile"]
+        },
+        {
+            "type": "shell",
+            "label": "CMake: Build Release",
+            "command": "cmake",
+            "args": [
+                "--build", "build",
+                "--config", "Release"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "dependsOn": "CMake: Configure",
+            "problemMatcher": ["$gcc", "$msCompile"]
+        },
+        {
+            "type": "shell",
+            "label": "CMake: Install Release",
+            "command": "cmake",
+            "args": [
+                "--build", "build",
+                "--config", "Release",
+                "--target", "install"
+            ],
+            "group": "build",
+            "dependsOn": "CMake: Configure",
+            "problemMatcher": ["$gcc", "$msCompile"]
+        }
+    ]
+}
