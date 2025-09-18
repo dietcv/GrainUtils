@@ -1,0 +1,120 @@
+name: Build Plugin
+
+on:
+  push:
+    tags:
+      - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
+  workflow_dispatch: # Allow manual triggering for testing
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        os: [macos-14, macos-13, windows-latest]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: 'recursive'
+
+    - name: Get SuperCollider source
+      timeout-minutes: 8
+      id: git_clone
+      continue-on-error: true
+      run: git clone --depth 1 https://github.com/supercollider/supercollider.git ${{ github.workspace }}/supercollider
+
+    - name: Fallback SuperCollider download
+      if: steps.git_clone.outcome == 'failure'
+      timeout-minutes: 5
+      shell: pwsh
+      run: |
+        Write-Host "Git clone failed, downloading zip..."
+        Invoke-WebRequest -Uri "https://github.com/supercollider/supercollider/archive/refs/heads/main.zip" -OutFile "sc.zip"
+        Expand-Archive -Path "sc.zip" -DestinationPath "."
+        Move-Item "supercollider-main" "${{ github.workspace }}/supercollider"
+
+    - name: Create build environment
+      run: cmake -E make_directory ${{ github.workspace }}/build
+
+    - name: Configure CMake (Unix)
+      if: matrix.os != 'windows-latest'
+      shell: bash
+      working-directory: ${{ github.workspace }}/build
+      run: cmake .. -DCMAKE_BUILD_TYPE='Release' -DSC_PATH=${{ github.workspace }}/supercollider
+
+    - name: Configure CMake (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: pwsh
+      working-directory: ${{ github.workspace }}\build
+      run: cmake .. -DCMAKE_BUILD_TYPE='Release' -DSC_PATH="${{ github.workspace }}\supercollider"
+
+    - name: Build plugin
+      working-directory: ${{ github.workspace }}/build
+      run: cmake --build . --config "Release" --target install
+
+    - name: Package plugin (macOS-14)
+      if: matrix.os == 'macos-14'
+      shell: bash
+      working-directory: ${{ github.workspace }}/build
+      run: |
+        # Create SuperCollider plugin structure
+        mkdir -p GrainUtils-package/GrainUtils
+        
+        # Copy all plugin subdirectories with their structure
+        # This handles the multiple .scx files in their respective folders
+        cp -r install/GrainUtils/* GrainUtils-package/GrainUtils/ 2>/dev/null || true
+        
+        # Show the structure
+        echo "Plugin structure:"
+        find GrainUtils-package/ -type f | head -20
+        
+        # Create zip from the plugin folder
+        cd GrainUtils-package && zip -r ../GrainUtils-macOS-ARM.zip GrainUtils && cd ..
+
+    - name: Package plugin (macOS-13)
+      if: matrix.os == 'macos-13'
+      shell: bash
+      working-directory: ${{ github.workspace }}/build
+      run: |
+        # Create SuperCollider plugin structure
+        mkdir -p GrainUtils-package/GrainUtils
+        
+        # Copy all plugin subdirectories with their structure
+        cp -r install/GrainUtils/* GrainUtils-package/GrainUtils/ 2>/dev/null || true
+        
+        # Show the structure
+        echo "Plugin structure:"
+        find GrainUtils-package/ -type f | head -20
+        
+        # Create zip from the plugin folder
+        cd GrainUtils-package && zip -r ../GrainUtils-macOS-Intel.zip GrainUtils && cd ..
+
+    - name: Package plugin (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: pwsh
+      working-directory: ${{ github.workspace }}\build
+      run: |
+        # Create SuperCollider plugin structure
+        New-Item -ItemType Directory -Force -Path "GrainUtils-package\GrainUtils"
+        
+        # Copy all plugin subdirectories with their structure
+        if (Test-Path "install\GrainUtils") {
+            Copy-Item -Path "install\GrainUtils\*" -Destination "GrainUtils-package\GrainUtils" -Recurse -Force
+        }
+        
+        # Show the structure
+        Write-Host "Plugin structure:"
+        Get-ChildItem "GrainUtils-package" -Recurse | Select-Object -First 20
+        
+        # Create zip from the plugin folder
+        Compress-Archive -Path "GrainUtils-package\GrainUtils" -DestinationPath "GrainUtils-Windows.zip" -Force
+
+    # Store as artifacts
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: GrainUtils-${{ matrix.os }}
+        path: ${{ github.workspace }}/build/GrainUtils-*.zip

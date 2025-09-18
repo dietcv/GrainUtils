@@ -1,0 +1,283 @@
+class:: SchedulerBurst
+summary:: Scheduling of sub-sample accurate events from the language
+related:: Classes/Sweep
+categories:: UGens>Granular
+
+description::
+You can use SchedulerBurst to schedule sub-sample accurate events triggered from the language.
+SchedulerBurst needs an initial trigger, a duration and the number of cycles per measure as inputs and outputs phases, triggers, rates and sub-sample offsets.
+You can access the different outputs via their key from a dictionary.
+SchedulerBurst can be used for a language and server side hybrid approach for sub-sample accurate granulation.
+
+classmethods::
+
+method::ar
+
+argument::trig
+inital trigger
+
+argument::duration
+durations in seconds
+
+argument::cycles
+number of ramp cycles
+
+returns:: phases, triggers, rates and subSampleOffsets.
+The outputs can be accessed via key from a dictionary (e.g. events[\phase], events[\trigger], events[\rate], events[\subSampleOffset])
+
+SECTION::1) Examples - Plots
+
+subsection::1.1) Measure Ramps
+
+code::
+(
+{
+	var initTrigger, measure;
+
+	initTrigger = Trig1.ar(\trig.tr(1), SampleDur.ir);
+
+	measure = SchedulerBurst.ar(
+		trig: initTrigger,
+		duration: \sustain.kr(0.01)
+	);
+
+	[
+		measure[\phase],
+		measure[\trigger]
+	];
+
+}.plot(0.021);
+)
+::
+
+subsection::1.2) Sequence of Durations
+
+code::
+(
+var numOfSubDivs = 3;
+var arrayOfSubDivs = [5, 1, 3].normalizeSum;
+
+var getSubDivs = { |trig, arrayOfSubDivs, numOfSubDivs, duration|
+	var hasTriggered = PulseCount.ar(trig) > 0;
+	var subDiv = Ddup(2, Dseq(arrayOfSubDivs, numOfSubDivs)) * duration;
+	Duty.ar(subDiv, trig, subDiv) * hasTriggered;
+};
+
+{
+	var initTrigger, subDivs, events;
+
+	initTrigger = Trig1.ar(\trig.tr(1), SampleDur.ir);
+	subDivs = getSubDivs.(initTrigger, arrayOfSubDivs, numOfSubDivs, \sustain.kr(0.02));
+
+	events = SchedulerBurst.ar(
+		trig: initTrigger,
+		duration: subDivs,
+		cycles: numOfSubDivs
+	);
+
+	[
+		events[\phase],
+		events[\trigger]
+	];
+
+}.plot(0.021);
+)
+::
+
+subsection::1.3) Sequence of Durations with Voice Allocation
+
+code::
+(
+var numOfSubDivs = 4;
+var arrayOfSubDivs = [5, 1, 8, 3].normalizeSum;
+
+var getSubDivs = { |trig, arrayOfSubDivs, numOfSubDivs, duration|
+	var hasTriggered = PulseCount.ar(trig) > 0;
+	var subDiv = Ddup(2, Dseq(arrayOfSubDivs, numOfSubDivs)) * duration;
+	Duty.ar(subDiv, trig, subDiv) * hasTriggered;
+};
+
+{
+	var numChannels = 5;
+	var initTrigger, subDivs, events, voices;
+
+	initTrigger = Trig1.ar(\trig.tr(1), SampleDur.ir);
+	subDivs = getSubDivs.(initTrigger, arrayOfSubDivs, numOfSubDivs, \sustain.kr(0.02));
+
+	events = SchedulerBurst.ar(
+		trig: initTrigger,
+		duration: subDivs,
+		cycles: numOfSubDivs
+	);
+
+	voices = VoiceAllocator.ar(
+		numChannels: numChannels,
+		trig: events[\trigger],
+		rate: events[\rate] / \overlap.kr(1),
+		subSampleOffset: events[\subSampleOffset]
+	);
+
+	voices[\phases];
+
+}.plot(0.041);
+)
+::
+
+SECTION::2) Examples - Audio
+
+subsection::2.1) Sequence of Durations with Voice Allocation - SynthDef
+
+code::
+(
+var getSubDivs = { |trig, arrayOfSubDivs, numOfSubDivs, duration|
+	var hasTriggered = PulseCount.ar(trig) > 0;
+	var subDiv = Ddup(2, Dseq(arrayOfSubDivs, numOfSubDivs)) * duration;
+	Duty.ar(subDiv, trig, subDiv) * hasTriggered;
+};
+
+SynthDef(\burst, {
+
+	var numChannels = 8;
+
+	var initTrigger, subDivs, numOfSubDivs, arrayOfSubDivs;
+	var duration, events, voices;
+	var grainPhases, grainWindows;
+	var sigs, sig;
+
+	initTrigger = Trig1.ar(\trig.tr(0), SampleDur.ir);
+	duration = \sustain.kr(1);
+
+	arrayOfSubDivs = \arrayOfSubDivs.kr(Array.fill(16, 1));
+	numOfSubDivs = \numOfSubDivs.kr(16);
+
+	subDivs = getSubDivs.(
+		initTrigger,
+		arrayOfSubDivs,
+		numOfSubDivs,
+		duration
+	);
+
+	events = SchedulerBurst.ar(
+		trig: initTrigger,
+		duration: subDivs,
+		cycles: numOfSubDivs
+	);
+
+	voices = VoiceAllocator.ar(
+		numChannels: numChannels,
+		trig: events[\trigger],
+		rate: events[\rate] / \overlap.kr(1),
+		subSampleOffset: events[\subSampleOffset]
+	);
+
+	grainWindows = ExponentialWindow.ar(
+		voices[\phases],
+		\windowSkew.kr(0.01),
+		\windowShape.kr(0)
+	);
+
+	grainPhases = RampIntegrator.ar(
+		trig: voices[\triggers],
+		rate: \freq.kr(440),
+		subSampleOffset: events[\subSampleOffset]
+	);
+
+	sigs = SinOsc.ar(DC.ar(0), grainPhases * 2pi);
+
+	sigs = sigs * grainWindows;
+
+	sigs = PanAz.ar(2, sigs, \pan.kr(0));
+	sig = sigs.sum;
+
+	sig = sig * \amp.kr(-15).dbamp;
+
+	sig = sig * Env.asr(0.001, 1, 0.001).ar(Done.freeSelf, \gate.kr(1));
+
+	sig = LeakDC.ar(sig);
+	sig = Limiter.ar(sig);
+	Out.ar(\out.kr(0), sig);
+}).add;
+)
+::
+
+subsection::2.2) Sequence of Durations with Voice Allocation - Pmono
+
+code::
+(
+var numOfSubDivs = 12;
+var arrayOfSubDivs = Array.fill(numOfSubDivs, { 2 ** rrand(-1.0, 1.0) } ).normalizeSum;
+arrayOfSubDivs.debug(\arrayOfSubDivs);
+
+Pdef(\burst,
+	Pmono(\burst,
+
+		\trig, 1,
+		\legato, 0.8,
+		\dur, 4,
+
+		\freq, 440,
+		\overlap, 1,
+
+		\time, Pfunc { |ev| ev.use { ~sustain.value } / thisThread.clock.tempo },
+
+		\arrayOfSubDivs, [arrayOfSubDivs],
+		\numOfSubDivs, numOfSubDivs,
+
+		\amp, -15,
+		\out, 0,
+
+	),
+).play;
+)
+::
+
+subsection::2.2) Sequence of Durations with Voice Allocation - Routine
+
+code::
+(
+var numOfSubDivs = 12;
+var arrayOfSubDivs = Array.fill(numOfSubDivs, { 2 ** rrand(-1.0, 1.0) } ).normalizeSum;
+arrayOfSubDivs.debug(\arrayOfSubDivs);
+
+Routine({
+
+	s.bind {
+
+		~synth = Synth(\burst, [
+
+			\trig, 0,
+
+			\freq, 440,
+			\overlap, 1,
+
+			\amp, -15,
+			\out, 0,
+
+		]);
+
+	};
+
+	s.sync;
+
+	loop {
+
+		s.bind {
+
+			~synth.set(
+				\trig, 1,
+				\sustain, 3.2,
+				\arrayOfSubDivs, arrayOfSubDivs,
+				\numOfSubDivs, numOfSubDivs,
+			);
+
+		};
+
+		4.wait;
+
+	};
+
+}).play;
+)
+::
+
+

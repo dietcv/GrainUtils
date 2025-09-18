@@ -1,0 +1,68 @@
+class:: UnitTriangle
+summary:: segmented non-linear transfer function with adjustable breakpoint
+related:: Classes/IEnvGen
+categories:: UGens>Granular
+
+description::
+
+This library comes with a selection of different unit shaper functions.
+Unit shapers can be used as transfer functions to map the input of a linear ramp signal between 0 and 1 to a non-linear output signal between 0 and 1.
+
+UnitTriangle outputs a segmented non-linear transfer function with an adjustable breakpoint (skew parameter). The breakpoint has a fixed amplitude of 1.0, while the skew parameter can be used to offset the triangle from the center position at 0.5 (no kink) either to the left or the right.
+
+UnitTriangle is a basic building block to create all sorts of non-linear transfer functions for phase shaping synthesis with the ability to offset their shape from the center position (see UnitKink for its cousin).
+
+classmethods::
+
+method::ar
+
+argument::phase
+linear ramp between 0 and 1
+
+argument::skew
+skew value between 0 and 1
+
+returns:: a segmented non-linear transfer function with adjustable breakpoint
+
+SECTION::1) Examples - Plots
+
+subsection::1.1) Basic transfer function
+
+code::
+(
+{
+	var phase = Phasor.ar(DC.ar(0), 50 * SampleDur.ir);
+	UnitTriangle.ar(phase, \skew.kr(0.25));
+}.plot(0.02);
+)
+::
+
+subsection::1.2) Phase distortion synthesis application - Phase Increment Distortion
+
+code::
+(
+{
+	var skew = \skew.kr(0.125);
+	var phase = Phasor.ar(0, 50 * SampleDur.ir);
+	var warpedPhase = UnitTriangle.ar(phase, skew);
+	cos(phase + (warpedPhase * (0.5 - skew)) * 2pi).neg;
+}.plot(0.02);
+)
+::
+
+SECTION::2) Examples - Audio
+
+subsection::2.1) Phase distortion synthesis application - Phase Increment Distortion
+
+code::
+(
+{
+	var skew = MouseX.kr(0, 1);
+	var phase = Phasor.ar(DC.ar(0), 110 * SampleDur.ir);
+	var warpedPhase = UnitTriangle.ar(phase, skew);
+	var sig = cos(phase + (warpedPhase * (0.5 - skew)) * 2pi).neg;
+	sig!2 * 0.1;
+}.play;
+)
+::
+

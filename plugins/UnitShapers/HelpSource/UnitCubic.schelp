@@ -1,0 +1,64 @@
+class:: UnitCubic
+summary:: cubic polynomial transfer function with adjustable curvature
+related:: Classes/IEnvGen
+categories:: UGens>Granular
+
+description::
+
+This library comes with a selection of different unit shaper functions.
+Unit shapers can be used as transfer functions to map the input of a linear ramp signal between 0 and 1 to a non-linear output signal between 0 and 1.
+
+UnitCubic outputs a cubic polynomial transfer function with an adjustable curvature (index parameter) and is useful for creating non-linear transfer functions for phase shaping synthesis.
+
+classmethods::
+
+method::ar
+
+argument::phase
+linear ramp between 0 and 1
+
+argument::index
+index value between 0 and 1
+
+returns:: a cubic polynomial non-linear transfer function with adjustable curvature
+
+SECTION::1) Examples - Plots
+
+subsection::1.1) Basic transfer function
+
+code::
+(
+{
+	var phase = Phasor.ar(DC.ar(0), 50 * SampleDur.ir);
+	UnitCubic.ar(phase, \index.kr(0.5));
+}.plot(0.02);
+)
+::
+
+subsection::1.2) Phase distortion synthesis application - Phase Shaping
+
+code::
+(
+{
+	var phase = Phasor.ar(DC.ar(0), 50 * SampleDur.ir);
+	var warpedPhase = UnitCubic.ar(phase, \index.kr(0.5));
+	cos(warpedPhase * 2pi).neg;
+}.plot(0.02);
+)
+::
+
+SECTION::2) Examples - Audio
+
+subsection::2.1) Phase distortion synthesis application - Phase Shaping
+
+code::
+(
+{
+	var phase = Phasor.ar(DC.ar(0), 110 * SampleDur.ir);
+	var warpedPhase = UnitCubic.ar(phase, MouseX.kr(0, 1));
+	var sig = cos(warpedPhase * 2pi).neg;
+	sig!2 * 0.1;
+}.play;
+)
+::
+

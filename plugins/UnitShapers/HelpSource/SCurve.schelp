@@ -1,0 +1,150 @@
+class:: SCurve
+summary:: quintic easing function with linear interpolation between sigmoid and seat curves
+related:: Classes/IEnvGen
+categories:: UGens>Granular
+
+description::
+
+This library comes with a selection of different unit shaper functions.
+Unit shapers can be used as transfer functions to map the input of a linear ramp signal between 0 and 1 to a non-linear output signal between 0 and 1.
+
+SCurve outputs a quintic easing function that interpolates between sigmoid (easeInOut) and seat (easeOutIn) curves. The shape parameter controls the interpolation: at 0 it produces a quintic sigmoid curve, at 0.5 it produces a linear ramp, and at 1 it produces a quintic seat curve. The inflection parameter controls the breakpoint position for both sigmoid and seat curves.
+
+SCurve is useful for creating non-linear transfer functions for phase shaping synthesis (see JCurve for its cousin that interpolates between easeOut and easeIn curves).
+
+classmethods::
+
+method::ar
+
+argument::phase
+linear ramp between 0 and 1
+
+argument::shape
+shape value between 0 and 1
+
+argument::inflection
+inflection point between 0 and 1
+
+returns:: a quintic easing function with linear interpolation between sigmoid and seat curves
+
+SECTION::1) Examples - Plots
+
+subsection::1.1) Basic transfer function
+
+code::
+(
+{
+	var phase = Phasor.ar(DC.ar(0), 50 * SampleDur.ir);
+	SCurve.ar(phase, \shape.kr(0.25), \inflection.kr(0.5));
+}.plot(0.02);
+)
+::
+
+subsection::1.2) Comparing different shape values
+
+code::
+(
+{
+	var phase = Phasor.ar(DC.ar(0), 50 * SampleDur.ir);
+	var sigmoid = SCurve.ar(phase, 0, 0.5);
+	var linear = SCurve.ar(phase, 0.5, 0.5);
+	var seat = SCurve.ar(phase, 1, 0.5);
+	[sigmoid, linear, seat];
+}.plot(0.02).superpose_(true).plotColor_([Color.red, Color.blue, Color.green]);
+)
+::
+
+subsection::1.3) Phase distortion synthesis application - Phase Shaping
+
+code::
+(
+{
+	var phase = Phasor.ar(DC.ar(0), 50 * SampleDur.ir);
+	var warpedPhase = SCurve.ar(phase, \shape.kr(0.125), \inflection.kr(0.25));
+	cos(warpedPhase * 2pi).neg;
+}.plot(0.02);
+)
+::
+
+SECTION::2) Examples - Audio
+
+subsection::2.1) Phase shaping synthesis application
+
+code::
+(
+{
+	var phase = Phasor.ar(DC.ar(0), 110 * SampleDur.ir);
+	var warpedPhase = SCurve.ar(phase, MouseX.kr(0, 1), MouseY.kr(0, 1));
+	var sig = cos(warpedPhase * 2pi).neg;
+	sig!2 * 0.1;
+}.play;
+)
+::
+
+subsection::2.2) Pulsar Synthesis with Phase shaping for frequency trajectory per grain
+
+code::
+(
+var lfo = {
+
+    var measurePhase = Phasor.ar(DC.ar(0), \rate.kr(0.5) * SampleDur.ir);
+    var stepPhase = (measurePhase * \stepsPerMeasure.kr(2)).wrap(0, 1);
+
+    var measureLFO = HanningWindow.ar(measurePhase, \skewA.kr(0.75));
+    var stepLFO = GaussianWindow.ar(stepPhase, \skewB.kr(0.5), \index.kr(1));
+
+    stepLFO * measureLFO;
+};
+
+{
+    var numChannels = 8;
+
+    var reset, flux, tFreqMod, tFreq, overlap;
+    var events, voices, windowPhases, triggers;
+    var grainFreq, grainPhases, grainWindows;
+    var grainOscs, grains, sig;
+
+    reset = Trig1.ar(\reset.tr(0), SampleDur.ir);
+
+    flux = LFDNoise3.ar(\fluxMF.kr(1));
+    flux = 2 ** (flux * \fluxMD.kr(0.5));
+
+    tFreqMod = lfo.().linlin(0, 1, 1, 50);
+    tFreq = \tFreq.kr(20) * flux * tFreqMod;
+
+    grainFreq = \freq.kr(1200) * flux;
+    overlap = \overlap.ar(5); // has to be audio rate, we will latch that later!
+
+    events = SchedulerCycle.ar(tFreq, reset);
+
+    voices = VoiceAllocator.ar(
+        numChannels: numChannels,
+        trig: events[\trigger],
+        rate: grainFreq / overlap, // grain duration depending on grainFreq scaled by overlap
+        subSampleOffset: events[\subSampleOffset],
+    );
+
+    grainWindows = HanningWindow.ar(
+        phase: voices[\phases],
+        skew: \skew.kr(0.01)
+    );
+
+    // phase shaping for a frequency trajectory per grain:
+    // 1.) using normalized phases into SCurve
+    // 2.) scaling to number of cycles by latched overlap before wrapping between 0 and 1
+	grainPhases = SCurve.ar(voices[\phases], MouseX.kr(0, 1), MouseY.kr(0, 1));
+    grainPhases = (grainPhases * Latch.ar(overlap, voices[\triggers])).wrap(0, 1);
+
+    grainOscs = SinOsc.ar(DC.ar(0), grainPhases * 2pi);
+
+    grains = grainOscs * grainWindows;
+
+    grains = PanAz.ar(2, grains, \pan.kr(0));
+    sig = grains.sum;
+
+    sig = LeakDC.ar(sig);
+    sig * 0.1;
+}.play;
+)
+::
+

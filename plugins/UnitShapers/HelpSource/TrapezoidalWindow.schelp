@@ -1,0 +1,42 @@
+class:: TrapezoidalWindow
+summary:: Trapezoidal Window with variable skew, width and duty
+related:: Classes/IEnvGen
+categories:: UGens>Granular
+
+description::
+This library comes with a selection of different stateless window functions.
+Stateless windows can be modulated at audio rate and their output only depend on the instantaneous input of the ramp signal. The ramp has to be linear and between 0 and 1.
+
+TrapezoidalWindow needs a phase, a skew value, a width value and a duty value and outputs a Trapezoidal Window with variable skew, width and duty.
+
+classmethods::
+
+method::ar
+
+argument::phase
+linear ramp between 0 and 1
+
+argument::skew
+skew value between 0 and 1
+
+argument::width
+width value between 0 and 1
+
+argument::duty
+duty value between 0 and 1
+
+returns:: a Trapezoidal Window
+
+SECTION::1) Example
+
+subsection::1.1) Trapezoidal Window with variable skew, width and duty
+
+code::
+(
+{
+	var phase = Phasor.ar(DC.ar(0), 50 * SampleDur.ir);
+	TrapezoidalWindow.ar(phase, \skew.kr(0.5), \width.kr(0.5), \duty.kr(1));
+}.plot(0.02);
+)
+::
+

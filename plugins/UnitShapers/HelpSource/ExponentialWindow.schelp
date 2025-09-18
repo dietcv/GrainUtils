@@ -1,0 +1,39 @@
+class:: ExponentialWindow
+summary:: Exponential Window with variable skew and shape
+related:: Classes/IEnvGen
+categories:: UGens>Granular
+
+description::
+This library comes with a selection of different stateless window functions.
+Stateless windows can be modulated at audio rate and their output only depend on the instantaneous input of the ramp signal. The ramp has to be linear and between 0 and 1.
+
+ExponentialWindow needs a phase, a skew value and a shape value and outputs an Exponential Window with variable skew and shape.
+
+classmethods::
+
+method::ar
+
+argument::phase
+linear ramp between 0 and 1
+
+argument::skew
+skew value between 0 and 1
+
+argument::shape
+shape value between 0 and 1
+
+returns:: an Exponential Window
+
+SECTION::1) Example
+
+subsection::1.1) Exponential Window with variable skew and shape
+
+code::
+(
+{
+	var phase = Phasor.ar(DC.ar(0), 50 * SampleDur.ir);
+	ExponentialWindow.ar(phase, \skew.kr(0.5), \shape.kr(0));
+}.plot(0.02);
+)
+::
+

@@ -1,0 +1,36 @@
+class:: HanningWindow
+summary:: Hanning Window with variable skew
+related:: Classes/IEnvGen
+categories:: UGens>Granular
+
+description::
+This library comes with a selection of different stateless window functions.
+Stateless windows can be modulated at audio rate and their output only depend on the instantaneous input of the ramp signal. The ramp has to be linear and between 0 and 1.
+
+HanningWindow needs a phase and a skew value and outputs a Hanning Window with variable skew.
+
+classmethods::
+
+method::ar
+
+argument::phase
+linear ramp between 0 and 1
+
+argument::skew
+skew value between 0 and 1
+
+returns:: a Hanning Window
+
+SECTION::1) Example
+
+subsection::1.1) Hanning Window with variable skew
+
+code::
+(
+{
+	var phase = Phasor.ar(DC.ar(0), 50 * SampleDur.ir);
+	HanningWindow.ar(phase, \skew.kr(0.5));
+}.plot(0.02);
+)
+::
+

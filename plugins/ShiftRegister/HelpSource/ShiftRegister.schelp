@@ -1,0 +1,161 @@
+class:: ShiftRegister
+summary:: Universal ShiftRegister with reverse encoded 3-bit and 8-bit outputs
+related:: Classes/Demand
+categories:: UGens>Granular
+
+description::
+
+The ShiftRegister stores and rotates bits based on trigger signals.
+Each trigger advances the register, rotating existing data and potentially adding new data to create evolving patterns.
+
+The ShiftRegister rotates for every trigger it receives either to the left or the right, where the rotation amount is set with the rotate parameter between -16 and 16.
+The current loop point of the ShiftRegister can be set with the length parameter between 1 and 16. Bit rotation is similar to shifting but without losing any data. Any bits shifted off the left end appear at the right and vice versa.
+
+The ShiftRegister extracts the current least significant bit (LSB) for every trigger it receives, where the chance parameter between 0 and 1 sets the probability for the extracted bit to get inverted via XOR logic with a random value before added back to the register.
+
+The reset parameter clears the state of the ShiftRegister.
+
+The ShiftRegister has two reversed encoded outputs, 3-bit and 8-bit.
+The reverse encoding provides contrapuntal motion between the two outputs, which is
+useful when driving complementary voices.
+
+classmethods::
+
+method::ar
+
+argument::trig
+trigger signal to advance the shift register
+
+argument::chance
+chance parameter between 0 and 1 - probability for LSB inversion via XOR logic
+
+argument::length
+length parameter between 1 and 16 - sets the active register size and loop point
+
+argument::rotate
+rotation amount between -16 and 16 - rotates register left (positive) or right (negative) on each trigger
+
+argument::reset
+reset trigger - clears the shift register state when triggered
+
+returns:: reverse encoded 3-bit and 8-bit outputs from the Shift Register.
+The outputs can be accessed via key from a dictionary (e.g. register[\bit3], register[\bit8])
+
+SECTION::1) Examples - Plots
+
+subsection::1.1) The reversed encoded 3-bit and 8-bit outputs
+
+code::
+(
+{
+	var trig = Impulse.ar(1000);
+    var register = ShiftRegister.ar(
+		trig: trig,
+        chance: 1.0,
+        length: 8,
+        rotate: 1,
+		reset: 0,
+	);
+	[
+		register[\bit3],
+		register[\bit8]
+	];
+}.plot(0.021);
+)
+::
+
+SECTION::2) Examples - Audio
+
+subsection::2.1) Overlapping Grains with Voice Allocation and Complementary Voices
+
+code::
+(
+var multiChannelDwhite = { |triggers|
+    var demand = Dwhite(-1.0, 1.0);
+    triggers.collect{ |localTrig|
+        Demand.ar(localTrig, DC.ar(0), demand)
+    };
+};
+
+{
+    var numChannels = 8;
+    var numSpeakers = 2;
+
+    var reset, tFreq;
+    var events, register, voices, calcGrainData;
+    var grains, sig, pan;
+
+    reset = Trig1.ar(\reset.tr(0), SampleDur.ir);
+    tFreq = \tFreq.kr(10);
+
+    events = SchedulerCycle.ar(tFreq, reset);
+
+	register = ShiftRegister.ar(
+		trig: events[\trigger],
+        chance: 0.5,
+        length: 8,
+        rotate: 1,
+		reset: reset,
+	);
+
+	voices = VoiceAllocator.ar(
+		numChannels: numChannels,
+		trig: events[\trigger],
+		rate: events[\rate] / \overlap.kr(4),
+		subSampleOffset: events[\subSampleOffset],
+	);
+
+	calcGrainData = { |chainID|
+
+		var grainWindows;
+		var grainFreq, grainFreqs;
+		var grainPhases, grainOscs;
+
+		grainWindows = ExponentialWindow.ar(
+			phase: voices[\phases],
+			skew: \skew.kr(0.05),
+			shape: \shape.kr(0)
+		);
+
+		grainFreq = case
+		{ chainID == \A } {
+			var mod = register[\bit3] * 2 - 1;
+			\freqA.kr(110) * (2 ** (mod * \freqMDA.kr(1)));
+		}
+		{ chainID == \B } {
+			var mod = register[\bit8] * 2 - 1;
+			\freqB.kr(660) * (2 ** (mod * \freqMDB.kr(2)));
+		};
+		grainFreqs = Latch.ar(grainFreq, voices[\triggers]);
+
+		grainPhases = RampIntegrator.ar(
+			trig: voices[\triggers],
+			rate: grainFreqs,
+			subSampleOffset: events[\subSampleOffset]
+		);
+		grainOscs = SinOsc.ar(DC.ar(0), grainPhases * 2pi);
+
+		grainOscs * grainWindows;
+	};
+
+	grains = LinXFade2.ar(
+		inA: calcGrainData.(\A),
+		inB: calcGrainData.(\B),
+		pan: \mix.kr(0.5) * 2 - 1
+	);
+
+    pan = multiChannelDwhite.(voices[\triggers]);
+    grains = PanAz.ar(
+        numChans: numSpeakers,
+        in: grains,
+        pos: pan.linlin(-1, 1, -1 / numSpeakers, (2 * numSpeakers - 3) / numSpeakers);
+    );
+    sig = grains.sum;
+
+    sig = LeakDC.ar(sig);
+    sig * 0.1;
+}.play;
+)
+::
+
+

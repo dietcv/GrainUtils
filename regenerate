@@ -1,0 +1,1 @@
+python3 C:/Users/jlkle/Documents/C++Projects/supercollider/tools/cmake_gen/generate_server_plugin_cmake.py -P "GrainUtils" -p "plugins/GrainUtils" -a "dietcv"

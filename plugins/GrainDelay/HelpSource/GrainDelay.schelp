@@ -1,0 +1,176 @@
+class:: GrainDelay
+summary:: A subsample-accurate granular feedback delay
+related:: Classes/GrainBuf, Classes/DelayN
+categories:: UGens>Delays, UGens>Granular
+
+description::
+A real-time granular delay effect with subsample-accurate grain triggering and single-sample feedback. 
+Each grain can be pitch-shifted and overlapped to create complex textures ranging from subtle echoes to dense granular clouds. 
+The plugin uses a sub-sample accurate event system for precise grain timing, eliminating aliasing for high trigger rates and supports up to 32 active grains with smart voice allocation.
+The voice allocation system distributes each grain across the 32 available channels and checks which channel is currently free, dropping grains only when all channels are busy. 
+This ensures that no grains are scheduled on a channel which is currently active.
+
+note::
+High overlap values require more CPU as more grains are active simultaneously
+::
+
+classmethods::
+
+method::ar
+
+argument::input
+Audio input signal to be processed
+
+argument::triggerRate
+Grain trigger rate in Hz. Controls the density of grain scheduling.
+
+argument::overlap
+Grain overlap amount. The higher the overlap amount, the more the grains overlap up to the maximum number of 32 channels.
+Range: 0.001-32
+Default: 1
+
+argument::delayTime
+Delay time in seconds. Determines how far back in the buffer grains are read from.
+Range: 1 sample - 5 seconds
+Default: 0.2 seconds
+
+argument::grainRate
+Grain playback rate. 1.0 = normal speed, 0.5 = half speed (lower pitch), 2.0 = double speed (higher pitch).
+Range: 0.125-4.0
+Default: 1.0
+
+argument::mix
+Dry/wet mix control. 0 = dry signal only, 1 = wet signal only.
+Range: 0-1
+Default: 0.5
+
+argument::feedback
+Feedback amount. Controls how much of the processed signal is fed back into the delay buffer.
+Range: 0-0.99
+Default: 0
+
+argument::damping
+High-frequency damping in the feedback path. 0 = bright feedback, 1 = dark feedback.
+Range: 0-1
+Default: 0
+
+argument::freeze
+When 1, freezes the delay buffer - no new input is recorded, allowing infinite manipulation of the captured audio.
+Range: 0-1 (binary)
+Default: 0
+
+argument::reset
+Trigger to reset all grain state and clear the delay buffer.
+Range: 0-1 (trigger)
+Default: 0
+
+returns:: Processed audio signal
+
+examples::
+
+code::
+(
+SynthDef(\grainDelay, {
+
+	var numChannels = 2;
+
+    var reset, tFreqMD, tFreqMod, tFreq;
+    var overlapMD, overlapMod, overlap;
+    var rateMD, rateMod, rate;
+    var delayMD, delayMod, delay;
+    var inSig, sig;
+
+    reset = Trig1.ar(\reset.tr(0), SampleDur.ir);
+
+    // trigger rate modulation
+    tFreqMD = \tFreqMD.kr(0);
+	tFreqMod = { LFDNoise3.ar(\tFreqMF.kr(0.1)) } ! numChannels;
+    tFreq = \tFreq.kr(100);
+    tFreq = tFreq * (2 ** (tFreqMod * tFreqMD));
+
+    // overlap modulation
+    overlapMD = \overlapMD.kr(0);
+	overlapMod = { LFDNoise3.ar(\overlapMF.kr(0.1)) } ! numChannels;
+    overlap = \overlap.kr(1);
+    overlap = overlap * (2 ** (overlapMod * overlapMD));
+
+    // rate modulation
+    rateMD = \rateMD.kr(0);
+    rateMod = { LFDNoise3.ar(\rateMF.kr(0.1)) } ! numChannels;
+    rate = \rate.kr(1);
+    rate = rate * (2 ** (rateMod * rateMD));
+
+    // delay modulation
+    delayMD = \delayMD.kr(0);
+    delayMod = { LFDNoise3.ar(\delayMF.kr(0.1)) } ! numChannels;
+    delay = \delay.kr(0.3);
+    delay = delay + (delay * delayMod * delayMD);
+
+    inSig = In.ar(\in.kr(0), 2);
+
+    sig = GrainDelay.ar(
+        input: inSig,
+        triggerRate: tFreq,
+        overlap: overlap,
+        delayTime: delay,
+        grainRate: rate,
+        mix: \mix.kr(0),
+        feedback: \feedback.kr(0.3),
+        damping: \damping.kr(0),
+        freeze: \freeze.kr(0),
+        reset: reset
+    );
+
+    sig = LeakDC.ar(sig);
+    sig = Limiter.ar(sig);
+    ReplaceOut.ar(\out.kr(0), sig);
+}).add;
+
+SynthDef(\test, {
+	var sig = { PlayBuf.ar(1, \sndBuf.kr(0), loop: 1) } ! 2;
+	sig = sig * Env.asr(0.001, 1, 0.001).ar(Done.freeSelf, \gate.kr(1));
+	sig = sig * \amp.kr(-25).dbamp;
+	Out.ar(\out.kr(0), sig);
+}).add;
+)
+
+~sndBuf = Buffer.read(s, Platform.resourceDir +/+ "sounds/a11wlk01.wav");
+
+(
+x = Synth(\test, [
+	\sndBuf, ~sndBuf,
+], addAction: \addToHead);
+
+y = Synth(\grainDelay, [
+
+	\tFreq, 10,
+	\tFreqMF, 0.1,
+	\tFreqMD, 0,
+
+	\overlap, 1.0,
+	\overlapMF, 0.1,
+	\overlapMD, 0,
+
+	\rate, 1.0,
+	\rateMF, 0.1,
+	\rateMD, 0,
+
+	\delay, 0.5,
+	\delayMF, 0.1,
+	\delayMD, 0.1,
+
+	\feedback, 0.3,
+	\damping, 0.7,
+	\mix, 1.0,
+	\freeze, 0,
+
+	\amp, -25,
+
+], addAction: \addToTail);
+)
+
+x.free;
+y.free;
+~sndBuf.free;
+::
+

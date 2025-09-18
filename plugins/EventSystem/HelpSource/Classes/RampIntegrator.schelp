@@ -1,0 +1,157 @@
+class:: RampIntegrator
+summary:: Integration of sub-sample accurate ramps
+related:: Classes/Sweep
+categories:: UGens>Granular
+
+description::
+You can use RampIntegrator to integrate sub-sample accurate ramp signals with the timing information derived from your scheduling phasor.
+RampIntegrator needs a trigger, a rate and a sub-sample offset and outputs a sub-sample accurate ramp signal between 0 and 1, which gets reset by a derived trigger. The timing information needed can be provided by using SchedulerCycle or SchedulerBurst.
+
+The crucial distinction between integration and accumulation (have a look at RampAccumulator) is their handling of frequency modulation:
+
+list::
+## strong::Accumulation:: counts samples and scales running total with slope. The slope has to be sampled and held for each cycle - no frequency modulation possible
+## strong::Integration:: adds up slope values for every sample - supports frequency modulation
+::
+
+classmethods::
+
+method::ar
+
+argument::trig
+trigger for example derived from SchedulerCycle or SchedulerBurst
+
+argument::rate
+rate in hz for example derived from SchedulerCycle or SchedulerBurst
+
+argument::subSampleOffset
+subSampleOffset for example derived from SchedulerCycle or SchedulerBurst
+
+returns:: a sub-sample accurate ramp signal between 0 and 1
+
+SECTION::1) Examples - Plots
+
+subsection::1.1) Using Sweep for sub-sample accurate Integration
+
+code::
+(
+var integSubSample = { |trig, rate, subSampleOffset|
+    var hasTriggered = PulseCount.ar(trig) > 0;
+    var accum = Sweep.ar(trig, rate) * hasTriggered;
+    accum + (rate * SampleDur.ir * subSampleOffset);
+};
+
+{
+    var tFreq, events, integratedRamp;
+
+	tFreq = \tFreq.kr(1000);
+
+	events = SchedulerCycle.ar(tFreq);
+
+    integratedRamp = integSubSample.(
+		trig: events[\trigger],
+		rate: events[\rate],
+		subSampleOffset: events[\subSampleOffset]
+	);
+
+	[
+		events[\phase],
+		events[\trigger],
+		integratedRamp
+	];
+}.plot(0.0011).plotMode_(\plines);
+)
+::
+
+subsection::1.2) Using RampIntegrator for sub-sample accurate Integration
+
+code::
+(
+{
+    var tFreq, events, integratedRamp;
+
+	tFreq = \tFreq.kr(1000);
+
+	events = SchedulerCycle.ar(tFreq);
+
+    integratedRamp = RampIntegrator.ar(
+		trig: events[\trigger],
+		rate: events[\rate],
+		subSampleOffset: events[\subSampleOffset]
+	);
+
+	[
+		events[\phase],
+		events[\trigger],
+		integratedRamp
+	];
+}.plot(0.0011).plotMode_(\plines);
+)
+::
+
+SECTION::2) Examples - Audio
+
+subsection::2.1) Overlapping Grains with Voice Allocation using RampIntegrator
+
+code::
+(
+var multiChannelDwhite = { |triggers|
+    var demand = Dwhite(-1.0, 1.0);
+    triggers.collect{ |localTrig|
+        Demand.ar(localTrig, DC.ar(0), demand)
+    };
+};
+
+{
+    var numChannels = 8;
+    var numSpeakers = 2;
+
+    var reset, tFreq;
+    var events, voices, windowPhases;
+    var grainFreqMod, grainFreqs, grainPhases, grainWindows;
+    var grainOscs, grains, sig, pan;
+
+    reset = Trig1.ar(\reset.tr(0), SampleDur.ir);
+    tFreq = \tFreq.kr(30);
+
+    events = SchedulerCycle.ar(tFreq, reset);
+
+    voices = VoiceAllocator.ar(
+        numChannels: numChannels,
+        trig: events[\trigger],
+        rate: events[\rate] / \overlap.kr(5),
+        subSampleOffset: events[\subSampleOffset],
+    );
+
+    grainWindows = HanningWindow.ar(
+        phase: voices[\phases],
+        skew: \skew.kr(0.03)
+    );
+
+    grainFreqMod = multiChannelDwhite.(voices[\triggers]);
+    grainFreqs = \freq.kr(800) * (2 ** (grainFreqMod * \freqMD.kr(2)));
+
+    grainPhases = RampIntegrator.ar(
+        trig: voices[\triggers],
+        rate: grainFreqs,
+        subSampleOffset: events[\subSampleOffset]
+    );
+    grainOscs = SinOsc.ar(DC.ar(0), grainPhases * 2pi);
+
+    grains = grainOscs * grainWindows;
+
+    pan = multiChannelDwhite.(voices[\triggers]);
+    grains = PanAz.ar(
+        numChans: numSpeakers,
+        in: grains,
+        pos: pan.linlin(-1, 1, -1 / numSpeakers, (2 * numSpeakers - 3) / numSpeakers);
+    );
+    sig = grains.sum;
+
+    sig = LeakDC.ar(sig);
+    sig * 0.1;
+}.play;
+)
+::
+
+

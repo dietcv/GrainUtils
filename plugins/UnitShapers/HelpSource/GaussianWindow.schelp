@@ -1,0 +1,39 @@
+class:: GaussianWindow
+summary:: Gaussian Window with variable skew and index
+related:: Classes/IEnvGen
+categories:: UGens>Granular
+
+description::
+This library comes with a selection of different stateless window functions.
+Stateless windows can be modulated at audio rate and their output only depend on the instantaneous input of the ramp signal. The ramp has to be linear and between 0 and 1.
+
+GaussianWindow needs a phase, a skew value and an index value and outputs a Gausssian Window with variable skew and index.
+
+classmethods::
+
+method::ar
+
+argument::phase
+linear ramp between 0 and 1
+
+argument::skew
+skew value between 0 and 1
+
+argument::index
+index value
+
+returns:: a Gausian Window
+
+SECTION::1) Example
+
+subsection::1.1) Gaussian Window with variable skew and index
+
+code::
+(
+{
+	var phase = Phasor.ar(DC.ar(0), 50 * SampleDur.ir);
+	GaussianWindow.ar(phase, \skew.kr(0.5), \index.kr(5));
+}.plot(0.02);
+)
+::
+

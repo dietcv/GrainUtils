@@ -1,0 +1,188 @@
+class:: SchedulerCycle
+summary:: Scheduling of sub-sample accurate events on the server
+related:: Classes/Phasor
+categories:: UGens>Granular
+
+description::
+You can use SchedulerCycle to schedule sub-sample accurate events on the server.
+SchedulerCycle needs a rate as an input and outputs phases, triggers, rates and sub-sample offsets.
+You can access the different outputs via their key from a dictionary.
+SchedulerCycle can be used for server side sub-sample accurate granulation.
+
+classmethods::
+
+method::ar
+
+argument::rate
+rate in hz
+
+argument::reset
+reset trigger
+
+returns:: phases, triggers, rates and subSampleOffsets.
+The outputs can be accessed via key from a dictionary (e.g. events[\phase], events[\trigger], events[\rate], events[\subSampleOffset])
+
+SECTION::1) Examples - Plots
+
+subsection::1.1) Modulated Ramps
+
+code::
+(
+{
+	var rate = 1000 * (2 ** (SinOsc.ar(50) * 3));
+	var events = SchedulerCycle.ar(rate);
+	[
+		events[\phase],
+		events[\trigger],
+	];
+}.plot(0.0021).plotMode_(\plines);
+)
+::
+
+subsection::1.2) Sequence of Random Durations with Duty
+
+code::
+(
+var getSubDivs = { |rate, randomness|
+	var subDiv = Ddup(2, (2 ** (Dwhite(-1.0, 1.0) * randomness))) / rate;
+	Duty.ar(subDiv, DC.ar(0), 1 / subDiv);
+};
+
+{
+	var subDiv, events;
+
+	subDiv = getSubDivs.(\tFreq.kr(500), \randomness.kr(1));
+	events = SchedulerCycle.ar(subDiv);
+
+	[
+		events[\phase],
+		events[\trigger]
+	];
+
+}.plot(0.021);
+)
+::
+
+subsection::1.3) Sequence of Durations with Duty
+
+code::
+(
+var getSubDivs = { |rate, arrayOfDurations, numOfDurations|
+	var subDiv = Ddup(2, Dseq([Dser(arrayOfDurations, numOfDurations)], inf)) / rate;
+	Duty.ar(subDiv, DC.ar(0), 1 / subDiv);
+};
+
+{
+	var arrayOfDurations, numOfDurations, subDiv, events;
+
+	arrayOfDurations = [5, 1, 2, 4];
+	numOfDurations = 4;
+
+	subDiv = getSubDivs.(\tFreq.kr(500), arrayOfDurations, numOfDurations);
+	events = SchedulerCycle.ar(subDiv);
+
+	[
+		events[\phase],
+		events[\trigger]
+	];
+
+}.plot(0.021);
+)
+::
+
+subsection::1.4) Modulated Ramps with Voice Allocation
+
+code::
+(
+{
+    var numChannels = 5;
+
+    var reset, tFreqMD, tFreq;
+    var events, voices;
+
+    reset = Trig1.ar(\reset.tr(0), SampleDur.ir);
+
+    tFreqMD = \tFreqMD.kr(2);
+    tFreq = \tFreq.kr(400) * (2 ** (SinOsc.ar(50) * tFreqMD));
+
+    events = SchedulerCycle.ar(tFreq, reset);
+
+    voices = VoiceAllocator.ar(
+        numChannels: numChannels,
+        trig: events[\trigger],
+        rate: events[\rate] / \overlap.kr(1),
+        subSampleOffset: events[\subSampleOffset],
+    );
+
+	voices[\phases];
+
+}.plot(0.041);
+)
+::
+
+SECTION::2) Examples - Audio
+
+subsection::2.1) Overlapping Grains with Voice Allocation
+
+code::
+(
+var multiChannelDwhite = { |triggers|
+    var demand = Dwhite(-1.0, 1.0);
+    triggers.collect{ |localTrig|
+        Demand.ar(localTrig, DC.ar(0), demand)
+    };
+};
+
+{
+    var numChannels = 8;
+    var numSpeakers = 2;
+
+    var reset, tFreq;
+    var events, voices, windowPhases;
+    var grainFreqMod, grainFreqs, grainPhases, grainWindows;
+    var grainOscs, grains, sig, pan;
+
+    reset = Trig1.ar(\reset.tr(0), SampleDur.ir);
+    tFreq = \tFreq.kr(30);
+
+    events = SchedulerCycle.ar(tFreq, reset);
+
+    voices = VoiceAllocator.ar(
+        numChannels: numChannels,
+        trig: events[\trigger],
+        rate: events[\rate] / \overlap.kr(5),
+        subSampleOffset: events[\subSampleOffset],
+    );
+
+    grainWindows = HanningWindow.ar(
+        phase: voices[\phases],
+        skew: \skew.kr(0.03)
+    );
+
+    grainFreqMod = multiChannelDwhite.(voices[\triggers]);
+    grainFreqs = \freq.kr(800) * (2 ** (grainFreqMod * \freqMD.kr(2)));
+
+    grainPhases = RampIntegrator.ar(
+        trig: voices[\triggers],
+        rate: grainFreqs,
+        subSampleOffset: events[\subSampleOffset]
+    );
+    grainOscs = SinOsc.ar(DC.ar(0), grainPhases * 2pi);
+
+    grains = grainOscs * grainWindows;
+
+    pan = multiChannelDwhite.(voices[\triggers]);
+    grains = PanAz.ar(
+        numChans: numSpeakers,
+        in: grains,
+        pos: pan.linlin(-1, 1, -1 / numSpeakers, (2 * numSpeakers - 3) / numSpeakers);
+    );
+    sig = grains.sum;
+
+    sig = LeakDC.ar(sig);
+    sig * 0.1;
+}.play;
+)
+::
+
+

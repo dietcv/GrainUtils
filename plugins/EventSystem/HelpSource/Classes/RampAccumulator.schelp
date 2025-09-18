@@ -1,0 +1,221 @@
+class:: RampAccumulator
+summary:: Accumulation of sub-sample accurate ramps
+related:: Classes/Sweep
+categories:: UGens>Granular
+
+description::
+You can use RampAccumulator to accumulate sub-sample accurate ramp signals with the timing information derived from your scheduling phasor.
+RampAccumulator needs a trigger and a sub-sample offset and outputs a sub-sample accurate sample counter, which gets reset by a derived trigger and can be scaled by a derived slope to accumulate new ramp signals. The timing information needed can be provided by using SchedulerCycle or SchedulerBurst.
+
+The crucial distinction between integration (have a look at RampIntegrator) and accumulation is  their handling of frequency modulation:
+
+list::
+## strong::Accumulation:: counts samples and scales running total with slope. The slope has to be sampled and held for each cycle - no frequency modulation possible
+## strong::Integration:: adds up slope values for every sample - supports frequency modulation
+::
+
+classmethods::
+
+method::ar
+
+argument::trig
+trigger for example derived from SchedulerCycle or SchedulerBurst
+
+argument::subSampleOffset
+subSampleOffset for example derived from SchedulerCycle or SchedulerBurst
+
+returns:: a sub-sample accurate sample counter
+
+SECTION::1) Examples - Plots
+
+subsection::1.1) Using Sweep for sub-sample accurate Accumulation
+
+code::
+(
+var accumSubSample = { |trig, subSampleOffset|
+    var hasTriggered = PulseCount.ar(trig) > 0;
+	var accum = Sweep.ar(trig, SampleRate.ir) * hasTriggered;
+    accum + subSampleOffset;
+};
+
+{
+    var tFreq, events, accumulator, latchedSlope, accumualatedRamp;
+
+	tFreq = \tFreq.kr(1000);
+
+	events = SchedulerCycle.ar(tFreq);
+
+    accumulator = accumSubSample.(
+		trig: events[\trigger],
+		subSampleOffset: events[\subSampleOffset]
+	);
+
+	latchedSlope = Latch.ar(events[\rate] * SampleDur.ir, events[\trigger]);
+	accumualatedRamp = accumulator * latchedSlope;
+
+	[
+		events[\phase],
+		events[\trigger],
+		accumualatedRamp
+	];
+}.plot(0.0011).plotMode_(\plines);
+)
+::
+
+subsection::1.2) Using RampAccumulator for sub-sample accurate Accumulation
+
+code::
+(
+{
+    var tFreq, events, accumulator, latchedSlope, accumualatedRamp;
+
+	tFreq = \tFreq.kr(1000);
+
+	events = SchedulerCycle.ar(tFreq);
+
+    accumulator = RampAccumulator.ar(
+		trig: events[\trigger],
+		subSampleOffset: events[\subSampleOffset]
+	);
+
+	latchedSlope = Latch.ar(events[\rate] * SampleDur.ir, events[\trigger]);
+	accumualatedRamp = accumulator * latchedSlope;
+
+	[
+		events[\phase],
+		events[\trigger],
+		accumualatedRamp
+	];
+}.plot(0.0011).plotMode_(\plines);
+)
+::
+
+SECTION::2) Examples - Audio
+
+subsection::2.1) Buffer Granulation using RampAccumulator
+
+code::
+(
+SynthDef(\grains, { |sndBuf|
+
+    var numChannels = 8;
+
+    var reset, events, voices;
+
+    var tFreqMod, tFreq;
+    var overlapMod, overlap;
+    var posRateMod, posRate;
+    var grainRateMod, grainRate;
+
+    var grainWindows, accumulator, grainPhases, pos;
+    var sigs, sig;
+
+    reset = Trig1.ar(\reset.tr(0), SampleDur.ir);
+
+    tFreqMod = LFDNoise3.ar(\tFreqMF.kr(1));
+    tFreq = \tFreq.kr(1) * (2 ** (tFreqMod * \tFreqMD.kr(0)));
+
+    events = SchedulerCycle.ar(tFreq, reset);
+
+    overlapMod = LFDNoise3.ar(\overlapMF.kr(0.3));
+    overlap = \overlap.kr(1) * (2 ** (overlapMod * \overlapMD.kr(0)));
+
+    voices = VoiceAllocator.ar(
+        numChannels: numChannels,
+        trig: events[\trigger],
+        rate: events[\rate] / overlap,
+        subSampleOffset: events[\subSampleOffset],
+    );
+
+    grainWindows = HanningWindow.ar(
+        phase: voices[\phases],
+        skew: \windowSkew.kr(0.5),
+    );
+
+    ///////////////////////////////////////////////////////////////////////////////////
+
+    posRateMod = LFDNoise3.ar(\posRateMF.kr(0.3));
+    posRate = \posRate.kr(1) * (1 + (posRateMod * \posRateMD.kr(0)));
+
+    pos = Phasor.ar(
+        trig: DC.ar(0),
+        rate: posRate * BufRateScale.kr(sndBuf) * SampleDur.ir / BufDur.kr(sndBuf),
+        start: \posLo.kr(0),
+        end: \posHi.kr(1)
+    );
+    pos = Latch.ar(pos, voices[\triggers]) * BufFrames.kr(sndBuf);
+
+    ///////////////////////////////////////////////////////////////////////////////////
+
+    grainRateMod = LFDNoise3.ar(\grainRateMF.kr(0.3));
+    grainRate = \grainRate.kr(1) * (2 ** (grainRateMod * \grainRateMD.kr(0)));
+
+    accumulator = RampAccumulator.ar(
+        trig: voices[\triggers],
+        subSampleOffset: events[\subSampleOffset]
+    );
+    grainPhases = Latch.ar(grainRate, voices[\triggers]) * accumulator;
+
+    ///////////////////////////////////////////////////////////////////////////////////
+
+    sigs = BufRd.ar(
+        numChannels: 1,
+        bufnum: sndBuf,
+        phase: grainPhases + pos,
+        loop: 1,
+        interpolation: 4
+    );
+
+    sigs = sigs * grainWindows;
+
+    sigs = PanAz.ar(2, sigs, \pan.kr(0));
+    sig = sigs.sum;
+
+    sig = sig * \amp.kr(-25).dbamp;
+
+    sig = sig * Env.asr(0.001, 1, 0.001).ar(Done.freeSelf, \gate.kr(1));
+
+    sig = LeakDC.ar(sig);
+    sig = Limiter.ar(sig);
+    Out.ar(\out.kr(0), sig);
+}).add;
+)
+
+~sndBuf = Buffer.read(s, Platform.resourceDir +/+ "sounds/a11wlk01.wav");
+
+(
+x = Synth(\grains, [
+
+    \sndBuf, ~sndBuf,
+
+    \tFreq, 500,
+    \tFreqMF, 0.3,
+    \tFreqMD, 0,
+
+    \overlap, 4,
+    \overlapMF, 0.3,
+    \overlapMD, 0,
+
+    \windowSkew, 0.5,
+
+    \grainRate, 1.0,
+    \grainRateMF, 0.3,
+    \grainRateMD, 0,
+
+    \posRate, 1.0,
+    \posRateMF, 0.3,
+    \posRateMD, 0,
+
+    \posLo, 0,
+    \posHi, 1,
+
+    \amp, -25,
+
+]);
+)
+
+x.free;
+~sndBuf.free;
+::
+
+
