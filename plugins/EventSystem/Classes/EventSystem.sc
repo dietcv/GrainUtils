@@ -3,6 +3,7 @@
 SchedulerCycleUGen : MultiOutUGen {
 	*ar { |rate, reset = 0|
 		if(rate.rate != 'audio') { rate = K2A.ar(rate) };
+		if(reset.rate != 'audio') { reset = K2A.ar(reset) };
 		^this.multiNew('audio', rate, reset)
 	}
 

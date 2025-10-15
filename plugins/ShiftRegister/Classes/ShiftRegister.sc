@@ -4,6 +4,7 @@ ShiftRegisterUgen : MultiOutUGen {
 		if(chance.rate != 'audio') { chance = K2A.ar(chance) };
 		if(length.rate != 'audio') { length = K2A.ar(length) };
 		if(rotate.rate != 'audio') { rotate = K2A.ar(rotate) };
+		if(reset.rate != 'audio') { reset = K2A.ar(reset) };
         ^this.multiNew('audio', trig, chance, length, rotate, reset);
     }
 
