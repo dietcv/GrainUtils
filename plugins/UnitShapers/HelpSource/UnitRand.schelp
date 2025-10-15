@@ -1,0 +1,39 @@
+class:: UnitRand
+summary:: interpolated random values
+related:: Classes/IEnvGen
+categories:: UGens>Granular
+
+description::
+
+This library comes with a selection of different unit shaper functions.
+Unit shapers can be used as transfer functions to map the input of a linear ramp signal between 0 and 1 to a non-linear output signal between 0 and 1.
+
+UnitRand outputs interpolated random values between 0 and 1.
+
+classmethods::
+
+method::ar
+
+argument::phase
+linear ramp between 0 and 1
+
+returns:: interpolated random values
+
+SECTION::1) Examples - Plots
+
+subsection::1.1) random values with cosine interpolation
+
+code::
+(
+{
+	var phase, random;
+
+	RandSeed.kr(\seedtrg.kr(1), \seed.kr(1000));
+
+	phase = Phasor.ar(DC.ar(0), 1000 * SampleDur.ir);
+	random = UnitRand.ar(phase);
+
+	[phase, random];
+}.plot(0.041);
+)
+::

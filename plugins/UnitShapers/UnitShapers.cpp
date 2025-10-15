@@ -16,8 +16,11 @@ void UnitTriangle::next(int nSamples) {
     float* outbuf = out(0);
     
     for (int i = 0; i < nSamples; ++i) {
+
+        // Get audio-rate parameters per-sample
         float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
         float skew = sc_clip(skewIn[i], 0.0f, 1.0f);
+
         outbuf[i] = UnitShapers::triangle(phase, skew);
     }
 }
@@ -33,8 +36,11 @@ void UnitKink::next(int nSamples) {
     float* outbuf = out(0);
     
     for (int i = 0; i < nSamples; ++i) {
+
+        // Get audio-rate parameters per-sample
         float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
         float skew = sc_clip(skewIn[i], 0.0f, 1.0f);
+
         outbuf[i] = UnitShapers::kink(phase, skew);
     }
 }
@@ -50,9 +56,60 @@ void UnitCubic::next(int nSamples) {
     float* outbuf = out(0);
    
     for (int i = 0; i < nSamples; ++i) {
+
+        // Get audio-rate parameters per-sample
         float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
         float index = sc_clip(indexIn[i], 0.0f, 1.0f);
+
         outbuf[i] = UnitShapers::cubic(phase, index);
+    }
+}
+
+UnitRand::UnitRand() {
+    mCalcFunc = make_calc_function<UnitRand, &UnitRand::next>();
+    next(1);
+
+    // Reset state after priming
+    m_state.reset();
+}
+
+void UnitRand::next(int nSamples) {
+    RGen& rgen = *mParent->mRGen;
+    
+    const float* phaseIn = in(0);
+    float* outbuf = out(0);
+    
+    for (int i = 0; i < nSamples; ++i) {
+
+        // Get audio-rate parameters per-sample
+        float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
+
+        outbuf[i] = m_state.process(phase, rgen);
+    }
+}
+
+UnitWalk::UnitWalk() {
+    mCalcFunc = make_calc_function<UnitWalk, &UnitWalk::next>();
+    next(1);
+
+    // Reset state after priming
+    m_state.reset();
+}
+
+void UnitWalk::next(int nSamples) {
+    RGen& rgen = *mParent->mRGen;
+    
+    const float* phaseIn = in(0);
+    const float* stepIn = in(2); 
+    float* outbuf = out(0);
+    
+    for (int i = 0; i < nSamples; ++i) {
+
+        // Get audio-rate parameters per-sample
+        float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
+        float step = sc_clip(stepIn[i], 0.0f, 1.0f);
+
+        outbuf[i] = m_state.process(phase, step, rgen);
     }
 }
 
@@ -69,8 +126,11 @@ void HanningWindow::next(int nSamples) {
     float* outbuf = out(0);
     
     for (int i = 0; i < nSamples; ++i) {
+
+        // Get audio-rate parameters per-sample
         float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
         float skew = sc_clip(skewIn[i], 0.0f, 1.0f);
+
         outbuf[i] = WindowFunctions::hanningWindow(phase, skew);
     }
 }
@@ -87,9 +147,12 @@ void GaussianWindow::next(int nSamples) {
     float* outbuf = out(0);
     
     for (int i = 0; i < nSamples; ++i) {
+
+        // Get audio-rate parameters per-sample
         float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
         float skew = sc_clip(skewIn[i], 0.0f, 1.0f);
         float index = indexIn[i];
+
         outbuf[i] = WindowFunctions::gaussianWindow(phase, skew, index);
     }
 }
@@ -107,10 +170,13 @@ void TrapezoidalWindow::next(int nSamples) {
     float* outbuf = out(0);
     
     for (int i = 0; i < nSamples; ++i) {
+
+        // Get audio-rate parameters per-sample
         float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
         float skew = sc_clip(skewIn[i], 0.0f, 1.0f);
         float width = sc_clip(widthIn[i], 0.0f, 1.0f);
         float duty = sc_clip(dutyIn[i], 0.0f, 1.0f);
+
         outbuf[i] = WindowFunctions::trapezoidalWindow(phase, skew, width, duty);
     }
 }
@@ -127,9 +193,12 @@ void TukeyWindow::next(int nSamples) {
     float* outbuf = out(0);
     
     for (int i = 0; i < nSamples; ++i) {
+
+        // Get audio-rate parameters per-sample
         float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
         float skew = sc_clip(skewIn[i], 0.0f, 1.0f);
         float width = sc_clip(widthIn[i], 0.0f, 1.0f);
+
         outbuf[i] = WindowFunctions::tukeyWindow(phase, skew, width);
     }
 }
@@ -146,9 +215,12 @@ void ExponentialWindow::next(int nSamples) {
     float* outbuf = out(0);
     
     for (int i = 0; i < nSamples; ++i) {
+
+        // Get audio-rate parameters per-sample
         float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
         float skew = sc_clip(skewIn[i], 0.0f, 1.0f);
         float shape = sc_clip(shapeIn[i], 0.0f, 1.0f);
+
         outbuf[i] = WindowFunctions::exponentialWindow(phase, skew, shape);
     }
 }
@@ -166,8 +238,11 @@ void JCurve::next(int nSamples) {
     float* outbuf = out(0);
     
     for (int i = 0; i < nSamples; ++i) {
+
+        // Get audio-rate parameters per-sample
         float phase = sc_clip(phaseIn[i], 0.0f, 1.0f);
         float shape = sc_clip(shapeIn[i], 0.0f, 1.0f);
+
         outbuf[i] = InterpFunctions::jCurve(phase, shape, EasingCores::quintic);
     }
 }
@@ -184,9 +259,12 @@ void SCurve::next(int nSamples) {
     float* outbuf = out(0);
     
     for (int i = 0; i < nSamples; ++i) {
+
+        // Get audio-rate parameters per-sample
         float phase = sc_clip(phaseIn[i], 0.0f, 1.0f);
         float shape = sc_clip(shapeIn[i], 0.0f, 1.0f);
         float inflection = sc_clip(inflectionIn[i], 0.0f, 1.0f);
+        
         outbuf[i] = InterpFunctions::sCurve(phase, shape, inflection, EasingCores::quintic);
     }
 }
@@ -197,6 +275,8 @@ PluginLoad(GrainUtilsUGens) {
     registerUnit<UnitTriangle>(ft, "UnitTriangle", false);
     registerUnit<UnitKink>(ft, "UnitKink", false);
     registerUnit<UnitCubic>(ft, "UnitCubic", false);
+    registerUnit<UnitRand>(ft, "UnitRand", false);
+    registerUnit<UnitWalk>(ft, "UnitWalk", false);
 
     // Window Functions
     registerUnit<HanningWindow>(ft, "HanningWindow", false);

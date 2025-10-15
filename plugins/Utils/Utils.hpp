@@ -8,12 +8,18 @@ namespace Utils {
 
 // ===== CONSTANTS =====
 
+inline constexpr float PI = 3.14159265358979323846f;
 inline constexpr float TWO_PI = 6.28318530717958647692f;
 
 // ===== BASIC MATH UTILITIES =====
 
 inline float lerp(float a, float b, float t) {
     return a + t * (b - a);
+}
+
+inline float cosineInterp(float a, float b, float t) {
+    float mu2 = (1.0f - std::cos(t * PI)) / 2.0f;
+    return a * (1.0f - mu2) + b * mu2;
 }
 
 // ===== BUFFER ACCESS UTILITIES =====

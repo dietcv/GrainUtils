@@ -1,5 +1,6 @@
 #pragma once
 #include "SC_PlugIn.hpp"
+#include "Utils.hpp"
 #include <cmath>
 #include <algorithm>
 
@@ -113,6 +114,87 @@ namespace UnitShapers {
         float warpedPhase = trapezoid(phase, width, 1.0f);
         return 1 / (1 + exp(indexScaled * ((1 / warpedPhase) - (1 / (1 - warpedPhase)))));
     }
+
+    // ===== UNIT RAND =====
+
+    struct UnitRand {
+
+        Utils::RampToTrig m_trigDetect;
+
+        float m_currentValue{0.0f};
+        float m_nextValue{0.0f};
+        bool m_initialized{false};
+        
+        float process(float phase, RGen& rgen) {
+
+            // Initialize
+            if (!m_initialized) {
+                m_currentValue = rgen.frand();
+                m_nextValue = m_currentValue;
+                m_initialized = true;
+            }
+
+            // Detect trigger
+            bool trigger = m_trigDetect.process(phase);
+            
+            // Get random value for each trigger
+            if (trigger) {
+                m_currentValue = m_nextValue;
+                m_nextValue = rgen.frand();
+            }
+            
+            // Cosine interpolation
+            return Utils::cosineInterp(m_currentValue, m_nextValue, phase);
+        }
+        
+        void reset() {
+            m_currentValue = 0.0f;
+            m_nextValue = 0.0f;
+            m_initialized = false;
+            m_trigDetect.reset();
+        }
+    };
+
+    // ===== UNIT WALK =====
+
+    struct UnitWalk {
+
+        Utils::RampToTrig m_trigDetect;
+
+        float m_currentValue{0.0f};
+        float m_nextValue{0.0f};
+        bool m_initialized{false};
+        
+        float process(float phase, float step, RGen& rgen) {
+
+            // Initialize
+            if (!m_initialized) {
+                m_currentValue = rgen.frand();
+                m_nextValue = m_currentValue;
+                m_initialized = true;
+            }
+
+            // Detect trigger
+            bool trigger = m_trigDetect.process(phase);
+            
+            // Make a random step for each trigger (gaussian distribution)
+            if (trigger) {
+                m_currentValue = m_nextValue;
+                m_nextValue += rgen.fsum3rand() * step;
+                m_nextValue = sc_fold(m_nextValue, 0.0f, 1.0f);
+            }
+            
+            // Cosine interpolation
+            return Utils::cosineInterp(m_currentValue, m_nextValue, phase);
+        }
+        
+        void reset() {
+            m_currentValue = 0.0f;
+            m_nextValue = 0.0f;
+            m_initialized = false;
+            m_trigDetect.reset();
+        }
+    };
 
 } // namespace UnitShapers
 
@@ -290,6 +372,22 @@ public:
     UnitCubic();
 private:
     void next(int nSamples);
+};
+
+class UnitRand : public SCUnit {
+public:
+    UnitRand();
+private:
+    void next(int nSamples);
+    UnitShapers::UnitRand m_state;
+};
+
+class UnitWalk : public SCUnit {
+public:
+    UnitWalk();
+private:
+    void next(int nSamples);
+    UnitShapers::UnitWalk m_state;
 };
 
 class HanningWindow : public SCUnit {

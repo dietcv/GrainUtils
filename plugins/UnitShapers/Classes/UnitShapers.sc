@@ -24,6 +24,21 @@ UnitCubic : UGen {
     }
 }
 
+UnitRand : UGen {
+    *ar { |phase|
+		if(phase.rate!='audio'){phase = K2A.ar(phase)};
+        ^this.multiNew('audio', phase)
+    }
+}
+
+UnitWalk : UGen {
+    *ar { |phase, step = 0.2|
+		if(phase.rate!='audio'){phase = K2A.ar(phase)};
+		if(step.rate!='audio'){step = K2A.ar(step)};
+        ^this.multiNew('audio', phase, step)
+    }
+}
+
 // ===== WINDOW FUNCTIONS =====
 
 HanningWindow : UGen {
