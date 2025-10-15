@@ -1,11 +1,14 @@
 #pragma once
 #include "SC_PlugIn.hpp"
 #include <array>
-#include <vector>
 #include <cmath>  
 #include <algorithm>
 
 namespace Utils {
+
+// ===== CONSTANTS =====
+
+inline constexpr float TWO_PI = 6.28318530717958647692f;
 
 // ===== BASIC MATH UTILITIES =====
 
@@ -36,11 +39,8 @@ inline float peekCubicInterp(const float* buffer, int bufSize, float phase) {
 
 // ===== ONE POLE FILTER UTILITIES =====
 
-// Math constants
-inline constexpr float TWO_PI = 6.28318530717958647692f;
-
 struct OnePoleNormalized {
-    float m_state = 0.0f;
+    float m_state{0.0f};
     
     float processLowpass(float input, float coeff) {
         coeff = sc_clip(coeff, 0.0f, 1.0f);
@@ -54,7 +54,6 @@ struct OnePoleNormalized {
 };
 
 struct OnePoleFilter {
-    
     float m_state{0.0f};
    
     float processLowpass(float input, float cutoffHz, float sampleRate) {
@@ -83,10 +82,6 @@ struct OnePoleFilter {
 };
 
 // ===== BIT MANIPULATION UTILITIES =====
-
-inline float randomFloat(RGen& rgen) {
-    return rgen.frand();
-}
 
 inline int rotateBits(int value, int rotation, int length) {
     // Use wrap instead of % to handle negative rotation amount
@@ -188,7 +183,7 @@ struct ShiftRegister {
                 int withoutLSB = rotated - extractedBit;
                 
                 // XOR with random value
-                bool feedbackBit = (randomFloat(rgen) < chance);
+                bool feedbackBit = (rgen.frand() < chance);
                 int newBit = extractedBit ^ static_cast<int>(feedbackBit);
                 
                 // Update Shift Register
@@ -213,6 +208,24 @@ struct ShiftRegister {
 
 // ===== TRIGGER AND TIMING UTILITIES =====
 
+struct IsTrigger {
+    float m_prevIn{0.0f};
+    
+    bool process(float currentIn) {
+        // SC canonical trigger: rising edge detection (prevIn <= 0 && currentIn > 0)
+        bool trigger = (currentIn > 0.0f && m_prevIn <= 0.0f);
+        
+        // Update state for next sample
+        m_prevIn = currentIn;
+        
+        return trigger;
+    }
+    
+    void reset() {
+        m_prevIn = 0.0f;
+    }
+};
+
 struct RampToTrig {
     double m_lastPhase{0.0};
     bool m_lastWrap{false};
@@ -234,7 +247,7 @@ struct RampToTrig {
     }
     
     void reset() {
-        m_lastPhase = 0.0;
+        m_lastPhase = 1.0;  // Prime to allow initial trigger
         m_lastWrap = false;
     }
 };
@@ -262,7 +275,7 @@ struct StepToTrig {
     }
     
     void reset() {
-        m_lastCeiling = 0.0;
+        m_lastCeiling = -1.0;  // Prime to allow initial trigger
         m_lastStep = false;
     }
 };
@@ -337,14 +350,6 @@ struct SchedulerCycle {
         m_wrapNext = false;
         trigDetect.reset();
     }
-
-    void init() {
-        m_phase = 0.0;
-        m_slope = 0.0;
-        m_wrapNext = false;
-        trigDetect.m_lastPhase = 1.0;
-        trigDetect.m_lastWrap = false;
-    }
 };
 
 // ===== SCHEDULER BURST =====
@@ -369,7 +374,7 @@ struct SchedulerBurst {
     
         // Reset on new trigger
         if (initTrigger) {
-            init();
+            reset();
             m_hasTriggered = true;
         }
     
@@ -419,51 +424,38 @@ struct SchedulerBurst {
         m_hasTriggered = false;
         trigDetect.reset();
     }
-    
-    void init() {
-        m_phaseScaled = 0.0;
-        m_slope = 0.0;
-        trigDetect.m_lastCeiling = -1.0;
-        trigDetect.m_lastStep = false;
-    }
 };
 
 // ===== VOICE ALLOCATOR =====
 
+template<int NumChannels>
 struct VoiceAllocator {
     // Internal processing state
-    std::vector<double> localPhases;      
-    std::vector<double> localSlopes;      
-    std::vector<bool> isActive;           
+    std::array<double, NumChannels> localPhases{};      
+    std::array<double, NumChannels> localSlopes{};      
+    std::array<bool, NumChannels> isActive{};           
     
     // Output interface
-    std::vector<float> phases;            
-    std::vector<bool> triggers;           
-    int numChannels;
+    std::array<float, NumChannels> phases{};            
+    std::array<bool, NumChannels> triggers{};           
     
-    explicit VoiceAllocator(int channels = 16) : numChannels(channels) {
-        localPhases.resize(numChannels, 0.0);
-        localSlopes.resize(numChannels, 0.0);
-        isActive.resize(numChannels, false);
-        phases.resize(numChannels, 0.0f);
-        triggers.resize(numChannels, false);
-    }
+    VoiceAllocator() = default;
     
     void process(bool trigger, float rate, float subSampleOffset, float sampleRate) {
         // Clear output triggers
         std::fill(triggers.begin(), triggers.end(), false);
         
         // 1. Free completed voices
-        for (int ch = 0; ch < numChannels; ++ch) {
+        for (int ch = 0; ch < NumChannels; ++ch) {
             if (isActive[ch] && localPhases[ch] >= 1.0) {
                 isActive[ch] = false;
-                localPhases[ch] = 0.0;  // Clean reset
+                localPhases[ch] = 0.0;
             }
         }
         
         // 2. Allocate new voice if trigger
         if (trigger) {
-            for (int ch = 0; ch < numChannels; ++ch) {
+            for (int ch = 0; ch < NumChannels; ++ch) {
                 if (!isActive[ch]) {
                     localSlopes[ch] = rate / sampleRate;
                     localPhases[ch] = localSlopes[ch] * subSampleOffset;
@@ -475,16 +467,16 @@ struct VoiceAllocator {
         }
         
         // 3. Output current phase
-        for (int ch = 0; ch < numChannels; ++ch) {
+        for (int ch = 0; ch < NumChannels; ++ch) {
             if (isActive[ch] && localPhases[ch] < 1.0) {
                 phases[ch] = static_cast<float>(localPhases[ch]);
             } else {
-                phases[ch] = 0.0f;  // Inactive or completed
+                phases[ch] = 0.0f;
             }
         }
         
         // 4. Increment all active voices
-        for (int ch = 0; ch < numChannels; ++ch) {
+        for (int ch = 0; ch < NumChannels; ++ch) {
             if (isActive[ch]) {
                 localPhases[ch] += localSlopes[ch];
             }

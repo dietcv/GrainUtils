@@ -9,7 +9,10 @@ SchedulerCycle::SchedulerCycle() : m_sampleRate(static_cast<float>(sampleRate())
 {
     mCalcFunc = make_calc_function<SchedulerCycle, &SchedulerCycle::next_aa>();
     next_aa(1);
-    m_scheduler.init();
+
+    // Reset state after priming
+    m_scheduler.reset();
+    m_resetTrigger.reset();
 }
 
 SchedulerCycle::~SchedulerCycle() = default;
@@ -19,7 +22,7 @@ void SchedulerCycle::next_aa(int nSamples) {
     const float* rateIn = in(Rate);
     
     // Control-rate parameters
-    bool resetTrigger = in0(Reset) > 0.5f;
+    bool reset = m_resetTrigger.process(in0(Reset));
    
     // Output pointers
     float* triggerOut = out(Trigger);
@@ -28,10 +31,14 @@ void SchedulerCycle::next_aa(int nSamples) {
     float* phaseOut = out(Phase);
    
     for (int i = 0; i < nSamples; ++i) {
+
+        // Get audio-rate parameters per-sample
+        float rate = rateIn[i];
+
         // Process event scheduler
         auto event = m_scheduler.process(
-            rateIn[i],
-            resetTrigger,
+            rate,
+            reset,
             m_sampleRate
         );
         
@@ -49,7 +56,10 @@ SchedulerBurst::SchedulerBurst() : m_sampleRate(static_cast<float>(sampleRate())
 {
     mCalcFunc = make_calc_function<SchedulerBurst, &SchedulerBurst::next_aa>();
     next_aa(1);
-    m_scheduler.init();
+
+    // Reset state after priming
+    m_scheduler.reset();
+    m_initTrigger.reset();
 }
 
 SchedulerBurst::~SchedulerBurst() = default;
@@ -67,11 +77,17 @@ void SchedulerBurst::next_aa(int nSamples) {
     float* phaseOut = out(Phase);
     
     for (int i = 0; i < nSamples; ++i) {
+
+        // Get audio-rate parameters per-sample
+        bool initTrigger = m_initTrigger.process(initTriggerIn[i]);
+        float duration = durationIn[i];
+        float cycles = cyclesIn[i];
+
         // Process event scheduler
         auto event = m_scheduler.process(
-            initTriggerIn[i] > 0.5f,
-            durationIn[i],
-            cyclesIn[i],
+            initTrigger,
+            duration,
+            cycles,
             m_sampleRate
         );
         
@@ -87,13 +103,15 @@ void SchedulerBurst::next_aa(int nSamples) {
 
 VoiceAllocator::VoiceAllocator() : m_sampleRate(static_cast<float>(sampleRate()))
 {
-    // Get number of channels and initialize
-    m_numChannels = sc_clip(static_cast<int>(in0(NumChannels)), 1, 64);
-    m_allocator = Utils::VoiceAllocator(m_numChannels);
-    m_allocator.reset();
-   
+    // Get number of channels
+    m_numChannels = sc_clip(static_cast<int>(in0(NumChannels)), 1, MAX_CHANNELS);
+       
     mCalcFunc = make_calc_function<VoiceAllocator, &VoiceAllocator::next_aa>();
     next_aa(1);
+
+    // Reset state after priming
+    m_allocator.reset();
+    m_trigger.reset();
 }
 
 VoiceAllocator::~VoiceAllocator() = default;
@@ -105,11 +123,17 @@ void VoiceAllocator::next_aa(int nSamples) {
     const float* offsetIn = in(SubSampleOffset);
    
     for (int i = 0; i < nSamples; ++i) {
+
+        // Get audio-rate parameters per-sample
+        bool trigger = m_trigger.process(triggerIn[i]);
+        float rate = rateIn[i];
+        float offset = offsetIn[i];
+
         // Process voice allocator
         m_allocator.process(
-            triggerIn[i] > 0.5f,
-            rateIn[i],
-            offsetIn[i],
+            trigger,
+            rate,
+            offset,
             m_sampleRate
         );
        
@@ -127,6 +151,9 @@ RampIntegrator::RampIntegrator() : m_sampleRate(static_cast<float>(sampleRate())
 {
     mCalcFunc = make_calc_function<RampIntegrator, &RampIntegrator::next_aa>();
     next_aa(1);
+
+    // Reset state after priming
+    m_trigger.reset();
 }
 
 RampIntegrator::~RampIntegrator() = default;
@@ -141,11 +168,17 @@ void RampIntegrator::next_aa(int nSamples) {
     float* phaseOut = out(Phase);
    
     for (int i = 0; i < nSamples; ++i) {
+
+        // Get audio-rate parameters per-sample
+        bool trigger = m_trigger.process(triggerIn[i]);
+        float rate = rateIn[i];
+        float offset = offsetIn[i];
+
         // Process integrator
         phaseOut[i] = m_integrator.process(
-            triggerIn[i] > 0.5f,
-            rateIn[i],
-            offsetIn[i],
+            trigger,
+            rate,
+            offset,
             m_sampleRate
         );
     }
@@ -157,6 +190,9 @@ RampAccumulator::RampAccumulator()
 {
     mCalcFunc = make_calc_function<RampAccumulator, &RampAccumulator::next_aa>();
     next_aa(1);
+    
+    // Reset state after priming
+    m_trigger.reset();
 }
 
 RampAccumulator::~RampAccumulator() = default;
@@ -170,10 +206,15 @@ void RampAccumulator::next_aa(int nSamples) {
     float* countOut = out(Count);
    
     for (int i = 0; i < nSamples; ++i) {
+
+        // Get audio-rate parameters per-sample
+        bool trigger = m_trigger.process(triggerIn[i]);
+        float offset = offsetIn[i];
+
         // Process accumulator
         countOut[i] = m_accumulator.process(
-            triggerIn[i] > 0.5f,
-            offsetIn[i]
+            trigger,
+            offset
         );
     }
 }

@@ -246,23 +246,6 @@ namespace WindowFunctions {
         return UnitShapers::hanning(warpedPhase);
     }
 
-    inline float welchWindow(float phase, float skew) {
-        float warpedPhase = UnitShapers::triangle(phase, skew);
-        return UnitShapers::welch(warpedPhase);
-    }
-
-    inline float circularWindow(float phase, float skew) {
-        float warpedPhase = UnitShapers::triangle(phase, skew);
-        return UnitShapers::circular(warpedPhase);
-    }
-
-    inline float raisedCosWindow(float phase, float skew, float index) {
-        float warpedPhase = UnitShapers::triangle(phase, skew);
-        float raisedCos = UnitShapers::raisedCos(warpedPhase, index);
-        float hanning = UnitShapers::hanning(warpedPhase);
-        return raisedCos * hanning;
-    }
-
     inline float gaussianWindow(float phase, float skew, float index) {
         float warpedPhase = UnitShapers::triangle(phase, skew);
         float gaussian = UnitShapers::gaussian(warpedPhase, index);

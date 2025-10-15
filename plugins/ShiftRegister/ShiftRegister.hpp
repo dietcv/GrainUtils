@@ -17,6 +17,8 @@ private:
     
     // Core processing
     Utils::ShiftRegister m_shiftRegister;
+    Utils::IsTrigger m_trigger;
+    Utils::IsTrigger m_resetTrigger;
     
     // Constants
     const float m_sampleRate;

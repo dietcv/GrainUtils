@@ -8,13 +8,13 @@ class SchedulerCycle : public SCUnit {
 public:
     SchedulerCycle();
     ~SchedulerCycle();
-
 private:
     void next_aa(int nSamples);
    
     // Core processing
     Utils::SchedulerCycle m_scheduler;
-
+    Utils::IsTrigger m_resetTrigger;
+    
     // Constants
     const float m_sampleRate;
    
@@ -28,7 +28,7 @@ private:
         Trigger,            // derived trigger
         RateLatched,        // derived and latched frequency in hz
         SubSampleOffset,    // sub-sample offset
-        Phase,             
+        Phase,            
     };
 };
 
@@ -38,23 +38,24 @@ class SchedulerBurst : public SCUnit {
 public:
     SchedulerBurst();
     ~SchedulerBurst();
-    
+   
 private:
     void next_aa(int nSamples);
-    
+   
     // Core processing
     Utils::SchedulerBurst m_scheduler;
-    
+    Utils::IsTrigger m_initTrigger;
+   
     // Constants
     const float m_sampleRate;
-    
+   
     // Input parameters
     enum InputParams {
         InitTrigger,    // Trigger to start sequence
         Duration,       // Duration of one cycle
         Cycles          // Number of cycles/events to generate
     };
-    
+   
     enum Outputs {
         Trigger,            // Event triggers
         RateLatched,        // Event rate in Hz
@@ -69,15 +70,17 @@ class VoiceAllocator : public SCUnit {
 public:
     VoiceAllocator();
     ~VoiceAllocator();
-
 private:
     void next_aa(int nSamples);
-    void reset();
    
-    // Core processing
-    Utils::VoiceAllocator m_allocator;
-
     // Constants
+    static constexpr int MAX_CHANNELS = 64;
+    
+    // Core processing
+    Utils::VoiceAllocator<MAX_CHANNELS> m_allocator;
+    Utils::IsTrigger m_trigger;
+    
+    // Runtime state
     const float m_sampleRate;
     int m_numChannels;
    
@@ -99,13 +102,13 @@ class RampIntegrator : public SCUnit {
 public:
     RampIntegrator();
     ~RampIntegrator();
-
 private:
     void next_aa(int nSamples);
    
     // Core processing
     Utils::RampIntegrator m_integrator;
-    
+    Utils::IsTrigger m_trigger;
+   
     // Constants
     const float m_sampleRate;
    
@@ -127,12 +130,12 @@ class RampAccumulator : public SCUnit {
 public:
     RampAccumulator();
     ~RampAccumulator();
-
 private:
     void next_aa(int nSamples);
    
     // Core processing
     Utils::RampAccumulator m_accumulator;
+    Utils::IsTrigger m_trigger;
    
     // Input parameters
     enum InputParams {

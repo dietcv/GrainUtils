@@ -9,7 +9,11 @@ ShiftRegister::ShiftRegister() : m_sampleRate(static_cast<float>(sampleRate()))
 {
     mCalcFunc = make_calc_function<ShiftRegister, &ShiftRegister::next_aa>();
     next_aa(1);
+
+    // Reset state after priming
     m_shiftRegister.reset();
+    m_trigger.reset();
+    m_resetTrigger.reset();
 }
 
 ShiftRegister::~ShiftRegister() = default;
@@ -24,7 +28,7 @@ void ShiftRegister::next_aa(int inNumSamples) {
     const float *rotateIn = in(Rotate);
 
     // Control-rate parameters
-    bool resetTrigger = in0(Reset) > 0.5f;
+    bool reset = m_resetTrigger.process(in0(Reset));
    
     // Output pointers
     float *out3Bit = out(Out3Bit);
@@ -33,7 +37,7 @@ void ShiftRegister::next_aa(int inNumSamples) {
     for (int i = 0; i < inNumSamples; ++i) {
  
         // Get audio-rate parameters per-sample
-        float trigger = triggerIn[i] > 0.5f;
+        bool trigger = m_trigger.process(triggerIn[i]);
         float chance = sc_clip(chanceIn[i], 0.0f, 1.0f);
         int length = sc_clip(static_cast<int>(lengthIn[i]), 1, MAX_LENGTH);
         int rotation = sc_clip(static_cast<int>(rotateIn[i]), -MAX_LENGTH, MAX_LENGTH);
@@ -41,7 +45,7 @@ void ShiftRegister::next_aa(int inNumSamples) {
         // Process shift register
         auto output = m_shiftRegister.process(
             trigger,
-            resetTrigger, 
+            reset, 
             chance, 
             length, 
             rotation,

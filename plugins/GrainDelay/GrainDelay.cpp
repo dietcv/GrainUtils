@@ -10,12 +10,8 @@ GrainDelay::GrainDelay() :
     m_sampleRate(static_cast<float>(sampleRate())),
     m_sampleDur(static_cast<float>(sampleDur())),
     m_bufFrames(MAX_DELAY_TIME * m_sampleRate),
-    m_bufSize(static_cast<int>(m_bufFrames)),
-    m_allocator(NUM_CHANNELS)
+    m_bufSize(static_cast<int>(m_bufFrames))
 {
-    // Initialize graindata
-    m_grainData.resize(NUM_CHANNELS);
-
     // Allocate audio buffer
     m_buffer = (float*)RTAlloc(mWorld, m_bufSize * sizeof(float));
 
@@ -28,7 +24,10 @@ GrainDelay::GrainDelay() :
     
     mCalcFunc = make_calc_function<GrainDelay, &GrainDelay::next_aa>();
     next_aa(1);
-    m_scheduler.init();
+
+    // Reset state after priming
+    m_scheduler.reset();
+    m_resetTrigger.reset();
 }
 
 GrainDelay::~GrainDelay() {
@@ -49,14 +48,14 @@ void GrainDelay::next_aa(int nSamples) {
     float feedback = sc_clip(in0(Feedback), 0.0f, 0.99f);
     float damping = sc_clip(in0(Damping), 0.0f, 1.0f);
     bool freeze = in0(Freeze) > 0.5f;
-    bool reset = in0(Reset) > 0.5f;
+    bool reset = m_resetTrigger.process(in0(Reset));
 
     // Output pointers
     float* output = out(Output);
     
     for (int i = 0; i < nSamples; ++i) {
         
-        // Sample audio-rate parameters per-sample
+        // Get audio-rate parameters per-sample
         float triggerRate = triggerRateIn[i];
         float overlap = sc_clip(overlapIn[i], 0.001f, static_cast<float>(NUM_CHANNELS));
         float delayTime = sc_clip(delayTimeIn[i], m_sampleDur, MAX_DELAY_TIME);

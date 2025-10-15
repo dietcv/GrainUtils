@@ -62,16 +62,6 @@ TukeyWindow : UGen {
     }
 }
 
-PlanckWindow : UGen {
-    *ar { |phase, skew = 0.5, width = 0, index = 0|
-		if(phase.rate!='audio'){phase = K2A.ar(phase)};
-		if(skew.rate!='audio'){skew = K2A.ar(skew)};
-		if(width.rate!='audio'){width = K2A.ar(width)};
-		if(index.rate!='audio'){index = K2A.ar(index)};
-        ^this.multiNew('audio', phase, skew, width, index)
-    }
-}
-
 ExponentialWindow : UGen {
 	*ar { |phase, skew = 0.5, shape = 0.5|
 		if(phase.rate!='audio'){phase = K2A.ar(phase)};
