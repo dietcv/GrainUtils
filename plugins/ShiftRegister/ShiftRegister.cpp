@@ -26,10 +26,8 @@ void ShiftRegister::next_aa(int inNumSamples) {
     const float *chanceIn = in(Chance);
     const float *lengthIn = in(Length);
     const float *rotateIn = in(Rotate);
+    const float* resetIn = in(Reset);
 
-    // Control-rate parameters
-    bool reset = m_resetTrigger.process(in0(Reset));
-   
     // Output pointers
     float *out3Bit = out(Out3Bit);
     float *out8Bit = out(Out8Bit);
@@ -41,6 +39,7 @@ void ShiftRegister::next_aa(int inNumSamples) {
         float chance = sc_clip(chanceIn[i], 0.0f, 1.0f);
         int length = sc_clip(static_cast<int>(lengthIn[i]), 1, MAX_LENGTH);
         int rotation = sc_clip(static_cast<int>(rotateIn[i]), -MAX_LENGTH, MAX_LENGTH);
+        bool reset = m_resetTrigger.process(resetIn[i]);
 
         // Process shift register
         auto output = m_shiftRegister.process(

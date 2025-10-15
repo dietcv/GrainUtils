@@ -20,10 +20,8 @@ SchedulerCycle::~SchedulerCycle() = default;
 void SchedulerCycle::next_aa(int nSamples) {  
     // Audio-rate parameters
     const float* rateIn = in(Rate);
+    const float* resetIn = in(Reset);
     
-    // Control-rate parameters
-    bool reset = m_resetTrigger.process(in0(Reset));
-   
     // Output pointers
     float* triggerOut = out(Trigger);
     float* rateOut = out(RateLatched);
@@ -34,6 +32,7 @@ void SchedulerCycle::next_aa(int nSamples) {
 
         // Get audio-rate parameters per-sample
         float rate = rateIn[i];
+        bool reset = m_resetTrigger.process(resetIn[i]);
 
         // Process event scheduler
         auto event = m_scheduler.process(

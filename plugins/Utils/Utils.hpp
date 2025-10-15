@@ -171,7 +171,6 @@ struct ShiftRegister {
         // Handle reset
         if (resetTrigger) {
             reset();
-            return output;  // Early exit on reset
         }
 
         // Process trigger
@@ -309,7 +308,6 @@ struct SchedulerCycle {
         // Handle reset
         if (resetTrigger) {
             reset();
-            return output; // Early exit on reset
         }
      
         // Initialize slope
