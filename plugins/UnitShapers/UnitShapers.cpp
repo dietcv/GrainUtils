@@ -100,7 +100,7 @@ void UnitWalk::next(int nSamples) {
     RGen& rgen = *mParent->mRGen;
     
     const float* phaseIn = in(0);
-    const float* stepIn = in(2); 
+    const float* stepIn = in(1); 
     float* outbuf = out(0);
     
     for (int i = 0; i < nSamples; ++i) {
