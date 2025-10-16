@@ -11,9 +11,12 @@ UnitTriangle::UnitTriangle() {
 }
 
 void UnitTriangle::next(int nSamples) {
+    // Audio-rate parameters
     const float* phaseIn = in(0);
     const float* skewIn = in(1);
-    float* outbuf = out(0);
+
+    // Output pointers
+    float* output = out(0);
     
     for (int i = 0; i < nSamples; ++i) {
 
@@ -21,7 +24,7 @@ void UnitTriangle::next(int nSamples) {
         float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
         float skew = sc_clip(skewIn[i], 0.0f, 1.0f);
 
-        outbuf[i] = UnitShapers::triangle(phase, skew);
+        output[i] = UnitShapers::triangle(phase, skew);
     }
 }
 
@@ -31,9 +34,12 @@ UnitKink::UnitKink() {
 }
 
 void UnitKink::next(int nSamples) {
+    // Audio-rate parameters
     const float* phaseIn = in(0);
     const float* skewIn = in(1);
-    float* outbuf = out(0);
+
+    // Output pointers
+    float* output = out(0);
     
     for (int i = 0; i < nSamples; ++i) {
 
@@ -41,7 +47,7 @@ void UnitKink::next(int nSamples) {
         float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
         float skew = sc_clip(skewIn[i], 0.0f, 1.0f);
 
-        outbuf[i] = UnitShapers::kink(phase, skew);
+        output[i] = UnitShapers::kink(phase, skew);
     }
 }
 
@@ -51,9 +57,12 @@ UnitCubic::UnitCubic() {
 }
 
 void UnitCubic::next(int nSamples) {
+    // Audio-rate parameters
     const float* phaseIn = in(0);
     const float* indexIn = in(1);
-    float* outbuf = out(0);
+
+    // Output pointers
+    float* output = out(0);
    
     for (int i = 0; i < nSamples; ++i) {
 
@@ -61,7 +70,7 @@ void UnitCubic::next(int nSamples) {
         float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
         float index = sc_clip(indexIn[i], 0.0f, 1.0f);
 
-        outbuf[i] = UnitShapers::cubic(phase, index);
+        output[i] = UnitShapers::cubic(phase, index);
     }
 }
 
@@ -76,15 +85,18 @@ UnitRand::UnitRand() {
 void UnitRand::next(int nSamples) {
     RGen& rgen = *mParent->mRGen;
     
+    // Audio-rate parameters
     const float* phaseIn = in(0);
-    float* outbuf = out(0);
+
+    // Output pointers
+    float* output = out(0);
     
     for (int i = 0; i < nSamples; ++i) {
 
         // Get audio-rate parameters per-sample
         float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
 
-        outbuf[i] = m_state.process(phase, rgen);
+        output[i] = m_state.process(phase, rgen);
     }
 }
 
@@ -99,9 +111,12 @@ UnitWalk::UnitWalk() {
 void UnitWalk::next(int nSamples) {
     RGen& rgen = *mParent->mRGen;
     
+    // Audio-rate parameters
     const float* phaseIn = in(0);
-    const float* stepIn = in(1); 
-    float* outbuf = out(0);
+    const float* stepIn = in(1);
+    
+    // Output pointers
+    float* output = out(0);
     
     for (int i = 0; i < nSamples; ++i) {
 
@@ -109,7 +124,7 @@ void UnitWalk::next(int nSamples) {
         float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
         float step = sc_clip(stepIn[i], 0.0f, 1.0f);
 
-        outbuf[i] = m_state.process(phase, step, rgen);
+        output[i] = m_state.process(phase, step, rgen);
     }
 }
 
@@ -121,9 +136,12 @@ HanningWindow::HanningWindow() {
 }
 
 void HanningWindow::next(int nSamples) {
+    // Audio-rate parameters
     const float* phaseIn = in(0);
     const float* skewIn = in(1);
-    float* outbuf = out(0);
+
+    // Output pointers
+    float* output = out(0);
     
     for (int i = 0; i < nSamples; ++i) {
 
@@ -131,7 +149,7 @@ void HanningWindow::next(int nSamples) {
         float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
         float skew = sc_clip(skewIn[i], 0.0f, 1.0f);
 
-        outbuf[i] = WindowFunctions::hanningWindow(phase, skew);
+        output[i] = WindowFunctions::hanningWindow(phase, skew);
     }
 }
 
@@ -141,10 +159,13 @@ GaussianWindow::GaussianWindow() {
 }
 
 void GaussianWindow::next(int nSamples) {
+    // Audio-rate parameters
     const float* phaseIn = in(0);
     const float* skewIn = in(1);
     const float* indexIn = in(2);
-    float* outbuf = out(0);
+
+    // Output pointers
+    float* output = out(0);
     
     for (int i = 0; i < nSamples; ++i) {
 
@@ -153,7 +174,7 @@ void GaussianWindow::next(int nSamples) {
         float skew = sc_clip(skewIn[i], 0.0f, 1.0f);
         float index = indexIn[i];
 
-        outbuf[i] = WindowFunctions::gaussianWindow(phase, skew, index);
+        output[i] = WindowFunctions::gaussianWindow(phase, skew, index);
     }
 }
 
@@ -163,11 +184,14 @@ TrapezoidalWindow::TrapezoidalWindow() {
 }
 
 void TrapezoidalWindow::next(int nSamples) {
+    // Audio-rate parameters
     const float* phaseIn = in(0);
     const float* skewIn = in(1);
     const float* widthIn = in(2);
     const float* dutyIn = in(3);
-    float* outbuf = out(0);
+
+    // Output pointers
+    float* output = out(0);
     
     for (int i = 0; i < nSamples; ++i) {
 
@@ -177,7 +201,7 @@ void TrapezoidalWindow::next(int nSamples) {
         float width = sc_clip(widthIn[i], 0.0f, 1.0f);
         float duty = sc_clip(dutyIn[i], 0.0f, 1.0f);
 
-        outbuf[i] = WindowFunctions::trapezoidalWindow(phase, skew, width, duty);
+        output[i] = WindowFunctions::trapezoidalWindow(phase, skew, width, duty);
     }
 }
 
@@ -187,10 +211,13 @@ TukeyWindow::TukeyWindow() {
 }
 
 void TukeyWindow::next(int nSamples) {
+    // Audio-rate parameters
     const float* phaseIn = in(0);
     const float* skewIn = in(1);
     const float* widthIn = in(2);
-    float* outbuf = out(0);
+
+    // Output pointers
+    float* output = out(0);
     
     for (int i = 0; i < nSamples; ++i) {
 
@@ -199,7 +226,7 @@ void TukeyWindow::next(int nSamples) {
         float skew = sc_clip(skewIn[i], 0.0f, 1.0f);
         float width = sc_clip(widthIn[i], 0.0f, 1.0f);
 
-        outbuf[i] = WindowFunctions::tukeyWindow(phase, skew, width);
+        output[i] = WindowFunctions::tukeyWindow(phase, skew, width);
     }
 }
 
@@ -209,10 +236,13 @@ ExponentialWindow::ExponentialWindow() {
 }
 
 void ExponentialWindow::next(int nSamples) {
+    // Audio-rate parameters
     const float* phaseIn = in(0);
     const float* skewIn = in(1);
     const float* shapeIn = in(2);
-    float* outbuf = out(0);
+
+    // Output pointers
+    float* output = out(0);
     
     for (int i = 0; i < nSamples; ++i) {
 
@@ -221,7 +251,7 @@ void ExponentialWindow::next(int nSamples) {
         float skew = sc_clip(skewIn[i], 0.0f, 1.0f);
         float shape = sc_clip(shapeIn[i], 0.0f, 1.0f);
 
-        outbuf[i] = WindowFunctions::exponentialWindow(phase, skew, shape);
+        output[i] = WindowFunctions::exponentialWindow(phase, skew, shape);
     }
 }
 
@@ -233,9 +263,12 @@ JCurve::JCurve() {
 }
 
 void JCurve::next(int nSamples) {
+    // Audio-rate parameters
     const float* phaseIn = in(0);
     const float* shapeIn = in(1);
-    float* outbuf = out(0);
+
+    // Output pointers
+    float* output = out(0);
     
     for (int i = 0; i < nSamples; ++i) {
 
@@ -243,7 +276,7 @@ void JCurve::next(int nSamples) {
         float phase = sc_clip(phaseIn[i], 0.0f, 1.0f);
         float shape = sc_clip(shapeIn[i], 0.0f, 1.0f);
 
-        outbuf[i] = InterpFunctions::jCurve(phase, shape, EasingCores::quintic);
+        output[i] = InterpFunctions::jCurve(phase, shape, EasingCores::quintic);
     }
 }
 
@@ -253,10 +286,13 @@ SCurve::SCurve() {
 }
 
 void SCurve::next(int nSamples) {
+    // Audio-rate parameters
     const float* phaseIn = in(0);
     const float* shapeIn = in(1);
     const float* inflectionIn = in(2);
-    float* outbuf = out(0);
+
+    // Output pointers
+    float* output = out(0);
     
     for (int i = 0; i < nSamples; ++i) {
 
@@ -265,7 +301,7 @@ void SCurve::next(int nSamples) {
         float shape = sc_clip(shapeIn[i], 0.0f, 1.0f);
         float inflection = sc_clip(inflectionIn[i], 0.0f, 1.0f);
         
-        outbuf[i] = InterpFunctions::sCurve(phase, shape, inflection, EasingCores::quintic);
+        output[i] = InterpFunctions::sCurve(phase, shape, inflection, EasingCores::quintic);
     }
 }
 
