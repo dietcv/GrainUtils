@@ -104,7 +104,7 @@ set(Oscs_cpp_files
 set(Oscs_sc_files
     plugins/Oscs/Classes/Oscs.sc
 )
-set(EventSystem_schelp_files
+set(Oscs_schelp_files
     plugins/Oscs/HelpSource/DualOscOS.schelp
     plugins/Oscs/HelpSource/SingleOscOS.schelp
 )
