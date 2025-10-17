@@ -105,8 +105,8 @@ set(Oscs_sc_files
     plugins/Oscs/Classes/Oscs.sc
 )
 set(EventSystem_schelp_files
-    plugins/Oscs/HelpSource/Classes/DualOscOS.schelp
-    plugins/Oscs/HelpSource/Classes/SingleOscOS.schelp
+    plugins/Oscs/HelpSource/DualOscOS.schelp
+    plugins/Oscs/HelpSource/SingleOscOS.schelp
 )
 sc_add_server_plugin(
     "GrainUtils/Oscs" # destination directory
