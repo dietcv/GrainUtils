@@ -1,0 +1,208 @@
+class:: DualOscOS
+summary:: bandlimited dual wavetable oscillator with cross-modulation and oversampling
+categories:: UGens>Oscillator
+
+DESCRIPTION::
+DualOscOS is a bandlimited dual wavetable oscillator with cross-modulation and optional oversampling. 
+It features cross-modulation between the two coupled wavetable oscillators via phase modulation with a tracking OnePole filter in the feedback path.
+The wavetable oscillators are bandlimited via dynamic mipmapping and sinc interpolation. 
+The amount of phase modulation is set by the pmIndex parameters. 
+The cutoff frequencies of the OnePole filters are set to the fundamental frequencies of the modulators 
+and can be adjusted by the pmFilterRatio parameters for different modulation flavours.
+
+CLASSMETHODS::
+
+METHOD:: ar
+
+ARGUMENT:: bufnumA
+Buffer containing wavetable data for oscillator A (the size has to be a power-of-2).
+
+ARGUMENT:: phaseA  
+Phase input for oscillator A (0.0 to 1.0).
+
+ARGUMENT:: numCyclesA
+Number of cycles in buffer A (default: 1).
+
+ARGUMENT:: cyclePosA
+Cycle position for oscillator A (0.0 to 1.0).
+
+ARGUMENT:: bufnumB
+Buffer containing wavetable data for oscillator B (the size has to be a power-of-2).
+
+ARGUMENT:: phaseB
+Phase input for oscillator B (0.0 to 1.0).
+
+ARGUMENT:: numCyclesB
+Number of cycles in buffer B (default: 1).
+
+ARGUMENT:: cyclePosB
+Cycle position for oscillator B (0.0 to 1.0).
+
+ARGUMENT:: pmIndexA
+Phase modulation depth - how much oscillator B modulates oscillator A (default: 0).
+
+ARGUMENT:: pmIndexB
+Phase modulation depth - how much oscillator A modulates oscillator B (default: 0).
+
+ARGUMENT:: pmFilterRatioA
+Filter ratio for oscillator A's phase modulation (default: 1).
+
+ARGUMENT:: pmFilterRatioB
+Filter ratio for oscillator B's phase modulation (default: 1).
+
+ARGUMENT:: oversample
+Oversampling factor: 0=1x, 1=2x, 2=4x, 3=8x, 4=16x (default: 0).
+
+returns:: A multichannel UGen with two outputs [oscA, oscB].
+
+EXAMPLES::
+
+code::
+
+(
+// scale modulation depth of modulators between 0 and 1
+var modScaleBipolarUp = { |modulator, value, amount|
+	value + (modulator * (1 - value) * amount);
+};
+
+SynthDef(\dualOscOS, {
+	
+	var param, calcWavetableData;
+	var wavetableDataA, wavetableDataB;
+	var sigs, sig;
+	
+	// Global parameter function
+	param = { |chainID, name, default, spec|
+		var paramName = "%_%".format(name, chainID).asSymbol;
+		NamedControl.kr(paramName, default, lags: 0.02, fixedLag: true, spec: spec);
+	};
+	
+	// Function to calculate wavetable data
+	calcWavetableData = { |chainID, phaseOffset|
+		
+		var tableIndexMF, tableIndexMod, tableIndex;
+		var wavetable, sizeOfTable, pmIndex, pmFltRatio;
+		var freq, phase;
+		
+		freq = param.(chainID, \freq, 440, spec: ControlSpec(1, 1000, \exp));
+		phase = Phasor.ar(DC.ar(0), freq * SampleDur.ir);
+		
+		/////////////////////////////////////////////////////////////////////////////////
+		
+		// Create table index modulation
+		tableIndexMF = param.(chainID, \tableIndexMF, 0.1, ControlSpec(0.1, 1));
+		tableIndexMod = { |phase|
+			SinOsc.ar(tableIndexMF, phase + phaseOffset * pi)
+		};
+		
+		tableIndex = modScaleBipolarUp.(
+			modulator: tableIndexMod.(0.5),
+			value: param.(chainID, \tableIndex, 0, ControlSpec(0, 1)),
+			amount: param.(chainID, \tableIndexMD, 1, ControlSpec(0, 1))
+		);
+		
+		// table params
+		wavetable = param.(chainID, \sndBuf, 0);
+		sizeOfTable = BufFrames.kr(wavetable) / 2048;
+		
+		// Phase modulation params
+		pmIndex = param.(chainID, \pmIndex, 0, ControlSpec(0, 5));
+		pmFltRatio = param.(chainID, \pmFltRatio, 1, ControlSpec(1, 5));
+		
+		/////////////////////////////////////////////////////////////////////////////////
+		
+		(
+			phase: phase,
+			pmIndex: pmIndex,
+			pmFltRatio: pmFltRatio,
+			wavetable: wavetable,
+			sizeOfTable: sizeOfTable,
+			tableIndex: tableIndex
+		);
+		
+	};
+	
+	wavetableDataA = calcWavetableData.(\A, 0);
+	wavetableDataB = calcWavetableData.(\B, 1);
+	
+	sigs = DualOscOS.ar(
+
+		bufnumA: wavetableDataA[\wavetable],
+		phaseA: wavetableDataA[\phase],
+		numCyclesA: wavetableDataA[\sizeOfTable],
+		cyclePosA: wavetableDataA[\tableIndex],
+
+		bufnumB: wavetableDataB[\wavetable],
+		phaseB: wavetableDataB[\phase],
+		numCyclesB: wavetableDataB[\sizeOfTable],
+		cyclePosB: wavetableDataB[\tableIndex],
+
+		pmIndexA: wavetableDataA[\pmIndex],
+		pmIndexB: wavetableDataB[\pmIndex],
+		pmFilterRatioA: wavetableDataA[\pmFltRatio],
+		pmFilterRatioB: wavetableDataB[\pmFltRatio],
+
+		oversample: 0
+	);
+
+	sig = XFade2.ar(sigs[0], sigs[1], \chainMix.kr(0.5, spec: ControlSpec(0, 1)) * 2 - 1);
+	
+	sig = Pan2.ar(sig, \pan.kr(0));
+	sig = sig * \amp.kr(-25, spec: ControlSpec(-35, -5)).dbamp;
+	sig = sig * Env.asr(0.001, 1, 0.001).ar(Done.freeSelf, \gate.kr(1));
+
+	sig = LeakDC.ar(sig);
+	sig = Limiter.ar(sig);
+	Out.ar(\out.kr(0), sig);
+}).add;
+)
+
+// create a wavetable (or use your own)
+(
+t = Signal.sineFill(2048, [1], [0]);
+u = Signal.sineFill(2048, 1.0/((1..512)**2)*([1,0,-1,0]!128).flatten);
+w = Signal.sineFill(2048, 1.0/(1..512)*([1,0]!256).flatten);
+x = Signal.sineFill(2048, 1.0/(1..512));
+v = t.addAll(u).addAll(w).addAll(x);
+
+~buffer = Buffer.loadCollection(s, v);
+)
+
+(
+x = Synth(\dualOscOS, [
+    
+    \sndBuf_A, ~buffer,	
+	\freq_A, 440, 
+	
+	\tableIndexMF_A, 0.1,
+	\tableIndexMD_A, 1,
+	\tableIndex_A, 0,
+	
+	\pmFltRatio_A, 1, 
+	\pmIndex_A, 2,
+	
+	///////////////////////
+	
+	\sndBuf_B, ~buffer,
+	\freq_B, 550, 
+
+	\tableIndexMF_B, 0.1, 
+	\tableIndexMD_B, 1, 
+	\tableIndex_B, 0,
+	
+	\pmFltRatio_B, 2, 
+	\pmIndex_B, 1, 
+	
+	///////////////////////
+	
+	\chainMix, 0.5,
+	\pan, 0,
+	\amp, -25,
+	\out, 0,
+    
+]);
+)
+
+x.free;
+
+::

@@ -10,6 +10,7 @@ namespace Utils {
 
 inline constexpr float PI = 3.14159265358979323846f;
 inline constexpr float TWO_PI = 6.28318530717958647692f;
+inline constexpr float TWO_PI_INV = 1.0f / 6.28318530717958647692f;
 
 // ===== BASIC MATH UTILITIES =====
 
@@ -20,6 +21,69 @@ inline float lerp(float a, float b, float t) {
 inline float cosineInterp(float a, float b, float t) {
     float mu2 = (1.0f - std::cos(t * PI)) / 2.0f;
     return a * (1.0f - mu2) + b * mu2;
+}
+
+// ===== FAST APPROXIMATIONS =====    
+
+// Jatin's log2 polynomial approximation (3rd order)
+inline float jatin_log2_approx(float x) {
+    // Coefficients from Jatin's log2_approx<float, 3>
+    constexpr float alpha = 0.1640425613334452f;
+    constexpr float beta = -1.098865286222744f;
+    constexpr float gamma = 3.148297929334117f;
+    constexpr float zeta = -2.213475204444817f;
+    
+    // Estrin's method for polynomial evaluation
+    float x2 = x * x;
+    float p01 = alpha * x + beta;
+    float p23 = gamma * x + zeta;
+    return p01 * x2 + p23;
+}
+
+// Jatin's pow2 polynomial approximation (3rd order) 
+inline float jatin_pow2_approx(float x) {
+    // Coefficients from Jatin's pow2_approx<float, 3>
+    constexpr float alpha = 0.07944154167983575f;
+    constexpr float beta = 0.2274112777602189f;
+    constexpr float gamma = 0.6931471805599453f;
+    constexpr float zeta = 1.0f;
+    
+    // Estrin's method for polynomial evaluation
+    float x2 = x * x;
+    float p01 = alpha * x + beta;
+    float p23 = gamma * x + zeta;
+    return p01 * x2 + p23;
+}
+
+// Jatin's fast log2 implementation
+inline float fastLog2(float x) {
+    if (x <= 0.0f) return -1000.0f; // Handle edge case
+    
+    // Bit manipulation from Jatin's logarithm<Ratio<2,1>, 3>
+    const auto vi = reinterpret_cast<int32_t&>(x);
+    const auto ex = vi & 0x7f800000;
+    const auto e = (ex >> 23) - 127;
+    const auto vfi = (vi - ex) | 0x3f800000;
+    const auto vf = reinterpret_cast<const float&>(vfi);
+    
+    // log2_base_r = 1.0f / gcem::log2(2.0f) = 1.0f for log2
+    return static_cast<float>(e) + jatin_log2_approx(vf);
+}
+
+// Jatin's fast exp implementation  
+inline float fastExp(float x) {
+    // Euler's number ratio: e ≈ 2.718281828
+    constexpr float log2_e = 1.4426950408889634f; // log2(e)
+    
+    // Convert exp(x) to pow(e, x) using Jatin's algorithm
+    x = std::max(-126.0f, log2_e * x);
+    
+    const auto xi = static_cast<int32_t>(x);
+    const auto l = x < 0.0f ? xi - 1 : xi;
+    const auto f = x - static_cast<float>(l);
+    const auto vi = (l + 127) << 23;
+    
+    return reinterpret_cast<const float&>(vi) * jatin_pow2_approx(f);
 }
 
 // ===== BUFFER ACCESS UTILITIES =====
@@ -43,15 +107,53 @@ inline float peekCubicInterp(const float* buffer, int bufSize, float phase) {
     return cubicinterp(fracPart, a, b, c, d);
 }
 
+// ===== HIGH-PERFORMANCE BUFFER ACCESS =====
+
+// Fast wrapping within a cycle range (startPos to endPos-1) - (for power-of-2 sizes)
+inline int wrapIndex(int index, int startPos, int mask) {
+    return startPos + (index & mask);
+}
+
+// Fast no-interpolation peek with bitwise wrapping - (for power-of-2 sizes)
+inline float peekNoInterp(const float* buffer, int index, int mask) {
+    const int wrappedIndex = index & mask;
+    return buffer[wrappedIndex];
+}
+
+// Fast linear interpolation peek with bitwise wrapping - (for power-of-2 sizes)
+inline float peekLinearInterp(const float* buffer, float phase, int mask) {
+
+    const int intPart = static_cast<int>(phase);
+    const float fracPart = phase - static_cast<float>(intPart);
+    
+    const int idx1 = intPart & mask;
+    const int idx2 = (intPart + 1) & mask;
+    
+    const float a = buffer[idx1];
+    const float b = buffer[idx2];
+    
+    return lerp(a, b, fracPart);
+}
+
 // ===== ONE POLE FILTER UTILITIES =====
 
-struct OnePoleNormalized {
+struct OnePole {
     float m_state{0.0f};
     
     float processLowpass(float input, float coeff) {
+
+        // Clip coefficient
         coeff = sc_clip(coeff, 0.0f, 1.0f);
+
+        // OnePole formula: y[n] = x[n] * (1-b) + y[n-1] * b
         m_state = input * (1.0f - coeff) + m_state * coeff;
+
         return m_state;
+    }
+
+    float processHighpass(float input, float coeff) {
+        float lowpassed = processLowpass(input, coeff);
+        return input - lowpassed;
     }
 
     void reset() {
@@ -59,7 +161,7 @@ struct OnePoleNormalized {
     }
 };
 
-struct OnePoleFilter {
+struct OnePoleHz {
     float m_state{0.0f};
    
     float processLowpass(float input, float cutoffHz, float sampleRate) {
@@ -79,6 +181,33 @@ struct OnePoleFilter {
    
     float processHighpass(float input, float cutoffHz, float sampleRate) {
         float lowpassed = processLowpass(input, cutoffHz, sampleRate);
+        return input - lowpassed;
+    }
+
+    void reset() {
+        m_state = 0.0f;
+    }
+};
+
+struct OnePoleSlope {
+    float m_state{0.0f};
+      
+    float processLowpass(float input, float slope) {
+
+        // Clip slope to Nyquist range and take absolute value
+        float safeSlope = std::abs(sc_clip(slope, -0.5f, 0.5f));
+       
+        // Calculate coefficient: b = exp(-2π * slope)
+        float coeff = std::exp(-2.0f * Utils::PI * safeSlope);
+       
+        // OnePole formula: y[n] = x[n] * (1-b) + y[n-1] * b
+        m_state = input * (1.0f - coeff) + m_state * coeff;
+       
+        return m_state;
+    }
+   
+    float processHighpass(float input, float slope) {
+        float lowpassed = processLowpass(input, slope);
         return input - lowpassed;
     }
 
@@ -154,63 +283,6 @@ inline float getLSBBits(int value, int numBits, int totalBits) {
     return static_cast<float>(result) / static_cast<float>(maxValue);
 }
 
-// ===== SHIFT REGISTER =====
-
-struct ShiftRegister {
-    int m_register{0};
-    bool m_initialized{false};
-
-    struct Output {
-        float out3Bit = 0.0f;
-        float out8Bit = 0.0f;
-    };
-    
-    Output process(bool trigger, bool resetTrigger, float chance, int length, int rotation, RGen& rgen) {
-        Output output;
-
-        // Handle reset
-        if (resetTrigger) {
-            reset();
-        }
-
-        // Process trigger
-        if (trigger) {
-            if (!m_initialized) {
-                // Initialize on first trigger
-                m_register = 0;
-                m_initialized = true;
-            } else {
-                // Rotate shift register
-                int rotated = rotateBits(m_register, rotation, length);
-                
-                // Extract LSB for feedback
-                int extractedBit = rotated % 2;
-                int withoutLSB = rotated - extractedBit;
-                
-                // XOR with random value
-                bool feedbackBit = (rgen.frand() < chance);
-                int newBit = extractedBit ^ static_cast<int>(feedbackBit);
-                
-                // Update Shift Register
-                m_register = withoutLSB + newBit;
-            }
-        }
-
-        // Calculate outputs
-        if (m_initialized) {
-            output.out3Bit = getMSBBits(m_register, 3, 8);
-            output.out8Bit = 1.0f - getLSBBits(m_register, 8, 8);
-        }
-
-        return output;
-    }
-
-    void reset() {
-        m_register = 0;
-        m_initialized = false;
-    }
-};
-
 // ===== TRIGGER AND TIMING UTILITIES =====
 
 struct IsTrigger {
@@ -282,6 +354,30 @@ struct StepToTrig {
     void reset() {
         m_lastCeiling = -1.0;  // Prime to allow initial trigger
         m_lastStep = false;
+    }
+};
+
+struct RampToSlope {
+    float m_lastPhase{0.0f};
+   
+    float process(float currentPhase) {
+        // Calculate ramp slope
+        float delta = currentPhase - m_lastPhase;
+
+        // Wrap delta to recenter between -0.5 and 0.5, for corrected slope during wrap
+        if (delta > 0.5f)
+            delta -= 1.0f;
+        else if (delta < -0.5f)
+            delta += 1.0f;    
+    
+        // Update state for next sample
+        m_lastPhase = currentPhase;
+
+        return delta;
+    }
+   
+    void reset() {
+        m_lastPhase = 0.0f;
     }
 };
 
@@ -559,6 +655,63 @@ struct RampAccumulator {
     void reset() {
         m_sampleCount = 0.0;
         m_hasTriggered = false;
+    }
+};
+
+// ===== SHIFT REGISTER =====
+
+struct ShiftRegister {
+    int m_register{0};
+    bool m_initialized{false};
+
+    struct Output {
+        float out3Bit = 0.0f;
+        float out8Bit = 0.0f;
+    };
+    
+    Output process(bool trigger, bool resetTrigger, float chance, int length, int rotation, RGen& rgen) {
+        Output output;
+
+        // Handle reset
+        if (resetTrigger) {
+            reset();
+        }
+
+        // Process trigger
+        if (trigger) {
+            if (!m_initialized) {
+                // Initialize on first trigger
+                m_register = 0;
+                m_initialized = true;
+            } else {
+                // Rotate shift register
+                int rotated = rotateBits(m_register, rotation, length);
+                
+                // Extract LSB for feedback
+                int extractedBit = rotated % 2;
+                int withoutLSB = rotated - extractedBit;
+                
+                // XOR with random value
+                bool feedbackBit = (rgen.frand() < chance);
+                int newBit = extractedBit ^ static_cast<int>(feedbackBit);
+                
+                // Update Shift Register
+                m_register = withoutLSB + newBit;
+            }
+        }
+
+        // Calculate outputs
+        if (m_initialized) {
+            output.out3Bit = getMSBBits(m_register, 3, 8);
+            output.out8Bit = 1.0f - getLSBBits(m_register, 8, 8);
+        }
+
+        return output;
+    }
+
+    void reset() {
+        m_register = 0;
+        m_initialized = false;
     }
 };
 

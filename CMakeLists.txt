@@ -44,8 +44,9 @@ option(NOVA_SIMD "Build plugins with nova-simd support." ON)
 
 # Include directories for shared headers
 include_directories(
+    ${CMAKE_SOURCE_DIR}/external
     ${CMAKE_SOURCE_DIR}/plugins/UnitShapers
-    ${CMAKE_SOURCE_DIR}/plugins/Utils      
+    ${CMAKE_SOURCE_DIR}/plugins/Utils     
 )
 
 # Nova SIMD support
@@ -54,45 +55,7 @@ if (NOVA_SIMD)
     include_directories(${SC_PATH}/external_libraries/nova-simd)
 endif()
 
-# GrainDelay Plugin
-set(GrainDelay_cpp_files
-    plugins/GrainDelay/GrainDelay.cpp
-)
-set(GrainDelay_sc_files
-    plugins/GrainDelay/Classes/GrainDelay.sc
-)
-set(GrainDelay_schelp_files
-    plugins/GrainDelay/HelpSource/GrainDelay.schelp
-)
-sc_add_server_plugin(
-    "GrainUtils/GrainDelay" # destination directory
-    "GrainDelay" # target name
-    "${GrainDelay_cpp_files}"
-    "${GrainDelay_sc_files}"
-    "${GrainDelay_schelp_files}"
-    ""
-)
-
-# ShiftRegister Plugin
-set(ShiftRegister_cpp_files
-    plugins/ShiftRegister/ShiftRegister.cpp
-)
-set(ShiftRegister_sc_files
-    plugins/ShiftRegister/Classes/ShiftRegister.sc
-)
-set(ShiftRegister_schelp_files
-    plugins/ShiftRegister/HelpSource/ShiftRegister.schelp
-)
-sc_add_server_plugin(
-    "GrainUtils/ShiftRegister" # destination directory
-    "ShiftRegister" # target name
-    "${ShiftRegister_cpp_files}"
-    "${ShiftRegister_sc_files}"
-    "${ShiftRegister_schelp_files}"
-    ""
-)
-
-# EventSystem Plugin
+# EventSystem Plugins
 set(EventSystem_cpp_files
     plugins/EventSystem/EventSystem.cpp
 )
@@ -115,12 +78,69 @@ sc_add_server_plugin(
     ""
 )
 
+# GrainDelay Plugin
+set(GrainDelay_cpp_files
+    plugins/GrainDelay/GrainDelay.cpp
+)
+set(GrainDelay_sc_files
+    plugins/GrainDelay/Classes/GrainDelay.sc
+)
+set(GrainDelay_schelp_files
+    plugins/GrainDelay/HelpSource/GrainDelay.schelp
+)
+sc_add_server_plugin(
+    "GrainUtils/GrainDelay" # destination directory
+    "GrainDelay" # target name
+    "${GrainDelay_cpp_files}"
+    "${GrainDelay_sc_files}"
+    "${GrainDelay_schelp_files}"
+    ""
+)
+
+# Osc Plugins
+set(Oscs_cpp_files
+    plugins/Oscs/Oscs.cpp
+)
+set(Oscs_sc_files
+    plugins/Oscs/Classes/Oscs.sc
+)
+set(EventSystem_schelp_files
+    plugins/Oscs/HelpSource/Classes/Oscs.schelp
+)
+sc_add_server_plugin(
+    "GrainUtils/Oscs" # destination directory
+    "Oscs" # target name
+    "${Oscs_cpp_files}"
+    "${Oscs_sc_files}"
+    "${Oscs_schelp_files}"
+    ""
+)
+
+# ShiftRegister Plugin
+set(ShiftRegister_cpp_files
+    plugins/ShiftRegister/ShiftRegister.cpp
+)
+set(ShiftRegister_sc_files
+    plugins/ShiftRegister/Classes/ShiftRegister.sc
+)
+set(ShiftRegister_schelp_files
+    plugins/ShiftRegister/HelpSource/ShiftRegister.schelp
+)
+sc_add_server_plugin(
+    "GrainUtils/ShiftRegister" # destination directory
+    "ShiftRegister" # target name
+    "${ShiftRegister_cpp_files}"
+    "${ShiftRegister_sc_files}"
+    "${ShiftRegister_schelp_files}"
+    ""
+)
+
 # Install guides to the HelpSource/Guides directory 
 install(DIRECTORY plugins/EventSystem/HelpSource/Guides/
         DESTINATION GrainUtils/EventSystem/HelpSource/Guides
         FILES_MATCHING PATTERN "*.schelp")
 
-# UnitShapers Plugin
+# UnitShaper Plugins
 set(UnitShapers_cpp_files
     plugins/UnitShapers/UnitShapers.cpp
 )

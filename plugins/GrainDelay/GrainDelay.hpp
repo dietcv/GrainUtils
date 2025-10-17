@@ -42,8 +42,8 @@ private:
     std::array<GrainData, NUM_CHANNELS> m_grainData;
    
     // Feedback processing filters
-    Utils::OnePoleNormalized m_dampingFilter;
-    Utils::OnePoleFilter m_dcBlocker;
+    Utils::OnePole m_dampingFilter;
+    Utils::OnePoleHz m_dcBlocker;
    
     // Input parameters for audio processing
     enum InputParams {

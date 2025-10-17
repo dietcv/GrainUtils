@@ -1,0 +1,67 @@
+class:: SingleOscOS
+summary:: bandlimited wavetable oscillator with oversampling
+categories:: UGens>Oscillator
+
+DESCRIPTION::
+SingleOscOS is a bandlimited wavetable oscillator with optional oversampling. 
+The wavetable oscillator is bandlimited via dynamic mipmapping and sinc interpolation. 
+
+note::
+This is just my personal implementation, you can just use OscOS from Oversampling Oscillators.
+::
+
+CLASSMETHODS::
+
+METHOD:: ar
+
+ARGUMENT:: bufnum
+Buffer containing wavetable data (the size has to be a power-of-2).
+
+ARGUMENT:: phase
+Phase input (0.0 to 1.0).
+
+ARGUMENT:: numCycles
+Number of cycles in the wavetable (default: 1).
+
+ARGUMENT:: cyclePos
+Position within multi-cycle wavetable (0.0 to 1.0).
+
+ARGUMENT:: oversample
+Oversampling factor: 0=1x, 1=2x, 2=4x, 3=8x, 4=16x (default: 0).
+
+returns:: Audio rate UGen.
+
+EXAMPLES::
+
+code::
+// create a wavetable (or use your own)
+(
+t = Signal.sineFill(2048, [1], [0]);
+u = Signal.sineFill(2048, 1.0/((1..512)**2)*([1,0,-1,0]!128).flatten);
+w = Signal.sineFill(2048, 1.0/(1..512)*([1,0]!256).flatten);
+x = Signal.sineFill(2048, 1.0/(1..512));
+v = t.addAll(u).addAll(w).addAll(x);
+
+~buffer = Buffer.loadCollection(s, v);
+)
+
+(
+{
+    var cyclePos, phase, sig;
+    
+    cyclePos = SinOsc.ar(0.1, 1.5pi).linlin(-1, 1, 0, 1);
+    phase = Phasor.ar(DC.ar(0), 440 * SampleDur.ir);
+
+    sig = SingleOscOS.ar(
+        bufnum: ~buffer,
+        phase: phase,
+        numCycles: BufFrames.kr(~buffer) / 2048,
+        cyclePos: cyclePos,
+        oversample: 0,
+    );
+    
+    sig = LeakDC.ar(sig);
+    sig!2 * 0.1;
+}.play;
+)
+::

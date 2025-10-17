@@ -4,6 +4,7 @@
             "name": "Win32",
             "includePath": [
                 "${workspaceFolder}/**",
+                "${workspaceFolder}/external",
                 "${workspaceFolder}/plugins/UnitShapers",
                 "${workspaceFolder}/plugins/Utils",
                 "../supercollider/include/plugin_interface",
