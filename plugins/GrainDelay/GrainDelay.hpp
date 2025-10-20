@@ -3,7 +3,6 @@
 #include "Utils.hpp"
 #include <array>
 
-// ===== GRAIN DELAY =====
 class GrainDelay : public SCUnit {
 public:
     GrainDelay();

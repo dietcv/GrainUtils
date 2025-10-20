@@ -4,8 +4,6 @@
 
 static InterfaceTable* ft;
 
-// ===== GRAIN DELAY =====
-
 GrainDelay::GrainDelay() : 
     m_sampleRate(static_cast<float>(sampleRate())),
     m_sampleDur(static_cast<float>(sampleDur())),

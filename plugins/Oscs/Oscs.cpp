@@ -196,7 +196,7 @@ void SingleOscOS::next_aa(int nSamples) {
     const int cycleSamples = tableSize / static_cast<int>(numCycles);
     const int numCyclesInt = static_cast<int>(numCycles);
     
-    // Set oversampling factor for both channels
+    // Set oversampling factor
     m_oversampling.setOversamplingIndex(oversampleIndex);
     
     if (oversampleIndex == 0) {
@@ -220,17 +220,17 @@ void SingleOscOS::next_aa(int nSamples) {
             // Calculate phase difference per oversampled sample
             const float phaseDiff = slope * invOsRatio;
             
-            // Prepare oversampling buffers
+            // Prepare oversampling buffer
             m_oversampling.upsample(0.0f);
             float* osBuffer = m_oversampling.getOSBuffer();
             
             float osPhase = phase[i];
             
             for (int k = 0; k < osRatio; k++) {
-                // Increment phases first
+                // Increment phase first
                 osPhase += phaseDiff;
                 
-                // Then process with wrapped phases
+                // Then process with wrapped phase
                 osBuffer[k] = OscUtils::wavetableInterpolate(
                 sc_wrap(osPhase, 0.0f, 1.0f), bufData, tableSize, 
                 cycleSamples, numCyclesInt, cyclePos[i], 

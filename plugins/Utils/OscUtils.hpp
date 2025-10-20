@@ -1,7 +1,7 @@
 
 #pragma once
 #include "SC_PlugIn.hpp"
-#include "utils.hpp"
+#include "Utils.hpp"
 #include "wavetables.h"
 #include <array>
 #include <cmath>
@@ -118,6 +118,7 @@ inline float sincInterpolate(float scaledPhase, const float* buffer, int bufSize
 // ===== MIPMAP UTILITIES =====
 
 inline float mipmapInterpolate(float phase, const float* buffer, int bufSize, int startPos, int endPos, float slope, const SincTable& sincTable) {
+    
     // Calculate mipmap parameters
     const float rangeSize = static_cast<float>(endPos - startPos);
     const float scaledPhase = phase * rangeSize;
