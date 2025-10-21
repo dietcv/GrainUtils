@@ -28,20 +28,35 @@ returns:: a stepped or interpolated random walk with adjustable step size
 
 SECTION::1) Examples - Plots
 
-subsection::1.1) Comparison - stepped vs interpolated random walk
+subsection::1.1) Random walk with no interpolation (stepped)
 
 code::
 (
 {
-	var phase, stepped, smooth;
+	var phase, stepped;
 
 	RandSeed.kr(\seedtrg.kr(1), \seed.kr(1000));
 
 	phase = Phasor.ar(DC.ar(0), 1000 * SampleDur.ir);
-	stepped = UnitWalk.ar(phase, step: 0.2, interp: 0);
-	smooth = UnitWalk.ar(phase, step: 0.2, interp: 1);
+	stepped = UnitWalk.ar(phase, \step.kr(0.2), \interp.kr(0));
 
-	[phase, stepped, smooth];
+	[phase, stepped];
+}.plot(0.041);
+)
+::
+
+subsection::1.2) Random walk with cosine interpolation (smooth)
+code::
+(
+{
+	var phase, smooth;
+	
+	RandSeed.kr(\seedtrg.kr(1), \seed.kr(1000));
+	
+	phase = Phasor.ar(DC.ar(0), 1000 * SampleDur.ir);
+	smooth = UnitWalk.ar(phase, \step.kr(0.2), \interp.kr(1));
+	
+	[phase, smooth];
 }.plot(0.041);
 )
 ::

@@ -8,7 +8,7 @@ description::
 This library comes with a selection of different unit shaper functions.
 Unit shapers can be used as transfer functions to map the input of a linear ramp signal between 0 and 1 to a non-linear output signal between 0 and 1.
 
-UnitRand outputs stepped or interpolated random values between 0 and 1.
+UnitStep outputs stepped or interpolated random values between 0 and 1.
 
 classmethods::
 
@@ -25,20 +25,35 @@ returns:: stepped or interpolated random values
 
 SECTION::1) Examples - Plots
 
-subsection::1.1) Comparison - stepped vs interpolated random values
+subsection::1.1) Random values with no interpolation (stepped)
 
 code::
 (
 {
-	var phase, stepped, smooth;
-
+	var phase, stepped;
+	
 	RandSeed.kr(\seedtrg.kr(1), \seed.kr(1000));
-
+	
 	phase = Phasor.ar(DC.ar(0), 1000 * SampleDur.ir);
-	stepped = UnitStep.ar(phase, interp: 0);
-	smooth = UnitStep.ar(phase, interp: 1);
+	stepped = UnitStep.ar(phase, \interp.kr(0));
+	
+	[phase, stepped];
+}.plot(0.041);
+)
+::
 
-	[phase, stepped, smooth];
+subsection::1.2) Random values with cosine interpolation (smooth)
+code::
+(
+{
+	var phase, random;
+	
+	RandSeed.kr(\seedtrg.kr(1), \seed.kr(1000));
+	
+	phase = Phasor.ar(DC.ar(0), 1000 * SampleDur.ir);
+	smooth = UnitStep.ar(phase, \interp.kr(1));
+	
+	[phase, smooth];
 }.plot(0.041);
 )
 ::
