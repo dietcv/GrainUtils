@@ -46,7 +46,7 @@ subsection::1.2) Random values with cosine interpolation (smooth)
 code::
 (
 {
-	var phase, random;
+	var phase, smooth;
 	
 	RandSeed.kr(\seedtrg.kr(1), \seed.kr(1000));
 	
