@@ -147,18 +147,10 @@ inline float mipmapInterpolate(float phase, const float* buffer, int bufSize, in
 
 inline float wavetableInterpolate(float phase, const float* buffer, int bufSize, int cycleSamples, int numCycles, float cyclePos, float slope, const SincTable& sincTable) {
 
-    // GO book approach: wrap cyclePos to 0-1, then scale by numCycles
-    //const float wrappedPos = sc_wrap(cyclePos, 0.0f, 1.0f);
-    //const float scaledPos = wrappedPos * static_cast<float>(numCycles);
-    
-    // OscOS approach: clip cyclePos to 0-1, then scale by (numCycles - 1)
-    //const float clippedPos = sc_clip(cyclePos, 0.0f, 1.0f);
-    //const float scaledPos = clippedPos * static_cast<float>(numCycles - 1);
+    // clip cyclePos to 0-1, then scale by (numCycles - 1)
+    const float clippedPos = sc_clip(cyclePos, 0.0f, 1.0f);
+    const float scaledPos = clippedPos * static_cast<float>(numCycles - 1);
 
-    // Combined clip and scale optimization
-    const float scale = static_cast<float>(numCycles - 1);
-    const float scaledPos = std::min(scale, std::max(0.0f, cyclePos * scale));
-    
     // Calculate frac and int part
     const int intPart = static_cast<int>(scaledPos);
     const float fracPart = scaledPos - static_cast<float>(intPart);

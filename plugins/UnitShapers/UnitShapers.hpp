@@ -115,9 +115,9 @@ namespace UnitShapers {
         return 1 / (1 + exp(indexScaled * ((1 / warpedPhase) - (1 / (1 - warpedPhase)))));
     }
 
-    // ===== UNIT RAND =====
+    // ===== UNIT STEP =====
 
-    struct UnitRand {
+    struct UnitStep {
 
         Utils::RampToTrig m_trigDetect;
 
@@ -125,7 +125,7 @@ namespace UnitShapers {
         float m_nextValue{0.0f};
         bool m_initialized{false};
         
-        float process(float phase, RGen& rgen) {
+        float process(float phase, bool interp, RGen& rgen) {
 
             // Initialize
             if (!m_initialized) {
@@ -143,8 +143,12 @@ namespace UnitShapers {
                 m_nextValue = rgen.frand();
             }
             
-            // Cosine interpolation
-            return Utils::cosineInterp(m_currentValue, m_nextValue, phase);
+            // Interpolation: true for cosine, false for stepped
+            if (interp) {
+                return Utils::cosineInterp(m_currentValue, m_nextValue, phase);
+            } else {
+                return m_currentValue;
+            }
         }
         
         void reset() {
@@ -165,7 +169,7 @@ namespace UnitShapers {
         float m_nextValue{0.0f};
         bool m_initialized{false};
         
-        float process(float phase, float step, RGen& rgen) {
+        float process(float phase, float step, bool interp, RGen& rgen) {
 
             // Initialize
             if (!m_initialized) {
@@ -184,8 +188,12 @@ namespace UnitShapers {
                 m_nextValue = sc_fold(m_nextValue, 0.0f, 1.0f);
             }
             
-            // Cosine interpolation
-            return Utils::cosineInterp(m_currentValue, m_nextValue, phase);
+            // Interpolation: true for cosine, false for stepped
+            if (interp) {
+                return Utils::cosineInterp(m_currentValue, m_nextValue, phase);
+            } else {
+                return m_currentValue;
+            }
         }
         
         void reset() {
@@ -374,12 +382,12 @@ private:
     void next(int nSamples);
 };
 
-class UnitRand : public SCUnit {
+class UnitStep : public SCUnit {
 public:
-    UnitRand();
+    UnitStep();
 private:
     void next(int nSamples);
-    UnitShapers::UnitRand m_state;
+    UnitShapers::UnitStep m_state;
 };
 
 class UnitWalk : public SCUnit {

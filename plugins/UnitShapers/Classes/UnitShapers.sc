@@ -24,18 +24,18 @@ UnitCubic : UGen {
     }
 }
 
-UnitRand : UGen {
-    *ar { |phase|
+UnitStep : UGen {
+    *ar { |phase, interp = 0|
 		if(phase.rate!='audio'){phase = K2A.ar(phase)};
-        ^this.multiNew('audio', phase)
+        ^this.multiNew('audio', phase, interp)
     }
 }
 
 UnitWalk : UGen {
-    *ar { |phase, step = 0.2|
+    *ar { |phase, step = 0.2, interp = 0|
 		if(phase.rate!='audio'){phase = K2A.ar(phase)};
 		if(step.rate!='audio'){step = K2A.ar(step)};
-        ^this.multiNew('audio', phase, step)
+        ^this.multiNew('audio', phase, step, interp)
     }
 }
 

@@ -160,7 +160,7 @@ set(UnitShapers_schelp_files
     plugins/UnitShapers/HelpSource/UnitKink.schelp
     plugins/UnitShapers/HelpSource/UnitTriangle.schelp
     plugins/UnitShapers/HelpSource/UnitCubic.schelp
-    plugins/UnitShapers/HelpSource/UnitRand.schelp
+    plugins/UnitShapers/HelpSource/UnitStep.schelp
     plugins/UnitShapers/HelpSource/UnitWalk.schelp
     plugins/UnitShapers/HelpSource/JCurve.schelp
     plugins/UnitShapers/HelpSource/SCurve.schelp

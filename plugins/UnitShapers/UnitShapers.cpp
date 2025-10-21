@@ -74,19 +74,22 @@ void UnitCubic::next(int nSamples) {
     }
 }
 
-UnitRand::UnitRand() {
-    mCalcFunc = make_calc_function<UnitRand, &UnitRand::next>();
+UnitStep::UnitStep() {
+    mCalcFunc = make_calc_function<UnitStep, &UnitStep::next>();
     next(1);
 
     // Reset state after priming
     m_state.reset();
 }
 
-void UnitRand::next(int nSamples) {
+void UnitStep::next(int nSamples) {
     RGen& rgen = *mParent->mRGen;
     
     // Audio-rate parameters
     const float* phaseIn = in(0);
+    
+    // Control-rate parameters
+    bool interp = in0(1) > 0.5f;
 
     // Output pointers
     float* output = out(0);
@@ -96,7 +99,7 @@ void UnitRand::next(int nSamples) {
         // Get audio-rate parameters per-sample
         float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
 
-        output[i] = m_state.process(phase, rgen);
+        output[i] = m_state.process(phase, interp, rgen);
     }
 }
 
@@ -115,6 +118,9 @@ void UnitWalk::next(int nSamples) {
     const float* phaseIn = in(0);
     const float* stepIn = in(1);
     
+    // Control-rate parameters
+    bool interp = in0(2) > 0.5f;
+    
     // Output pointers
     float* output = out(0);
     
@@ -124,7 +130,7 @@ void UnitWalk::next(int nSamples) {
         float phase = sc_wrap(phaseIn[i], 0.0f, 1.0f);
         float step = sc_clip(stepIn[i], 0.0f, 1.0f);
 
-        output[i] = m_state.process(phase, step, rgen);
+        output[i] = m_state.process(phase, step, interp, rgen);
     }
 }
 
@@ -311,7 +317,7 @@ PluginLoad(GrainUtilsUGens) {
     registerUnit<UnitTriangle>(ft, "UnitTriangle", false);
     registerUnit<UnitKink>(ft, "UnitKink", false);
     registerUnit<UnitCubic>(ft, "UnitCubic", false);
-    registerUnit<UnitRand>(ft, "UnitRand", false);
+    registerUnit<UnitStep>(ft, "UnitStep", false);
     registerUnit<UnitWalk>(ft, "UnitWalk", false);
 
     // Window Functions

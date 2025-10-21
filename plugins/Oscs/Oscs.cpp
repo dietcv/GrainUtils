@@ -50,9 +50,9 @@ void DualOscOS::next_aa(int nSamples) {
     const float bufNumB = in0(BufNumB);
     const int oversampleIndex = sc_clip(static_cast<int>(in0(Oversample)), 0, 4);
     
-    // Output buffers
-    float* outbufA = out(OutA);
-    float* outbufB = out(OutB);
+    // Output pointers
+    float* outputA = out(OutA);
+    float* outputB = out(OutB);
     
     // Get buffer data
     const float* bufDataA;
@@ -90,8 +90,8 @@ void DualOscOS::next_aa(int nSamples) {
                 m_sincTable
             );
             
-            outbufA[i] = result.oscA;
-            outbufB[i] = result.oscB;
+            outputA[i] = result.oscA;
+            outputB[i] = result.oscB;
         }
     } else {
         // Oversampling enabled
@@ -137,8 +137,8 @@ void DualOscOS::next_aa(int nSamples) {
                 osBufferB[k] = result.oscB;
             }
             
-            outbufA[i] = m_oversamplingA.downsample();
-            outbufB[i] = m_oversamplingB.downsample();
+            outputA[i] = m_oversamplingA.downsample();
+            outputB[i] = m_oversamplingB.downsample();
         }
     }
 }
@@ -180,8 +180,8 @@ void SingleOscOS::next_aa(int nSamples) {
     const float bufNum = in0(BufNum);
     const int oversampleIndex = sc_clip(static_cast<int>(in0(Oversample)), 0, 4);
     
-    // Output buffers
-    float* outbuf = out(Out);
+    // Output pointer
+    float* output = out(Out);
     
     // Get buffer data
     const float* bufData;
@@ -204,7 +204,7 @@ void SingleOscOS::next_aa(int nSamples) {
         for (int i = 0; i < nSamples; ++i) {
             const float slope = m_rampToSlope.process(phase[i]);
             
-            outbuf[i] = OscUtils::wavetableInterpolate(
+            output[i] = OscUtils::wavetableInterpolate(
             phase[i], bufData, tableSize, 
             cycleSamples, numCyclesInt, cyclePos[i], 
             slope, m_sincTable);
@@ -237,7 +237,7 @@ void SingleOscOS::next_aa(int nSamples) {
                 slope, m_sincTable);
             }
             
-            outbuf[i] = m_oversampling.downsample();
+            output[i] = m_oversampling.downsample();
         }
     }
 }

@@ -1,5 +1,5 @@
 class:: UnitWalk
-summary:: interpolated random walk with adjustable step size
+summary:: stepped or interpolated random walk with adjustable step size
 related:: Classes/IEnvGen
 categories:: UGens>Granular
 
@@ -8,7 +8,7 @@ description::
 This library comes with a selection of different unit shaper functions.
 Unit shapers can be used as transfer functions to map the input of a linear ramp signal between 0 and 1 to a non-linear output signal between 0 and 1.
 
-UnitWalk outputs an interpolated random walk with adjustable step size.
+UnitWalk outputs a stepped or interpolated random walk with adjustable step size.
 
 classmethods::
 
@@ -20,23 +20,28 @@ linear ramp between 0 and 1
 argument::step
 step size between 0 and 1
 
-returns:: a random walk with adjustable step size
+argument::interp
+0 = no interpolation (stepped random values)
+1 = cosine interpolation (smooth transitions between random values)
+
+returns:: a stepped or interpolated random walk with adjustable step size
 
 SECTION::1) Examples - Plots
 
-subsection::1.1) random walk with interpolation
+subsection::1.1) Comparison - stepped vs interpolated random walk
 
 code::
 (
 {
-	var phase, walk;
+	var phase, stepped, smooth;
 
 	RandSeed.kr(\seedtrg.kr(1), \seed.kr(1000));
 
 	phase = Phasor.ar(DC.ar(0), 1000 * SampleDur.ir);
-	walk = UnitWalk.ar(phase, \step.kr(0.2));
+	stepped = UnitWalk.ar(phase, step: 0.2, interp: 0);
+	smooth = UnitWalk.ar(phase, step: 0.2, interp: 1);
 
-	[phase, walk];
+	[phase, stepped, smooth];
 }.plot(0.041);
 )
 ::
