@@ -17,8 +17,9 @@ private:
     // Constants cached at construction
     const float m_sampleRate;
     const float m_sampleDur;
-    const float m_bufFrames;
     const int m_bufSize;
+    const float m_bufFrames;
+    const int m_bufMask;
    
     // Core trigger system
     Utils::SchedulerCycle m_scheduler;

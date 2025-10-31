@@ -23,91 +23,7 @@ inline float cosineInterp(float a, float b, float t) {
     return a * (1.0f - mu2) + b * mu2;
 }
 
-// ===== FAST APPROXIMATIONS =====    
-
-// Jatin's log2 polynomial approximation (3rd order)
-inline float jatin_log2_approx(float x) {
-    // Coefficients from Jatin's log2_approx<float, 3>
-    constexpr float alpha = 0.1640425613334452f;
-    constexpr float beta = -1.098865286222744f;
-    constexpr float gamma = 3.148297929334117f;
-    constexpr float zeta = -2.213475204444817f;
-    
-    // Estrin's method for polynomial evaluation
-    float x2 = x * x;
-    float p01 = alpha * x + beta;
-    float p23 = gamma * x + zeta;
-    return p01 * x2 + p23;
-}
-
-// Jatin's pow2 polynomial approximation (3rd order) 
-inline float jatin_pow2_approx(float x) {
-    // Coefficients from Jatin's pow2_approx<float, 3>
-    constexpr float alpha = 0.07944154167983575f;
-    constexpr float beta = 0.2274112777602189f;
-    constexpr float gamma = 0.6931471805599453f;
-    constexpr float zeta = 1.0f;
-    
-    // Estrin's method for polynomial evaluation
-    float x2 = x * x;
-    float p01 = alpha * x + beta;
-    float p23 = gamma * x + zeta;
-    return p01 * x2 + p23;
-}
-
-// Jatin's fast log2 implementation
-inline float fastLog2(float x) {
-    if (x <= 0.0f) return -1000.0f; // Handle edge case
-    
-    // Bit manipulation from Jatin's logarithm<Ratio<2,1>, 3>
-    const auto vi = reinterpret_cast<int32_t&>(x);
-    const auto ex = vi & 0x7f800000;
-    const auto e = (ex >> 23) - 127;
-    const auto vfi = (vi - ex) | 0x3f800000;
-    const auto vf = reinterpret_cast<const float&>(vfi);
-    
-    // log2_base_r = 1.0f / gcem::log2(2.0f) = 1.0f for log2
-    return static_cast<float>(e) + jatin_log2_approx(vf);
-}
-
-// Jatin's fast exp implementation  
-inline float fastExp(float x) {
-    // Euler's number ratio: e ≈ 2.718281828
-    constexpr float log2_e = 1.4426950408889634f; // log2(e)
-    
-    // Convert exp(x) to pow(e, x) using Jatin's algorithm
-    x = std::max(-126.0f, log2_e * x);
-    
-    const auto xi = static_cast<int32_t>(x);
-    const auto l = x < 0.0f ? xi - 1 : xi;
-    const auto f = x - static_cast<float>(l);
-    const auto vi = (l + 127) << 23;
-    
-    return reinterpret_cast<const float&>(vi) * jatin_pow2_approx(f);
-}
-
-// ===== BUFFER ACCESS UTILITIES =====
-
-inline float peekCubicInterp(const float* buffer, int bufSize, float phase) {
-
-    const float sampleIndex = phase;
-    const int intPart = static_cast<int>(sampleIndex);
-    const float fracPart = sampleIndex - intPart;
-    
-    const int idx0 = sc_wrap(intPart - 1, 0, bufSize - 1);
-    const int idx1 = sc_wrap(intPart, 0, bufSize - 1);
-    const int idx2 = sc_wrap(intPart + 1, 0, bufSize - 1);
-    const int idx3 = sc_wrap(intPart + 2, 0, bufSize - 1);
-    
-    const float a = buffer[idx0];
-    const float b = buffer[idx1];
-    const float c = buffer[idx2];
-    const float d = buffer[idx3];
-    
-    return cubicinterp(fracPart, a, b, c, d);
-}
-
-// ===== HIGH-PERFORMANCE BUFFER ACCESS =====
+// ===== HIGH-PERFORMANCE BUFFER ACCESS UTILITIES =====
 
 // Fast wrapping within a cycle range (startPos to endPos-1) - (for power-of-2 sizes)
 inline int wrapIndex(int index, int startPos, int mask) {
@@ -133,6 +49,24 @@ inline float peekLinearInterp(const float* buffer, float phase, int mask) {
     const float b = buffer[idx2];
     
     return lerp(a, b, fracPart);
+}
+
+// Fast cubic interpolation peek with bitwise wrapping - (for power-of-2 sizes)
+inline float peekCubicInterp(const float* buffer, float phase, int mask) {
+    const int intPart = static_cast<int>(phase);
+    const float fracPart = phase - static_cast<float>(intPart);
+    
+    const int idx0 = (intPart - 1) & mask;
+    const int idx1 = intPart & mask;
+    const int idx2 = (intPart + 1) & mask;
+    const int idx3 = (intPart + 2) & mask;
+    
+    const float a = buffer[idx0];
+    const float b = buffer[idx1];
+    const float c = buffer[idx2];
+    const float d = buffer[idx3];
+    
+    return cubicinterp(fracPart, a, b, c, d);
 }
 
 // ===== ONE POLE FILTER UTILITIES =====
@@ -335,7 +269,7 @@ struct StepToTrig {
     
     bool process(double phaseScaled) {
         // Calculate current ceiling
-        double currentCeiling = std::ceil(phaseScaled);
+        double currentCeiling = sc_ceil(phaseScaled);
         
         // Calculate change in ceiling
         double delta = currentCeiling - m_lastCeiling;
@@ -492,7 +426,7 @@ struct SchedulerBurst {
             bool trigger = trigDetect.process(m_phaseScaled);
 
             // 2. Wrap scaled phase between 0 and 1
-            double phase = sc_wrap(m_phaseScaled, 0.0, 1.0);
+            double phase = sc_frac(m_phaseScaled);
         
             // 3. Calculate subsample offset
             double subSampleOffset = 0.0;
@@ -612,7 +546,7 @@ struct RampIntegrator {
         // 3. Output current phase
         float output = 0.0f;
         if (m_hasTriggered) {
-            output = sc_wrap(static_cast<float>(m_phase), 0.0f, 1.0f);
+            output = sc_frac(static_cast<float>(m_phase));
         }
     
         // 4. Increment phase

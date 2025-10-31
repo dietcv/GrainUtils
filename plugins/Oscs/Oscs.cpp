@@ -124,7 +124,7 @@ void DualOscOS::next_aa(int nSamples) {
                 
                 // Then process with wrapped phases
                 auto result = m_dualOsc.process(
-                    sc_wrap(osPhaseA, 0.0f, 1.0f), sc_wrap(osPhaseB, 0.0f, 1.0f),
+                    sc_frac(osPhaseA), sc_frac(osPhaseB),
                     cyclePosA[i], cyclePosB[i],
                     slopeA, slopeB, pmIndexA[i], pmIndexB[i],
                     pmFilterRatioA[i], pmFilterRatioB[i],
@@ -232,7 +232,7 @@ void SingleOscOS::next_aa(int nSamples) {
                 
                 // Then process with wrapped phase
                 osBuffer[k] = OscUtils::wavetableInterpolate(
-                sc_wrap(osPhase, 0.0f, 1.0f), bufData, tableSize, 
+                sc_frac(osPhase), bufData, tableSize, 
                 cycleSamples, numCyclesInt, cyclePos[i], 
                 slope, m_sincTable);
             }

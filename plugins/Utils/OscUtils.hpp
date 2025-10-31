@@ -123,8 +123,8 @@ inline float mipmapInterpolate(float phase, const float* buffer, int bufSize, in
     const float rangeSize = static_cast<float>(endPos - startPos);
     const float scaledPhase = phase * rangeSize;
     const float samplesPerFrame = std::abs(slope) * rangeSize;
-    const float octave = std::max(0.0f, Utils::fastLog2(samplesPerFrame));
-    const int layer = static_cast<int>(std::ceil(octave));
+    const float octave = std::max(0.0f, sc_log2(samplesPerFrame));
+    const int layer = static_cast<int>(sc_ceil(octave)); 
     
     // Calculate spacings for adjacent mipmap levels  
     const int spacing1 = 1 << layer;     
@@ -136,10 +136,9 @@ inline float mipmapInterpolate(float phase, const float* buffer, int bufSize, in
         return sincInterpolate(scaledPhase, buffer, bufSize, startPos, endPos, SincTable::SPACING, sincTable);
     } else {
         // Crossfade between adjacent mipmap layers
-        const float crossfade = octave - std::floor(octave);
         const float sig1 = sincInterpolate(scaledPhase, buffer, bufSize, startPos, endPos, spacing1, sincTable);
         const float sig2 = sincInterpolate(scaledPhase, buffer, bufSize, startPos, endPos, spacing2, sincTable);
-        return Utils::lerp(sig1, sig2, crossfade);
+        return Utils::lerp(sig1, sig2, sc_frac(octave));
     }
 }
 
@@ -212,9 +211,9 @@ struct DualOsc {
         float filteredPmA = m_pmFilterA.processLowpass(pmSignalA, slopeA * pmFilterRatioA);
         float filteredPmB = m_pmFilterB.processLowpass(pmSignalB, slopeB * pmFilterRatioB);
         
-        // Apply phase modulation and wrap
-        float modulatedPhaseA = sc_wrap(phaseA + filteredPmA, 0.0f, 1.0f);
-        float modulatedPhaseB = sc_wrap(phaseB + filteredPmB, 0.0f, 1.0f);
+        // Apply phase modulation and wrap between 0 and 1
+        float modulatedPhaseA = sc_frac(phaseA + filteredPmA);
+        float modulatedPhaseB = sc_frac(phaseB + filteredPmB);
         
         // Generate oscillator outputs
         float oscA = wavetableInterpolate(modulatedPhaseA, bufferA, bufSizeA, 

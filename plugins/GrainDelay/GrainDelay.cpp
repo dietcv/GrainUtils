@@ -1,5 +1,4 @@
 #include "GrainDelay.hpp"
-#include "UnitShapers.hpp"
 #include "SC_PlugIn.hpp"
 
 static InterfaceTable* ft;
@@ -7,8 +6,9 @@ static InterfaceTable* ft;
 GrainDelay::GrainDelay() : 
     m_sampleRate(static_cast<float>(sampleRate())),
     m_sampleDur(static_cast<float>(sampleDur())),
-    m_bufFrames(MAX_DELAY_TIME * m_sampleRate),
-    m_bufSize(static_cast<int>(m_bufFrames))
+    m_bufSize(NEXTPOWEROFTWO(static_cast<int>(MAX_DELAY_TIME * sampleRate()))),
+    m_bufFrames(static_cast<float>(m_bufSize)),
+    m_bufMask(m_bufSize - 1)
 {
     // Allocate audio buffer
     m_buffer = (float*)RTAlloc(mWorld, m_bufSize * sizeof(float));
@@ -82,7 +82,7 @@ void GrainDelay::next_aa(int nSamples) {
                 // Calculate read position
                 float normalizedWritePos = static_cast<float>(m_writePos) / m_bufFrames;
                 float normalizedDelay = std::max(m_sampleDur, delayTime * m_sampleRate / m_bufFrames);
-                float readPos = sc_wrap(normalizedWritePos - normalizedDelay, 0.0f, 1.0f);
+                float readPos = sc_frac(normalizedWritePos - normalizedDelay);
                 
                 // Store grain data
                 m_grainData[g].readPos = readPos;
@@ -102,13 +102,13 @@ void GrainDelay::next_aa(int nSamples) {
                 
                 // Get sample with interpolation
                 float grainSample = Utils::peekCubicInterp(
-                    m_buffer,
-                    m_bufSize, 
-                    grainPos
+                    m_buffer, 
+                    grainPos,
+                    m_bufMask
                 );
                 
                 // Apply Hanning window using voice allocator's sub-sample accurate phase
-                grainSample *= WindowFunctions::hanningWindow(m_allocator.phases[g], 0.5f);
+                grainSample *= sc_hanwindow(m_allocator.phases[g]);
                 delayed += grainSample;
             }
         }
@@ -128,7 +128,7 @@ void GrainDelay::next_aa(int nSamples) {
         if (!freeze) {
             m_buffer[m_writePos] = dcBlockedInput + dampedFeedback * feedback;
             m_writePos++;
-            m_writePos = sc_wrap(m_writePos, 0, m_bufSize - 1);
+            m_writePos = m_writePos & m_bufMask;
         }
         
         // 7. Output with wet/dry mix
