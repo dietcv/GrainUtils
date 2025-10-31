@@ -15,7 +15,7 @@ GrainDelay::GrainDelay() :
 
     // Check the result of RTAlloc!
     auto unit = this;
-    ClearUnitIfMemFailed(m_buffer);
+    ClearUnitIfMemFailed(m_buffer);   
     
     // Initialize the allocated buffer with zeros
     memset(m_buffer, 0, m_bufSize * sizeof(float));
@@ -39,11 +39,11 @@ void GrainDelay::next_aa(int nSamples) {
     const float* triggerRateIn = in(TriggerRate);
     const float* overlapIn = in(Overlap);
     const float* delayTimeIn = in(DelayTime);
+    const float* decayTimeIn = in(DecayTime);
     const float* grainRateIn = in(GrainRate);
     
     // Control-rate parameters
     float mix = sc_clip(in0(Mix), 0.0f, 1.0f);
-    float feedback = sc_clip(in0(Feedback), 0.0f, 0.99f);
     float damping = sc_clip(in0(Damping), 0.0f, 1.0f);
     bool freeze = in0(Freeze) > 0.5f;
     bool reset = m_resetTrigger.process(in0(Reset));
@@ -57,7 +57,12 @@ void GrainDelay::next_aa(int nSamples) {
         float triggerRate = triggerRateIn[i];
         float overlap = sc_clip(overlapIn[i], 0.001f, static_cast<float>(NUM_CHANNELS));
         float delayTime = sc_clip(delayTimeIn[i], m_sampleDur, MAX_DELAY_TIME);
+        float decayTime = sc_clip(decayTimeIn[i], 0.01f, 10.0f);
         float grainRate = sc_clip(grainRateIn[i], 0.125f, 4.0f);
+
+        // Calculate feedback coefficient from decay time (T60)
+        float feedback = sc_CalcFeedback(delayTime, decayTime);
+        feedback = sc_clip(feedback, 0.0f, 0.99f);
         
         // 1. Get event data from scheduler
         auto scheduler = m_scheduler.process(triggerRate, reset, m_sampleRate);

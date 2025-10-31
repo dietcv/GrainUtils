@@ -3,8 +3,6 @@
 
 static InterfaceTable* ft;
 
-// ===== SHIFT REGISTER =====
-
 ShiftRegister::ShiftRegister() : m_sampleRate(static_cast<float>(sampleRate()))
 {
     mCalcFunc = make_calc_function<ShiftRegister, &ShiftRegister::next_aa>();

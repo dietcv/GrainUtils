@@ -12,7 +12,7 @@ private:
    
     // Constants
     static constexpr int NUM_CHANNELS = 32;
-    static constexpr float MAX_DELAY_TIME = 5.0f;
+    static constexpr float MAX_DELAY_TIME = 2.0f;
    
     // Constants cached at construction
     const float m_sampleRate;
@@ -53,7 +53,7 @@ private:
         DelayTime,
         GrainRate,
         Mix,
-        Feedback,
+        DecayTime,
         Damping,
         Freeze,
         Reset

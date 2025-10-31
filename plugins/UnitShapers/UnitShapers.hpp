@@ -4,19 +4,15 @@
 #include <cmath>
 #include <algorithm>
 
-// ===== CONSTANTS =====
-inline constexpr float SAFE_DENOM_EPSILON = 1e-10f;
-inline constexpr float TWO_PI = 6.28318530717958647692f;
-inline constexpr float PI = 3.14159265358979323846f;
-
 // ===== UNIT SHAPERS =====
+
 namespace UnitShapers {
 
     inline float triangle(float phase, float skew) {
 
         // Add epsilon to prevent division by zero
-        float safeSkew = std::max(skew, SAFE_DENOM_EPSILON);
-        float safeInvSkew = std::max(1.0f - skew, SAFE_DENOM_EPSILON);
+        float safeSkew = std::max(skew, Utils::SAFE_DENOM_EPSILON);
+        float safeInvSkew = std::max(1.0f - skew, Utils::SAFE_DENOM_EPSILON);
             
         float warpedPhase;
             
@@ -27,7 +23,7 @@ namespace UnitShapers {
         }
             
         // Handle edge case when skew is exactly 0
-        if (skew < SAFE_DENOM_EPSILON) {
+        if (skew < Utils::SAFE_DENOM_EPSILON) {
             warpedPhase = 1.0f - phase;
         }
             
@@ -37,8 +33,8 @@ namespace UnitShapers {
     inline float kink(float phase, float skew) {
         
         // Add epsilon to prevent division by zero
-        float safeSkew = std::max(skew, SAFE_DENOM_EPSILON);
-        float safeInvSkew = std::max(1.0f - skew, SAFE_DENOM_EPSILON);
+        float safeSkew = std::max(skew, Utils::SAFE_DENOM_EPSILON);
+        float safeInvSkew = std::max(1.0f - skew, Utils::SAFE_DENOM_EPSILON);
             
         float warpedPhase;
             
@@ -49,7 +45,7 @@ namespace UnitShapers {
         }
             
         // Handle edge case when skew is exactly 0
-        if (skew < SAFE_DENOM_EPSILON) {
+        if (skew < Utils::SAFE_DENOM_EPSILON) {
             warpedPhase = 0.5f * (1.0f + phase);
         }
             
@@ -68,7 +64,7 @@ namespace UnitShapers {
     }
 
     inline float hanning(float phase) {
-        return 0.5f * (1.0f - std::cos(phase * PI));
+        return 0.5f * (1.0f - std::cos(phase * Utils::PI));
     }
 
     inline float welch(float phase) {
@@ -81,12 +77,12 @@ namespace UnitShapers {
     }
 
     inline float raisedCos(float phase, float index) {
-        float cosine = std::cos(phase * PI);
+        float cosine = std::cos(phase * Utils::PI);
         return std::exp(std::abs(index) * (-cosine - 1.0f));
     }
 
     inline float gaussian(float phase, float index) {
-        float cosine = std::cos(phase * 0.5f * PI) * index;
+        float cosine = std::cos(phase * 0.5f * Utils::PI) * index;
         return std::exp(-cosine * cosine);
     }
 
@@ -97,7 +93,7 @@ namespace UnitShapers {
         trapezoid = sc_clip(trapezoid, 0.0f, 1.0f);
         
         // When width = 1, it becomes a pulse
-        if (width >= 1.0f - SAFE_DENOM_EPSILON) {
+        if (width >= 1.0f - Utils::SAFE_DENOM_EPSILON) {
             return offset > 0.0f ? 1.0f : 0.0f;
         }
         
@@ -207,6 +203,7 @@ namespace UnitShapers {
 } // namespace UnitShapers
 
 // ===== EASING CORES =====
+
 namespace EasingCores {
 
     // Cubic core
@@ -221,7 +218,7 @@ namespace EasingCores {
 
     // Sine core
     inline float sine(float x) {
-        return 1.0f - std::cos(x * 0.5f * PI);
+        return 1.0f - std::cos(x * 0.5f * Utils::PI);
     }
 
     // Circular core
@@ -244,6 +241,7 @@ namespace EasingCores {
 } // namespace EasingCores
 
 // ===== EASING FUNCTIONS =====
+
 namespace EasingFunctions {
 
     template<typename CoreFunc>
@@ -260,8 +258,8 @@ namespace EasingFunctions {
     template<typename CoreFunc>
     inline float easeInOut(float x, float offset, CoreFunc core) {
 
-        float safeOffset = std::max(offset, SAFE_DENOM_EPSILON);
-        float safeInvOffset = std::max(1.0f - offset, SAFE_DENOM_EPSILON);
+        float safeOffset = std::max(offset, Utils::SAFE_DENOM_EPSILON);
+        float safeInvOffset = std::max(1.0f - offset, Utils::SAFE_DENOM_EPSILON);
         
         if (x <= offset) {
             return offset * core(x / safeOffset);
@@ -274,8 +272,8 @@ namespace EasingFunctions {
     template<typename CoreFunc>
     inline float easeOutIn(float x, float height, CoreFunc core) {
 
-        float safeHeight = std::max(height, SAFE_DENOM_EPSILON);
-        float safeInvHeight = std::max(1.0f - height, SAFE_DENOM_EPSILON);
+        float safeHeight = std::max(height, Utils::SAFE_DENOM_EPSILON);
+        float safeInvHeight = std::max(1.0f - height, Utils::SAFE_DENOM_EPSILON);
         
         if (x <= height) {
             return height * (1.0f - core((height - x) / safeHeight));
@@ -287,6 +285,7 @@ namespace EasingFunctions {
 } // namespace EasingFunctions
 
 // ===== INTERPOLATION FUNCTIONS =====
+
 namespace InterpFunctions {
 
     // InterpEasing: linear interpolation of easing functions
@@ -329,6 +328,7 @@ namespace InterpFunctions {
 } // namespace InterpFunctions
 
 // ===== WINDOW FUNCTIONS =====
+
 namespace WindowFunctions {
 
     inline float hanningWindow(float phase, float skew) {
@@ -361,6 +361,7 @@ namespace WindowFunctions {
 } // namespace WindowFunctions
 
 // ===== UGEN CLASS DECLARATIONS =====
+
 class UnitTriangle : public SCUnit {
 public:
     UnitTriangle();

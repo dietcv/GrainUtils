@@ -2,11 +2,6 @@
 #include "SC_PlugIn.hpp"
 #include "Utils.hpp"
 
-// ===== SHARED CONSTANTS =====
-static constexpr int NUM_BITS = 8;
-static constexpr int MAX_LENGTH = 16;
-
-// ===== SHIFT REGISTER =====
 class ShiftRegister : public SCUnit {
 public:
     ShiftRegister();
@@ -14,14 +9,18 @@ public:
 
 private:
     void next_aa(int inNumSamples);
+
+    // Constants
+    static constexpr int NUM_BITS = 8;
+    static constexpr int MAX_LENGTH = 16;
     
+    // Constants cached at construction
+    const float m_sampleRate;
+
     // Core processing
     Utils::ShiftRegister m_shiftRegister;
     Utils::IsTrigger m_trigger;
     Utils::IsTrigger m_resetTrigger;
-    
-    // Constants
-    const float m_sampleRate;
     
     // Input parameter indices
     enum Inputs {

@@ -8,6 +8,7 @@ namespace Utils {
 
 // ===== CONSTANTS =====
 
+inline constexpr float SAFE_DENOM_EPSILON = 1e-10f;
 inline constexpr float PI = 3.14159265358979323846f;
 inline constexpr float TWO_PI = 6.28318530717958647692f;
 inline constexpr float TWO_PI_INV = 1.0f / 6.28318530717958647692f;
