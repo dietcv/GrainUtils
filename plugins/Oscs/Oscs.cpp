@@ -59,7 +59,8 @@ void DualOscOS::next(int nSamples) {
     // Get buffer data
     const float* bufDataA;
     const float* bufDataB;
-    int tableSizeA, tableSizeB;
+    int tableSizeA;
+    int tableSizeB;
     
     if (!getBufferData(m_bufUnitA, bufNumA, nSamples, mWorld, mParent, bufDataA, tableSizeA, "DualOscOS OscA") ||
         !getBufferData(m_bufUnitB, bufNumB, nSamples, mWorld, mParent, bufDataB, tableSizeB, "DualOscOS OscB")) {

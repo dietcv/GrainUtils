@@ -45,6 +45,19 @@ private:
     // Feedback processing filters
     FilterUtils::OnePole m_dampingFilter;
     FilterUtils::OnePoleHz m_dcBlocker;
+
+    // Cache for SlopeSignal state
+    float triggerRatePast, overlapPast, delayTimePast, grainRatePast;
+    float mixPast, feedbackPast, dampingPast;
+    
+    // Audio rate flags
+    bool isTriggerRateAudioRate;
+    bool isOverlapAudioRate;
+    bool isDelayTimeAudioRate;
+    bool isGrainRateAudioRate;
+    bool isMixAudioRate;
+    bool isFeedbackAudioRate;
+    bool isDampingAudioRate;
    
     // Input parameters for audio processing
     enum InputParams {

@@ -11,8 +11,10 @@ private:
     void next(int nSamples);
    
     // Constants
-    const float m_sampleRate;
     static constexpr int NUM_ALLPASSES = 8;
+    
+    // Constants cached at construction
+    const float m_sampleRate;
    
     // Core processing
     FilterUtils::AllpassCascade<NUM_ALLPASSES> disperser;
@@ -23,6 +25,12 @@ private:
     
     // Cache for SlopeSignal state
     float freqPast, resonancePast, mixPast, feedbackPast;
+
+    // Audio rate flags
+    bool isFreqAudioRate;
+    bool isResonanceAudioRate;
+    bool isMixAudioRate;
+    bool isFeedbackAudioRate;
    
     enum InputParams {
         Input,     

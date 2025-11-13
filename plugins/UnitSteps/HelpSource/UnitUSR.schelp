@@ -195,3 +195,115 @@ code::
 }.play;
 )
 ::
+
+subsection::2.2) Indexing into MultiChannel Dswitch1
+
+code::
+(
+var multiChannelDswitch = { |triggers, reset, index, arrayOfItems, numOfItems, repeatItem|
+	var indexQuantized = (index * numOfItems).floor;
+	var demand = Ddup(repeatItem, Dswitch1(arrayOfItems, indexQuantized));
+	triggers.collect{ |localTrig|
+		Demand.ar(localTrig + reset, reset, demand)
+	};
+};
+
+var tuning = Tuning.new((0..12) * (3.ratiomidi / 13), 3.0, "Bohlen-Pierce").ratios;
+var degrees = [0, 5, 6, 7, 4, 0];
+var arrayOfRatios = degrees.collect{ |degree| tuning[degree] };
+
+{
+    var numChannels = 8;
+    var numSpeakers = 2;
+
+    var reset, tFreq;
+    var events, register, voices, calcGrainData;
+    var grains, sig, pan;
+
+	RandSeed.kr(\seedtrg.kr(1), \seed.kr(300));
+
+    reset = Trig1.ar(\reset.tr(0), SampleDur.ir);
+    tFreq = \tFreq.kr(10);
+
+    events = SchedulerCycle.ar(tFreq, reset);
+
+    register = UnitUSR.ar(
+        phase: events[\phase],
+        chance: 1,
+        length: 8,
+        rotate: 1,
+        interp: 0,
+        reset: reset
+    );
+
+    voices = VoiceAllocator.ar(
+        numChannels: numChannels,
+        trig: events[\trigger],
+        rate: events[\rate] / \overlap.kr(4),
+        subSampleOffset: events[\subSampleOffset],
+    );
+
+    calcGrainData = { |chainID|
+
+        var grainFreqs, grainPhases;
+		var grainOscs, grainWindows;
+
+        grainWindows = ExponentialWindow.ar(
+            phase: voices[\phases],
+            skew: \skew.kr(0.03),
+            shape: \shape.kr(0)
+        );
+
+        grainFreqs = case
+        { chainID == \A } {
+			var mod = multiChannelDswitch.(
+				voices[\triggers],
+				reset,
+				register[\bit3],
+				arrayOfRatios,
+				\numOfItemsA.kr(6),
+				\repeatItemA.kr(1)
+			);
+            \freqA.kr(220) * mod;
+        }
+        { chainID == \B } {
+			var mod = multiChannelDswitch.(
+				voices[\triggers],
+				reset,
+				register[\bit8],
+				arrayOfRatios,
+				\numOfItemsB.kr(6),
+				\repeatItemB.kr(1)
+			);
+            \freqB.kr(440) * mod;
+        };
+
+        grainPhases = RampIntegrator.ar(
+            trig: voices[\triggers],
+            rate: grainFreqs,
+            subSampleOffset: events[\subSampleOffset]
+        );
+        grainOscs = SinOsc.ar(DC.ar(0), grainPhases * 2pi);
+
+        grainOscs * grainWindows;
+    };
+
+    grains = XFade2.ar(
+        inA: calcGrainData.(\A),
+        inB: calcGrainData.(\B),
+        pan: \mix.kr(0.5) * 2 - 1
+    );
+
+    pan = UnitWalk.ar(voices[\phases]);
+    grains = PanAz.ar(
+        numChans: numSpeakers,
+        in: grains,
+        pos: pan.linlin(0, 1, -1 / numSpeakers, (2 * numSpeakers - 3) / numSpeakers);
+    );
+    sig = grains.sum;
+
+    sig = LeakDC.ar(sig);
+    sig * 0.1;
+}.play;
+)
+::
