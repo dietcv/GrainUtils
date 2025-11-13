@@ -45,7 +45,6 @@ option(NOVA_SIMD "Build plugins with nova-simd support." ON)
 # Include directories for shared headers
 include_directories(
     ${CMAKE_SOURCE_DIR}/external
-    ${CMAKE_SOURCE_DIR}/plugins/UnitShapers
     ${CMAKE_SOURCE_DIR}/plugins/Utils     
 )
 
@@ -54,6 +53,44 @@ if (NOVA_SIMD)
     add_definitions(-DNOVA_SIMD)
     include_directories(${SC_PATH}/external_libraries/nova-simd)
 endif()
+
+# Disperser Plugin
+set(Disperser_cpp_files
+    plugins/Disperser/Disperser.cpp
+)
+set(Disperser_sc_files
+    plugins/Disperser/Classes/Disperser.sc
+)
+set(Disperser_schelp_files
+    plugins/Disperser/HelpSource/Disperser.schelp
+)
+sc_add_server_plugin(
+    "GrainUtils/Disperser" # destination directory
+    "Disperser" # target name
+    "${Disperser_cpp_files}"
+    "${Disperser_sc_files}"
+    "${Disperser_schelp_files}"
+    ""
+)
+
+# GrainDelay Plugin
+set(GrainDelay_cpp_files
+    plugins/GrainDelay/GrainDelay.cpp
+)
+set(GrainDelay_sc_files
+    plugins/GrainDelay/Classes/GrainDelay.sc
+)
+set(GrainDelay_schelp_files
+    plugins/GrainDelay/HelpSource/GrainDelay.schelp
+)
+sc_add_server_plugin(
+    "GrainUtils/GrainDelay" # destination directory
+    "GrainDelay" # target name
+    "${GrainDelay_cpp_files}"
+    "${GrainDelay_sc_files}"
+    "${GrainDelay_schelp_files}"
+    ""
+)
 
 # EventSystem Plugins
 set(EventSystem_cpp_files
@@ -78,24 +115,10 @@ sc_add_server_plugin(
     ""
 )
 
-# GrainDelay Plugin
-set(GrainDelay_cpp_files
-    plugins/GrainDelay/GrainDelay.cpp
-)
-set(GrainDelay_sc_files
-    plugins/GrainDelay/Classes/GrainDelay.sc
-)
-set(GrainDelay_schelp_files
-    plugins/GrainDelay/HelpSource/GrainDelay.schelp
-)
-sc_add_server_plugin(
-    "GrainUtils/GrainDelay" # destination directory
-    "GrainDelay" # target name
-    "${GrainDelay_cpp_files}"
-    "${GrainDelay_sc_files}"
-    "${GrainDelay_schelp_files}"
-    ""
-)
+# Install guides to the HelpSource/Guides directory 
+install(DIRECTORY plugins/EventSystem/HelpSource/Guides/
+        DESTINATION GrainUtils/EventSystem/HelpSource/Guides
+        FILES_MATCHING PATTERN "*.schelp")
 
 # Osc Plugins
 set(Oscs_cpp_files
@@ -117,29 +140,25 @@ sc_add_server_plugin(
     ""
 )
 
-# ShiftRegister Plugin
-set(ShiftRegister_cpp_files
-    plugins/ShiftRegister/ShiftRegister.cpp
+# UnitEasing Plugins
+set(UnitEasing_cpp_files
+    plugins/UnitEasing/UnitEasing.cpp
 )
-set(ShiftRegister_sc_files
-    plugins/ShiftRegister/Classes/ShiftRegister.sc
+set(UnitEasing_sc_files
+    plugins/UnitEasing/Classes/UnitEasing.sc
 )
-set(ShiftRegister_schelp_files
-    plugins/ShiftRegister/HelpSource/ShiftRegister.schelp
+set(UnitEasing_schelp_files
+    plugins/UnitEasing/HelpSource/JCurve.schelp
+    plugins/UnitEasing/HelpSource/SCurve.schelp
 )
 sc_add_server_plugin(
-    "GrainUtils/ShiftRegister" # destination directory
-    "ShiftRegister" # target name
-    "${ShiftRegister_cpp_files}"
-    "${ShiftRegister_sc_files}"
-    "${ShiftRegister_schelp_files}"
+    "GrainUtils/UnitEasing" # destination directory
+    "UnitEasing" # target name
+    "${UnitEasing_cpp_files}"
+    "${UnitEasing_sc_files}"
+    "${UnitEasing_schelp_files}"
     ""
-)
-
-# Install guides to the HelpSource/Guides directory 
-install(DIRECTORY plugins/EventSystem/HelpSource/Guides/
-        DESTINATION GrainUtils/EventSystem/HelpSource/Guides
-        FILES_MATCHING PATTERN "*.schelp")
+)        
 
 # UnitShaper Plugins
 set(UnitShapers_cpp_files
@@ -149,21 +168,9 @@ set(UnitShapers_sc_files
     plugins/UnitShapers/Classes/UnitShapers.sc
 )
 set(UnitShapers_schelp_files
-    # window functions
-    plugins/UnitShapers/HelpSource/HanningWindow.schelp
-    plugins/UnitShapers/HelpSource/GaussianWindow.schelp
-    plugins/UnitShapers/HelpSource/TrapezoidalWindow.schelp
-    plugins/UnitShapers/HelpSource/TukeyWindow.schelp
-    plugins/UnitShapers/HelpSource/ExponentialWindow.schelp
-
-    # unit shapers
     plugins/UnitShapers/HelpSource/UnitKink.schelp
     plugins/UnitShapers/HelpSource/UnitTriangle.schelp
     plugins/UnitShapers/HelpSource/UnitCubic.schelp
-    plugins/UnitShapers/HelpSource/UnitStep.schelp
-    plugins/UnitShapers/HelpSource/UnitWalk.schelp
-    plugins/UnitShapers/HelpSource/JCurve.schelp
-    plugins/UnitShapers/HelpSource/SCurve.schelp
 )
 sc_add_server_plugin(
     "GrainUtils/UnitShapers" # destination directory
@@ -171,6 +178,50 @@ sc_add_server_plugin(
     "${UnitShapers_cpp_files}"
     "${UnitShapers_sc_files}"
     "${UnitShapers_schelp_files}"
+    ""
+)
+
+# UnitStep Plugins
+set(UnitSteps_cpp_files
+    plugins/UnitSteps/UnitSteps.cpp
+)
+set(UnitSteps_sc_files
+    plugins/UnitSteps/Classes/UnitSteps.sc
+)
+set(UnitSteps_schelp_files
+    plugins/UnitSteps/HelpSource/UnitStep.schelp
+    plugins/UnitSteps/HelpSource/UnitWalk.schelp
+    plugins/UnitSteps/HelpSource/UnitUSR.schelp
+)
+sc_add_server_plugin(
+    "GrainUtils/UnitSteps" # destination directory
+    "UnitSteps" # target name
+    "${UnitSteps_cpp_files}"
+    "${UnitSteps_sc_files}"
+    "${UnitSteps_schelp_files}"
+    ""
+)
+
+# UnitWindow Plugins
+set(UnitWindows_cpp_files
+    plugins/UnitWindows/UnitWindows.cpp
+)
+set(UnitWindows_sc_files
+    plugins/UnitWindows/Classes/UnitWindows.sc
+)
+set(UnitWindows_schelp_files
+    plugins/UnitWindows/HelpSource/HanningWindow.schelp
+    plugins/UnitWindows/HelpSource/GaussianWindow.schelp
+    plugins/UnitWindows/HelpSource/TrapezoidalWindow.schelp
+    plugins/UnitWindows/HelpSource/TukeyWindow.schelp
+    plugins/UnitWindows/HelpSource/ExponentialWindow.schelp
+)
+sc_add_server_plugin(
+    "GrainUtils/UnitWindows" # destination directory
+    "UnitWindows" # target name
+    "${UnitWindows_cpp_files}"
+    "${UnitWindows_sc_files}"
+    "${UnitWindows_schelp_files}"
     ""
 )
 

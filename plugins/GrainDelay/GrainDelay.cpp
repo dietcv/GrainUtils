@@ -15,13 +15,13 @@ GrainDelay::GrainDelay() :
 
     // Check the result of RTAlloc!
     auto unit = this;
-    ClearUnitIfMemFailed(m_buffer);
+    ClearUnitIfMemFailed(m_buffer);   
     
     // Initialize the allocated buffer with zeros
     memset(m_buffer, 0, m_bufSize * sizeof(float));
     
-    mCalcFunc = make_calc_function<GrainDelay, &GrainDelay::next_aa>();
-    next_aa(1);
+    mCalcFunc = make_calc_function<GrainDelay, &GrainDelay::next>();
+    next(1);
 
     // Reset state after priming
     m_scheduler.reset();
@@ -32,7 +32,7 @@ GrainDelay::~GrainDelay() {
     RTFree(mWorld, m_buffer);
 }
 
-void GrainDelay::next_aa(int nSamples) {
+void GrainDelay::next(int nSamples) {
     
     // Audio-rate parameters
     const float* input = in(Input);
@@ -54,7 +54,7 @@ void GrainDelay::next_aa(int nSamples) {
     for (int i = 0; i < nSamples; ++i) {
         
         // Get audio-rate parameters per-sample
-        float triggerRate = triggerRateIn[i];
+        float triggerRate = sc_clip(triggerRateIn[i], 0.1f, 500.0f);
         float overlap = sc_clip(overlapIn[i], 0.001f, static_cast<float>(NUM_CHANNELS));
         float delayTime = sc_clip(delayTimeIn[i], m_sampleDur, MAX_DELAY_TIME);
         float grainRate = sc_clip(grainRateIn[i], 0.125f, 4.0f);
@@ -93,9 +93,6 @@ void GrainDelay::next_aa(int nSamples) {
             
             // Process grain if voice allocator says it's active
             if (m_allocator.isActive[g]) {
-
-                // Increment sample count
-                m_grainData[g].sampleCount++;
                 
                 // Calculate grain position: readPos + (accumulator * grainRate)
                 float grainPos = (m_grainData[g].readPos * m_bufFrames) + (m_grainData[g].sampleCount * m_grainData[g].rate);
@@ -110,6 +107,9 @@ void GrainDelay::next_aa(int nSamples) {
                 // Apply Hanning window using voice allocator's sub-sample accurate phase
                 grainSample *= sc_hanwindow(m_allocator.phases[g]);
                 delayed += grainSample;
+
+                // Increment sample count
+                m_grainData[g].sampleCount++;
             }
         }
 

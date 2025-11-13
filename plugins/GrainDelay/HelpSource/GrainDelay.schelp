@@ -6,8 +6,8 @@ categories:: UGens>Delays, UGens>Granular
 description::
 A real-time granular delay effect with subsample-accurate grain triggering and single-sample feedback. 
 Each grain can be pitch-shifted and overlapped to create complex textures ranging from subtle echoes to dense granular clouds. 
-The plugin uses a sub-sample accurate event system for precise grain timing, eliminating aliasing for high trigger rates and supports up to 32 active grains with smart voice allocation.
-The voice allocation system distributes each grain across the 32 available channels and checks which channel is currently free, dropping grains only when all channels are busy. 
+The plugin uses a sub-sample accurate event system for precise grain timing, eliminating aliasing for high trigger rates and supports up to 16 active grains with smart voice allocation.
+The voice allocation system distributes each grain across the channels and checks which channel is currently free, dropping grains only when all channels are busy. 
 This ensures that no grains are scheduled on a channel which is currently active.
 
 note::
@@ -23,15 +23,17 @@ Audio input signal to be processed
 
 argument::triggerRate
 Grain trigger rate in Hz. Controls the density of grain scheduling.
+Range: 0.1-500
+Default: 10
 
 argument::overlap
-Grain overlap amount. The higher the overlap amount, the more the grains overlap up to the maximum number of 32 channels.
-Range: 0.001-32
+Grain overlap amount. The higher the overlap amount, the more the grains overlap up to the maximum number of 16 channels.
+Range: 0.001-16
 Default: 1
 
 argument::delayTime
 Delay time in seconds. Determines how far back in the buffer grains are read from.
-Range: 1 sample - 5 seconds
+Range: 1 sample - 2 seconds
 Default: 0.2 seconds
 
 argument::grainRate

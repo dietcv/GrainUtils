@@ -3,26 +3,16 @@
 
 static InterfaceTable *ft;
 
-// ===== DUAL WAVETABLE OSCILLATOR =====
+// ===== HELPER FUNCTION =====
 
-DualOscOS::DualOscOS() : m_sampleRate(static_cast<float>(sampleRate()))
-{
-    m_oversamplingA.reset(m_sampleRate);
-    m_oversamplingB.reset(m_sampleRate);
-    m_dualOsc.reset();
-    mCalcFunc = make_calc_function<DualOscOS, &DualOscOS::next_aa>();
-    next_aa(1);
-}
-
-DualOscOS::~DualOscOS() = default;
-
-bool DualOscOS::getBufferData(OscUtils::BufUnit& bufUnit, float bufNum, int nSamples,
-                              const float*& bufData, int& tableSize, const char* oscName) {
+static bool getBufferData(OscUtils::BufUnit& bufUnit, float bufNum, int nSamples,
+                         World* world, Graph* parent,
+                         const float*& bufData, int& tableSize, const char* oscName) {
     const SndBuf* buf;
-    const auto verify_buf = bufUnit.GetTable(mWorld, mParent, bufNum, nSamples, buf, bufData, tableSize);
+    const auto verify_buf = bufUnit.GetTable(world, parent, bufNum, nSamples, buf, bufData, tableSize);
     if (!verify_buf) {
         if (!bufUnit.m_buf_failed) {
-            Print("DualOscOS: buffer %s not found\n", oscName);
+            Print("%s: buffer not found\n", oscName);
             bufUnit.m_buf_failed = true;
         }
         return false;
@@ -31,7 +21,19 @@ bool DualOscOS::getBufferData(OscUtils::BufUnit& bufUnit, float bufNum, int nSam
     return true;
 }
 
-void DualOscOS::next_aa(int nSamples) {
+// ===== DUAL WAVETABLE OSCILLATOR =====
+
+DualOscOS::DualOscOS() : m_sampleRate(static_cast<float>(sampleRate()))
+{
+    m_oversamplingA.reset(m_sampleRate);
+    m_oversamplingB.reset(m_sampleRate);
+    mCalcFunc = make_calc_function<DualOscOS, &DualOscOS::next>();
+    next(1);
+}
+
+DualOscOS::~DualOscOS() = default;
+
+void DualOscOS::next(int nSamples) {
 
     // Audio-rate parameters
     const float* phaseA = in(PhaseA);
@@ -59,8 +61,8 @@ void DualOscOS::next_aa(int nSamples) {
     const float* bufDataB;
     int tableSizeA, tableSizeB;
     
-    if (!getBufferData(m_bufUnitA, bufNumA, nSamples, bufDataA, tableSizeA, "OscA") ||
-        !getBufferData(m_bufUnitB, bufNumB, nSamples, bufDataB, tableSizeB, "OscB")) {
+    if (!getBufferData(m_bufUnitA, bufNumA, nSamples, mWorld, mParent, bufDataA, tableSizeA, "DualOscOS OscA") ||
+        !getBufferData(m_bufUnitB, bufNumB, nSamples, mWorld, mParent, bufDataB, tableSizeB, "DualOscOS OscB")) {
         ClearUnitOutputs(this, nSamples);
         return;
     }
@@ -71,10 +73,6 @@ void DualOscOS::next_aa(int nSamples) {
     const int numCyclesIntA = static_cast<int>(numCyclesA);
     const int numCyclesIntB = static_cast<int>(numCyclesB);
     
-    // Set oversampling factor for both channels
-    m_oversamplingA.setOversamplingIndex(oversampleIndex);
-    m_oversamplingB.setOversamplingIndex(oversampleIndex);
-    
     if (oversampleIndex == 0) {
         // No oversampling - direct processing
         for (int i = 0; i < nSamples; ++i) {
@@ -82,7 +80,8 @@ void DualOscOS::next_aa(int nSamples) {
             const float slopeB = m_rampToSlopeB.process(phaseB[i]);
             
             auto result = m_dualOsc.process(
-                phaseA[i], phaseB[i], cyclePosA[i], cyclePosB[i],
+                phaseA[i], phaseB[i], 
+                cyclePosA[i], cyclePosB[i],
                 slopeA, slopeB, pmIndexA[i], pmIndexB[i],
                 pmFilterRatioA[i], pmFilterRatioB[i],
                 bufDataA, tableSizeA, cycleSamplesA, numCyclesIntA,
@@ -94,35 +93,34 @@ void DualOscOS::next_aa(int nSamples) {
             outputB[i] = result.oscB;
         }
     } else {
-        // Oversampling enabled
-        const int osRatioA = m_oversamplingA.getOversamplingRatio();
-        const int osRatioB = m_oversamplingB.getOversamplingRatio();
-        const float invOsRatioA = 1.0f / static_cast<float>(osRatioA);
-        const float invOsRatioB = 1.0f / static_cast<float>(osRatioB);
+        // Set oversampling factor for both channels
+        m_oversamplingA.setOversamplingIndex(oversampleIndex);
+        m_oversamplingB.setOversamplingIndex(oversampleIndex);
+        
+        // Prepare oversampling buffers
+        const int osRatio = m_oversamplingA.getOversamplingRatio();
+        float* osBufferA = m_oversamplingA.getOSBuffer();
+        float* osBufferB = m_oversamplingB.getOSBuffer();
         
         for (int i = 0; i < nSamples; ++i) {
             const float slopeA = m_rampToSlopeA.process(phaseA[i]);
             const float slopeB = m_rampToSlopeB.process(phaseB[i]);
             
             // Calculate phase difference per oversampled sample
-            const float phaseDiffA = slopeA * invOsRatioA;
-            const float phaseDiffB = slopeB * invOsRatioB;
+            const float phaseDiffA = slopeA / static_cast<float>(osRatio);
+            const float phaseDiffB = slopeB / static_cast<float>(osRatio);
             
-            // Prepare oversampling buffers
             m_oversamplingA.upsample(0.0f);
             m_oversamplingB.upsample(0.0f);
-            float* osBufferA = m_oversamplingA.getOSBuffer();
-            float* osBufferB = m_oversamplingB.getOSBuffer();
-            
             float osPhaseA = phaseA[i];
             float osPhaseB = phaseB[i];
             
-            for (int k = 0; k < osRatioA; k++) {
-                // Increment phases first
+            for (int k = 0; k < osRatio; k++) {
+                // Increment phases
                 osPhaseA += phaseDiffA;
                 osPhaseB += phaseDiffB;
                 
-                // Then process with wrapped phases
+                // Process with wrapped phases
                 auto result = m_dualOsc.process(
                     sc_frac(osPhaseA), sc_frac(osPhaseB),
                     cyclePosA[i], cyclePosB[i],
@@ -148,28 +146,13 @@ void DualOscOS::next_aa(int nSamples) {
 SingleOscOS::SingleOscOS() : m_sampleRate(static_cast<float>(sampleRate()))
 {
     m_oversampling.reset(m_sampleRate);
-    mCalcFunc = make_calc_function<SingleOscOS, &SingleOscOS::next_aa>();
-    next_aa(1);
+    mCalcFunc = make_calc_function<SingleOscOS, &SingleOscOS::next>();
+    next(1);
 }
 
 SingleOscOS::~SingleOscOS() = default;
 
-bool SingleOscOS::getBufferData(OscUtils::BufUnit& bufUnit, float bufNum, int nSamples,
-                              const float*& bufData, int& tableSize, const char* oscName) {
-    const SndBuf* buf;
-    const auto verify_buf = bufUnit.GetTable(mWorld, mParent, bufNum, nSamples, buf, bufData, tableSize);
-    if (!verify_buf) {
-        if (!bufUnit.m_buf_failed) {
-            Print("SingleOscOS: buffer %s not found\n", oscName);
-            bufUnit.m_buf_failed = true;
-        }
-        return false;
-    }
-    bufUnit.m_buf_failed = false;
-    return true;
-}
-
-void SingleOscOS::next_aa(int nSamples) {
+void SingleOscOS::next(int nSamples) {
     
     // Audio-rate parameters
     const float* phase = in(Phase);
@@ -187,7 +170,7 @@ void SingleOscOS::next_aa(int nSamples) {
     const float* bufData;
     int tableSize;
     
-    if (!getBufferData(m_bufUnit, bufNum, nSamples, bufData, tableSize, "SingleOscOS")) {
+    if (!getBufferData(m_bufUnit, bufNum, nSamples, mWorld, mParent, bufData, tableSize, "SingleOscOS")) {
         ClearUnitOutputs(this, nSamples);
         return;
     }
@@ -196,45 +179,44 @@ void SingleOscOS::next_aa(int nSamples) {
     const int cycleSamples = tableSize / static_cast<int>(numCycles);
     const int numCyclesInt = static_cast<int>(numCycles);
     
-    // Set oversampling factor
-    m_oversampling.setOversamplingIndex(oversampleIndex);
-    
     if (oversampleIndex == 0) {
         // No oversampling - direct processing
         for (int i = 0; i < nSamples; ++i) {
             const float slope = m_rampToSlope.process(phase[i]);
             
             output[i] = OscUtils::wavetableInterpolate(
-            phase[i], bufData, tableSize, 
-            cycleSamples, numCyclesInt, cyclePos[i], 
-            slope, m_sincTable);
+                phase[i], 
+                bufData, tableSize, 
+                cycleSamples, numCyclesInt, cyclePos[i], 
+                slope, m_sincTable);
         }
     } else {
-        // Oversampling enabled
+        // Set oversampling factor
+        m_oversampling.setOversamplingIndex(oversampleIndex);
+
+        // Prepare oversampling buffer
         const int osRatio = m_oversampling.getOversamplingRatio();
-        const float invOsRatio = 1.0f / static_cast<float>(osRatio);
-        
+        float* osBuffer = m_oversampling.getOSBuffer();
+
         for (int i = 0; i < nSamples; ++i) {
             const float slope = m_rampToSlope.process(phase[i]);
-            
+
             // Calculate phase difference per oversampled sample
-            const float phaseDiff = slope * invOsRatio;
+            const float phaseDiff = slope / static_cast<float>(osRatio);
             
-            // Prepare oversampling buffer
             m_oversampling.upsample(0.0f);
-            float* osBuffer = m_oversampling.getOSBuffer();
-            
             float osPhase = phase[i];
             
             for (int k = 0; k < osRatio; k++) {
-                // Increment phase first
+                // Increment phase
                 osPhase += phaseDiff;
                 
-                // Then process with wrapped phase
+                // Process with wrapped phase
                 osBuffer[k] = OscUtils::wavetableInterpolate(
-                sc_frac(osPhase), bufData, tableSize, 
-                cycleSamples, numCyclesInt, cyclePos[i], 
-                slope, m_sincTable);
+                    sc_frac(osPhase), 
+                    bufData, tableSize, 
+                    cycleSamples, numCyclesInt, cyclePos[i], 
+                    slope, m_sincTable);
             }
             
             output[i] = m_oversampling.downsample();

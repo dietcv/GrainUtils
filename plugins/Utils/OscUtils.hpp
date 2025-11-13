@@ -1,7 +1,7 @@
-
 #pragma once
 #include "SC_PlugIn.hpp"
 #include "Utils.hpp"
+#include "FilterUtils.hpp"
 #include "wavetables.h"
 #include <array>
 #include <cmath>
@@ -102,8 +102,7 @@ inline float sincInterpolate(float scaledPhase, const float* buffer, int bufSize
 
         // === WAVEFORM BUFFER ACCESS (no interpolation) ===
         const int waveIndex = sincTable.wave_points[i] * sampleSpacing + waveOffset;
-        const int waveIndexWrapped = Utils::wrapIndex(waveIndex, startPos, waveMask);
-        const float waveSample = buffer[waveIndexWrapped]; // endPos ∈ [0, bufSize-1], no additional wrapping needed already guaranteed < buSize - 1
+        const float waveSample = Utils::peekNoInterp(buffer, waveIndex, startPos, waveMask);
         
         // === SINC TABLE ACCESS (linear interpolation) ===
         const float sincPos = static_cast<float>(sincTable.sinc_points[i]) - sincOffset;
@@ -181,8 +180,8 @@ inline float wavetableInterpolate(float phase, const float* buffer, int bufSize,
 
 struct DualOsc {
 
-    Utils::OnePoleSlope m_pmFilterA;
-    Utils::OnePoleSlope m_pmFilterB;
+    FilterUtils::OnePoleSlope m_pmFilterA;
+    FilterUtils::OnePoleSlope m_pmFilterB;
 
     float m_prevOscA{0.0f};
     float m_prevOscB{0.0f};
@@ -227,13 +226,6 @@ struct DualOsc {
         
         return {oscA, oscB};
     }
-
-    void reset() {
-        m_prevOscA = 0.0f;
-        m_prevOscB = 0.0f;
-        m_pmFilterA.reset();
-        m_pmFilterB.reset();
-    }
 };
 
-} // namespace Utils
+} // namespace OscUtils

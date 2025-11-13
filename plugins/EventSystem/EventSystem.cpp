@@ -7,8 +7,8 @@ static InterfaceTable* ft;
 
 SchedulerCycle::SchedulerCycle() : m_sampleRate(static_cast<float>(sampleRate()))
 {
-    mCalcFunc = make_calc_function<SchedulerCycle, &SchedulerCycle::next_aa>();
-    next_aa(1);
+    mCalcFunc = make_calc_function<SchedulerCycle, &SchedulerCycle::next>();
+    next(1);
 
     // Reset state after priming
     m_scheduler.reset();
@@ -17,7 +17,7 @@ SchedulerCycle::SchedulerCycle() : m_sampleRate(static_cast<float>(sampleRate())
 
 SchedulerCycle::~SchedulerCycle() = default;
 
-void SchedulerCycle::next_aa(int nSamples) {  
+void SchedulerCycle::next(int nSamples) {  
     // Audio-rate parameters
     const float* rateIn = in(Rate);
     const float* resetIn = in(Reset);
@@ -53,8 +53,8 @@ void SchedulerCycle::next_aa(int nSamples) {
 
 SchedulerBurst::SchedulerBurst() : m_sampleRate(static_cast<float>(sampleRate()))
 {
-    mCalcFunc = make_calc_function<SchedulerBurst, &SchedulerBurst::next_aa>();
-    next_aa(1);
+    mCalcFunc = make_calc_function<SchedulerBurst, &SchedulerBurst::next>();
+    next(1);
 
     // Reset state after priming
     m_scheduler.reset();
@@ -63,7 +63,7 @@ SchedulerBurst::SchedulerBurst() : m_sampleRate(static_cast<float>(sampleRate())
 
 SchedulerBurst::~SchedulerBurst() = default;
 
-void SchedulerBurst::next_aa(int nSamples) {    
+void SchedulerBurst::next(int nSamples) {    
     // Audio-rate parameters
     const float* initTriggerIn = in(InitTrigger);
     const float* durationIn = in(Duration);
@@ -105,8 +105,8 @@ VoiceAllocator::VoiceAllocator() : m_sampleRate(static_cast<float>(sampleRate())
     // Get number of channels
     m_numChannels = sc_clip(static_cast<int>(in0(NumChannels)), 1, MAX_CHANNELS);
        
-    mCalcFunc = make_calc_function<VoiceAllocator, &VoiceAllocator::next_aa>();
-    next_aa(1);
+    mCalcFunc = make_calc_function<VoiceAllocator, &VoiceAllocator::next>();
+    next(1);
 
     // Reset state after priming
     m_allocator.reset();
@@ -115,7 +115,7 @@ VoiceAllocator::VoiceAllocator() : m_sampleRate(static_cast<float>(sampleRate())
 
 VoiceAllocator::~VoiceAllocator() = default;
 
-void VoiceAllocator::next_aa(int nSamples) {
+void VoiceAllocator::next(int nSamples) {
     // Audio-rate parameters
     const float* triggerIn = in(Trigger);
     const float* rateIn = in(Rate);
@@ -148,8 +148,8 @@ void VoiceAllocator::next_aa(int nSamples) {
 
 RampIntegrator::RampIntegrator() : m_sampleRate(static_cast<float>(sampleRate()))
 {
-    mCalcFunc = make_calc_function<RampIntegrator, &RampIntegrator::next_aa>();
-    next_aa(1);
+    mCalcFunc = make_calc_function<RampIntegrator, &RampIntegrator::next>();
+    next(1);
 
     // Reset state after priming
     m_trigger.reset();
@@ -157,7 +157,7 @@ RampIntegrator::RampIntegrator() : m_sampleRate(static_cast<float>(sampleRate())
 
 RampIntegrator::~RampIntegrator() = default;
 
-void RampIntegrator::next_aa(int nSamples) { 
+void RampIntegrator::next(int nSamples) { 
     // Audio-rate parameters
     const float* triggerIn = in(Trigger);
     const float* rateIn = in(Rate);
@@ -187,8 +187,8 @@ void RampIntegrator::next_aa(int nSamples) {
 
 RampAccumulator::RampAccumulator()
 {
-    mCalcFunc = make_calc_function<RampAccumulator, &RampAccumulator::next_aa>();
-    next_aa(1);
+    mCalcFunc = make_calc_function<RampAccumulator, &RampAccumulator::next>();
+    next(1);
     
     // Reset state after priming
     m_trigger.reset();
@@ -196,7 +196,7 @@ RampAccumulator::RampAccumulator()
 
 RampAccumulator::~RampAccumulator() = default;
 
-void RampAccumulator::next_aa(int nSamples) { 
+void RampAccumulator::next(int nSamples) { 
     // Audio-rate parameters
     const float* triggerIn = in(Trigger);
     const float* offsetIn = in(SubSampleOffset);

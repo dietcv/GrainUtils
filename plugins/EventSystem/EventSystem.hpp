@@ -1,6 +1,7 @@
 #pragma once
 #include "SC_PlugIn.hpp"
 #include "Utils.hpp"
+#include "EventUtils.hpp"
 
 // ===== SCHEDULER CYCLE =====
 
@@ -9,11 +10,11 @@ public:
     SchedulerCycle();
     ~SchedulerCycle();
 private:
-    void next_aa(int nSamples);
+    void next(int nSamples);
    
     // Core processing
-    Utils::SchedulerCycle m_scheduler;
-    Utils::IsTrigger m_resetTrigger;
+    EventUtils::SchedulerCycle m_scheduler;
+    EventUtils::IsTrigger m_resetTrigger;
     
     // Constants
     const float m_sampleRate;
@@ -40,11 +41,11 @@ public:
     ~SchedulerBurst();
    
 private:
-    void next_aa(int nSamples);
+    void next(int nSamples);
    
     // Core processing
-    Utils::SchedulerBurst m_scheduler;
-    Utils::IsTrigger m_initTrigger;
+    EventUtils::SchedulerBurst m_scheduler;
+    EventUtils::IsTrigger m_initTrigger;
    
     // Constants
     const float m_sampleRate;
@@ -71,14 +72,14 @@ public:
     VoiceAllocator();
     ~VoiceAllocator();
 private:
-    void next_aa(int nSamples);
+    void next(int nSamples);
    
     // Constants
     static constexpr int MAX_CHANNELS = 64;
     
     // Core processing
-    Utils::VoiceAllocator<MAX_CHANNELS> m_allocator;
-    Utils::IsTrigger m_trigger;
+    EventUtils::VoiceAllocator<MAX_CHANNELS> m_allocator;
+    EventUtils::IsTrigger m_trigger;
     
     // Runtime state
     const float m_sampleRate;
@@ -103,11 +104,11 @@ public:
     RampIntegrator();
     ~RampIntegrator();
 private:
-    void next_aa(int nSamples);
+    void next(int nSamples);
    
     // Core processing
-    Utils::RampIntegrator m_integrator;
-    Utils::IsTrigger m_trigger;
+    EventUtils::RampIntegrator m_integrator;
+    EventUtils::IsTrigger m_trigger;
    
     // Constants
     const float m_sampleRate;
@@ -131,11 +132,11 @@ public:
     RampAccumulator();
     ~RampAccumulator();
 private:
-    void next_aa(int nSamples);
+    void next(int nSamples);
    
     // Core processing
-    Utils::RampAccumulator m_accumulator;
-    Utils::IsTrigger m_trigger;
+    EventUtils::RampAccumulator m_accumulator;
+    EventUtils::IsTrigger m_trigger;
    
     // Input parameters
     enum InputParams {

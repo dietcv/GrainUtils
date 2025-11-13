@@ -93,13 +93,6 @@ subsection::1.3) Modulated Ramps and Overlapping Grains with Voice Allocation
 
 code::
 (
-var multiChannelDwhite = { |triggers|
-    var demand = Dwhite(-1.0, 1.0);
-    triggers.collect{ |localTrig|
-        Demand.ar(localTrig, DC.ar(0), demand)
-    };
-};
-
 {
     var numChannels = 5;
 
@@ -128,7 +121,7 @@ var multiChannelDwhite = { |triggers|
 
     grainWindows = HanningWindow.ar(voices[\phases], \skew.kr(0.5));
 
-    grainFreqMod = multiChannelDwhite.(voices[\triggers]);
+    grainFreqMod = UnitStep.ar(voices[\phases]) * 2 - 1;
     grainFreqs = \freq.kr(800) * (2 ** (grainFreqMod * \freqMD.kr(2)));
 
     grainPhases = RampIntegrator.ar(
@@ -150,13 +143,6 @@ subsection::2.1) Overlapping Grains with Voice Allocation
 
 code::
 (
-var multiChannelDwhite = { |triggers|
-    var demand = Dwhite(-1.0, 1.0);
-    triggers.collect{ |localTrig|
-        Demand.ar(localTrig, DC.ar(0), demand)
-    };
-};
-
 {
     var numChannels = 8;
     var numSpeakers = 2;
@@ -183,7 +169,7 @@ var multiChannelDwhite = { |triggers|
         skew: \skew.kr(0.03)
     );
 
-    grainFreqMod = multiChannelDwhite.(voices[\triggers]);
+	grainFreqMod = UnitStep.ar(voices[\phases]) * 2 - 1;
     grainFreqs = \freq.kr(800) * (2 ** (grainFreqMod * \freqMD.kr(2)));
 
     grainPhases = RampIntegrator.ar(
@@ -195,11 +181,11 @@ var multiChannelDwhite = { |triggers|
 
     grains = grainOscs * grainWindows;
 
-    pan = multiChannelDwhite.(voices[\triggers]);
+    pan = UnitWalk.ar(voices[\phases]);
     grains = PanAz.ar(
         numChans: numSpeakers,
         in: grains,
-        pos: pan.linlin(-1, 1, -1 / numSpeakers, (2 * numSpeakers - 3) / numSpeakers);
+        pos: pan.linlin(0, 1, -1 / numSpeakers, (2 * numSpeakers - 3) / numSpeakers);
     );
     sig = grains.sum;
 
