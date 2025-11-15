@@ -56,7 +56,7 @@ code::
 	var sig = Saw.ar(32.midicps);
 	Disperser.ar(
 		input: sig,
-		freq: SinOsc.kr(0.3).linlin(-1, 1, 200, 4000),
+		freq: SinOsc.ar(0.3).linlin(-1, 1, 200, 4000),
 		resonance: 0.5,
 		mix: 0.5,
 		feedback: 0.85,
@@ -74,7 +74,7 @@ code::
 	Disperser.ar(
 		input: sig,
 		freq: 500,
-		resonance: SinOsc.kr(0.3).linlin(-1, 1, 0, 1),
+		resonance: SinOsc.ar(0.3).linlin(-1, 1, 0, 1),
 		mix: 1.0,
 		feedback: 0.85,
 	)!2 * 0.1
