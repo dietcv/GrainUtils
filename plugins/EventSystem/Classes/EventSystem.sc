@@ -2,8 +2,6 @@
 
 SchedulerCycleUGen : MultiOutUGen {
 	*ar { |rate, reset = 0|
-		if(rate.rate != 'audio') { rate = K2A.ar(rate) };
-		if(reset.rate != 'audio') { reset = K2A.ar(reset) };
 		^this.multiNew('audio', rate, reset)
 	}
 
@@ -33,9 +31,6 @@ SchedulerCycle {
 
 SchedulerBurstUGen : MultiOutUGen {
 	*ar { |trig, duration, cycles = 1|
-		if(trig.rate != 'audio') { trig = K2A.ar(trig) };
-		if(duration.rate != 'audio') { duration = K2A.ar(duration) };
-		if(cycles.rate != 'audio') { cycles = K2A.ar(cycles) };
 		^this.multiNew('audio', trig, duration, cycles)
 	}
 
@@ -65,9 +60,6 @@ SchedulerBurst {
 
 VoiceAllocatorUGen : MultiOutUGen {
 	*ar { |numChannels, trig, rate, subSampleOffset|
-		if(trig.rate != 'audio') { trig = K2A.ar(trig) };
-		if(rate.rate != 'audio') { rate = K2A.ar(rate) };
-		if(subSampleOffset.rate != 'audio') { subSampleOffset = K2A.ar(subSampleOffset) };
 		^this.multiNew('audio', numChannels, trig, rate, subSampleOffset)
 	}
 
@@ -95,9 +87,6 @@ VoiceAllocator {
 
 RampIntegrator : UGen {
 	*ar { |trig, rate, subSampleOffset|
-		if(trig.rate != 'audio') { trig = K2A.ar(trig) };
-		if(rate.rate != 'audio') { rate = K2A.ar(rate) };
-		if(subSampleOffset.rate != 'audio') { subSampleOffset = K2A.ar(subSampleOffset) };
 		^this.multiNew('audio', trig, rate, subSampleOffset)
 	}
 
@@ -110,8 +99,6 @@ RampIntegrator : UGen {
 
 RampAccumulator : UGen {
 	*ar { |trig, subSampleOffset|
-		if(trig.rate != 'audio') { trig = K2A.ar(trig) };
-		if(subSampleOffset.rate != 'audio') { subSampleOffset = K2A.ar(subSampleOffset) };
 		^this.multiNew('audio', trig, subSampleOffset)
 	}
 

@@ -7,6 +7,7 @@
 class UnitStep : public SCUnit {
 public:
     UnitStep();
+
 private:
     void next(int nSamples);
     
@@ -30,11 +31,18 @@ private:
 class UnitWalk : public SCUnit {
 public:
     UnitWalk();
+
 private:
     void next(int nSamples);
     
     // Core processing
     UnitSteps::UnitWalk m_state;
+    
+    // Cache for SlopeSignal state
+    float stepPast;
+    
+    // Audio rate flags
+    bool isStepAudioRate;
     
     // Input parameter indices
     enum Inputs {
@@ -49,11 +57,12 @@ private:
     };
 };
 
-// ===== UNIT USR =====
+// ===== UNIT REGISTER =====
 
-class UnitUSR : public SCUnit {
+class UnitRegister : public SCUnit {
 public:
-    UnitUSR();
+    UnitRegister();
+
 private:
     void next(int nSamples);
     
@@ -62,8 +71,16 @@ private:
     static constexpr int MAX_LENGTH = 16;
     
     // Core processing
-    UnitSteps::UnitUSR m_shiftRegister;
+    UnitSteps::UnitRegister m_shiftRegister;
     EventUtils::IsTrigger m_resetTrigger;
+    
+    // Cache for SlopeSignal state
+    float chancePast;
+    
+    // Audio rate flags
+    bool isChanceAudioRate;
+    bool isLengthAudioRate;
+    bool isRotateAudioRate;
     
     // Input parameter indices
     enum Inputs {

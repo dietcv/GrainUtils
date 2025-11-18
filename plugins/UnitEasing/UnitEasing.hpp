@@ -7,8 +7,15 @@
 class JCurve : public SCUnit {
 public:
     JCurve();
+
 private:
     void next(int nSamples);
+    
+    // Cache for SlopeSignal state
+    float shapePast;
+    
+    // Audio rate flags
+    bool isShapeAudioRate;
     
     // Input parameter indices
     enum Inputs {
@@ -27,8 +34,16 @@ private:
 class SCurve : public SCUnit {
 public:
     SCurve();
+
 private:
     void next(int nSamples);
+    
+    // Cache for SlopeSignal state
+    float shapePast, inflectionPast;
+    
+    // Audio rate flags
+    bool isShapeAudioRate;
+    bool isInflectionAudioRate;
     
     // Input parameter indices
     enum Inputs {

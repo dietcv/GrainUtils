@@ -7,6 +7,10 @@ static InterfaceTable* ft;
 
 SchedulerCycle::SchedulerCycle() : m_sampleRate(static_cast<float>(sampleRate()))
 {
+    // Check which inputs are audio-rate
+    isRateAudioRate = isAudioRateIn(Rate);
+    isResetAudioRate = isAudioRateIn(Reset);
+    
     mCalcFunc = make_calc_function<SchedulerCycle, &SchedulerCycle::next>();
     next(1);
 
@@ -18,10 +22,7 @@ SchedulerCycle::SchedulerCycle() : m_sampleRate(static_cast<float>(sampleRate())
 SchedulerCycle::~SchedulerCycle() = default;
 
 void SchedulerCycle::next(int nSamples) {  
-    // Audio-rate parameters
-    const float* rateIn = in(Rate);
-    const float* resetIn = in(Reset);
-    
+
     // Output pointers
     float* triggerOut = out(Trigger);
     float* rateOut = out(RateLatched);
@@ -30,14 +31,20 @@ void SchedulerCycle::next(int nSamples) {
    
     for (int i = 0; i < nSamples; ++i) {
 
-        // Get audio-rate parameters per-sample
-        float rate = rateIn[i];
-        bool reset = m_resetTrigger.process(resetIn[i]);
+        // Get current parameter values (no interpolation - latched per trigger)
+        float rate = isRateAudioRate ? 
+            sc_clip(in(Rate)[i], m_sampleRate * -0.49f, m_sampleRate * 0.49f) : 
+            sc_clip(in0(Rate), m_sampleRate * -0.49f, m_sampleRate * 0.49f);
+        
+        // Trigger input (audio-rate or control-rate)
+        bool reset = isResetAudioRate ? 
+            m_resetTrigger.process(in(Reset)[i]) : 
+            m_resetTrigger.process(in0(Reset));
 
         // Process event scheduler
         auto event = m_scheduler.process(
-            rate,
-            reset,
+            rate, 
+            reset, 
             m_sampleRate
         );
         
@@ -53,6 +60,11 @@ void SchedulerCycle::next(int nSamples) {
 
 SchedulerBurst::SchedulerBurst() : m_sampleRate(static_cast<float>(sampleRate()))
 {
+    // Check which inputs are audio-rate
+    isInitTriggerAudioRate = isAudioRateIn(InitTrigger);
+    isDurationAudioRate = isAudioRateIn(Duration);
+    isCyclesAudioRate = isAudioRateIn(Cycles);
+    
     mCalcFunc = make_calc_function<SchedulerBurst, &SchedulerBurst::next>();
     next(1);
 
@@ -63,12 +75,8 @@ SchedulerBurst::SchedulerBurst() : m_sampleRate(static_cast<float>(sampleRate())
 
 SchedulerBurst::~SchedulerBurst() = default;
 
-void SchedulerBurst::next(int nSamples) {    
-    // Audio-rate parameters
-    const float* initTriggerIn = in(InitTrigger);
-    const float* durationIn = in(Duration);
-    const float* cyclesIn = in(Cycles);
-    
+void SchedulerBurst::next(int nSamples) {   
+
     // Output pointers
     float* triggerOut = out(Trigger);
     float* rateOut = out(RateLatched);
@@ -76,12 +84,21 @@ void SchedulerBurst::next(int nSamples) {
     float* phaseOut = out(Phase);
     
     for (int i = 0; i < nSamples; ++i) {
-
-        // Get audio-rate parameters per-sample
-        bool initTrigger = m_initTrigger.process(initTriggerIn[i]);
-        float duration = durationIn[i];
-        float cycles = cyclesIn[i];
-
+        
+        // Trigger input (audio-rate or control-rate)
+        bool initTrigger = isInitTriggerAudioRate ? 
+            m_initTrigger.process(in(InitTrigger)[i]) : 
+            m_initTrigger.process(in0(InitTrigger));
+        
+        // Get current parameter values (no interpolation - latched per trigger)
+        float duration = isDurationAudioRate ? 
+            sc_max(in(Duration)[i], 0.001f) : 
+            sc_max(in0(Duration), 0.001f);
+        
+        int cycles = isCyclesAudioRate ? 
+            sc_max(static_cast<int>(in(Cycles)[i]), 1) : 
+            sc_max(static_cast<int>(in0(Cycles)), 1);
+        
         // Process event scheduler
         auto event = m_scheduler.process(
             initTrigger,
@@ -100,10 +117,14 @@ void SchedulerBurst::next(int nSamples) {
 
 // ===== VOICE ALLOCATOR =====
 
-VoiceAllocator::VoiceAllocator() : m_sampleRate(static_cast<float>(sampleRate()))
+VoiceAllocator::VoiceAllocator() : 
+    m_sampleRate(static_cast<float>(sampleRate())),
+    m_numChannels(sc_clip(static_cast<int>(in0(NumChannels)), 1, MAX_CHANNELS))
 {
-    // Get number of channels
-    m_numChannels = sc_clip(static_cast<int>(in0(NumChannels)), 1, MAX_CHANNELS);
+    // Check which inputs are audio-rate
+    isTriggerAudioRate = isAudioRateIn(Trigger);
+    isRateAudioRate = isAudioRateIn(Rate);
+    isSubSampleOffsetAudioRate = isAudioRateIn(SubSampleOffset);
        
     mCalcFunc = make_calc_function<VoiceAllocator, &VoiceAllocator::next>();
     next(1);
@@ -116,23 +137,27 @@ VoiceAllocator::VoiceAllocator() : m_sampleRate(static_cast<float>(sampleRate())
 VoiceAllocator::~VoiceAllocator() = default;
 
 void VoiceAllocator::next(int nSamples) {
-    // Audio-rate parameters
-    const float* triggerIn = in(Trigger);
-    const float* rateIn = in(Rate);
-    const float* offsetIn = in(SubSampleOffset);
-   
     for (int i = 0; i < nSamples; ++i) {
-
-        // Get audio-rate parameters per-sample
-        bool trigger = m_trigger.process(triggerIn[i]);
-        float rate = rateIn[i];
-        float offset = offsetIn[i];
+        
+        // Trigger input (audio-rate or control-rate)
+        bool trigger = isTriggerAudioRate ? 
+            m_trigger.process(in(Trigger)[i]) : 
+            m_trigger.process(in0(Trigger));
+        
+        // Get current parameter values (no interpolation - latched per trigger)
+        float rate = isRateAudioRate ? 
+            sc_clip(in(Rate)[i], m_sampleRate * -0.49f, m_sampleRate * 0.49f) : 
+            sc_clip(in0(Rate), m_sampleRate * -0.49f, m_sampleRate * 0.49f);
+        
+        float offset = isSubSampleOffsetAudioRate ? 
+            in(SubSampleOffset)[i] : 
+            in0(SubSampleOffset);
 
         // Process voice allocator
         m_allocator.process(
-            trigger,
-            rate,
-            offset,
+            trigger, 
+            rate, 
+            offset, 
             m_sampleRate
         );
        
@@ -148,71 +173,100 @@ void VoiceAllocator::next(int nSamples) {
 
 RampIntegrator::RampIntegrator() : m_sampleRate(static_cast<float>(sampleRate()))
 {
+    // Initialize parameter cache
+    ratePast = in0(Rate);
+    
+    // Check which inputs are audio-rate
+    isTriggerAudioRate = isAudioRateIn(Trigger);
+    isRateAudioRate = isAudioRateIn(Rate);
+    isSubSampleOffsetAudioRate = isAudioRateIn(SubSampleOffset);
+    
     mCalcFunc = make_calc_function<RampIntegrator, &RampIntegrator::next>();
     next(1);
 
     // Reset state after priming
+    m_integrator.reset();
     m_trigger.reset();
 }
 
 RampIntegrator::~RampIntegrator() = default;
 
-void RampIntegrator::next(int nSamples) { 
-    // Audio-rate parameters
-    const float* triggerIn = in(Trigger);
-    const float* rateIn = in(Rate);
-    const float* offsetIn = in(SubSampleOffset);
-   
+void RampIntegrator::next(int nSamples) {
+
+    // Control-rate parameters with smooth interpolation
+    auto slopedRate = makeSlope(sc_clip(in0(Rate), m_sampleRate * -0.49f, m_sampleRate * 0.49f), ratePast);
+    
     // Output pointer
     float* phaseOut = out(Phase);
    
     for (int i = 0; i < nSamples; ++i) {
 
-        // Get audio-rate parameters per-sample
-        bool trigger = m_trigger.process(triggerIn[i]);
-        float rate = rateIn[i];
-        float offset = offsetIn[i];
+        // Trigger input (audio-rate or control-rate)
+        bool trigger = isTriggerAudioRate ? 
+            m_trigger.process(in(Trigger)[i]) : 
+            m_trigger.process(in0(Trigger));
+        
+        // Get current parameter values (audio-rate or interpolated control-rate)
+        float rate = isRateAudioRate ? 
+            sc_clip(in(Rate)[i], m_sampleRate * -0.49f, m_sampleRate * 0.49f) : 
+            slopedRate.consume();
+        
+        // Get current parameter values (no interpolation - latched per trigger)
+        float offset = isSubSampleOffsetAudioRate ? 
+            in(SubSampleOffset)[i] : 
+            in0(SubSampleOffset);
 
         // Process integrator
         phaseOut[i] = m_integrator.process(
-            trigger,
-            rate,
-            offset,
+            trigger, 
+            rate, 
+            offset, 
             m_sampleRate
         );
     }
+    
+    // Update parameter cache
+    ratePast = isRateAudioRate ? in(Rate)[nSamples - 1] : slopedRate.value;
 }
 
 // ===== RAMP ACCUMULATOR =====
 
 RampAccumulator::RampAccumulator()
 {
+    // Check which inputs are audio-rate
+    isTriggerAudioRate = isAudioRateIn(Trigger);
+    isSubSampleOffsetAudioRate = isAudioRateIn(SubSampleOffset);
+    
     mCalcFunc = make_calc_function<RampAccumulator, &RampAccumulator::next>();
     next(1);
     
     // Reset state after priming
+    m_accumulator.reset();
     m_trigger.reset();
 }
 
 RampAccumulator::~RampAccumulator() = default;
 
-void RampAccumulator::next(int nSamples) { 
-    // Audio-rate parameters
-    const float* triggerIn = in(Trigger);
-    const float* offsetIn = in(SubSampleOffset);
-   
+void RampAccumulator::next(int nSamples) {
+
     // Output pointer
     float* countOut = out(Count);
    
     for (int i = 0; i < nSamples; ++i) {
 
-        // Get audio-rate parameters per-sample
-        bool trigger = m_trigger.process(triggerIn[i]);
-        float offset = offsetIn[i];
+        // Trigger input (audio-rate or control-rate)
+        bool trigger = isTriggerAudioRate ? 
+            m_trigger.process(in(Trigger)[i]) : 
+            m_trigger.process(in0(Trigger));
+        
+        // Get current parameter values (no interpolation - latched per trigger)
+        float offset = isSubSampleOffsetAudioRate ? 
+            in(SubSampleOffset)[i] : 
+            in0(SubSampleOffset);
 
         // Process accumulator
         countOut[i] = m_accumulator.process(
-            trigger,
+            trigger, 
             offset
         );
     }

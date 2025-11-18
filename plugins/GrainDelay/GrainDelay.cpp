@@ -74,32 +74,25 @@ void GrainDelay::next(int nSamples) {
         
         // Get current parameter values (audio-rate or interpolated control-rate)
         float triggerRate = isTriggerRateAudioRate ? 
-            sc_clip(in(TriggerRate)[i], 0.1f, 500.0f) : 
-            slopedTriggerRate.consume();
+            sc_clip(in(TriggerRate)[i], 0.1f, 500.0f) : slopedTriggerRate.consume();
             
         float overlap = isOverlapAudioRate ? 
-            sc_clip(in(Overlap)[i], 0.001f, static_cast<float>(NUM_CHANNELS)) : 
-            slopedOverlap.consume();
+            sc_clip(in(Overlap)[i], 0.001f, static_cast<float>(NUM_CHANNELS)) : slopedOverlap.consume();
             
         float delayTime = isDelayTimeAudioRate ? 
-            sc_clip(in(DelayTime)[i], m_sampleDur, MAX_DELAY_TIME) : 
-            slopedDelayTime.consume();
+            sc_clip(in(DelayTime)[i], m_sampleDur, MAX_DELAY_TIME) : slopedDelayTime.consume();
             
         float grainRate = isGrainRateAudioRate ? 
-            sc_clip(in(GrainRate)[i], 0.125f, 4.0f) : 
-            slopedGrainRate.consume();
+            sc_clip(in(GrainRate)[i], 0.125f, 4.0f) : slopedGrainRate.consume();
         
         float mix = isMixAudioRate ? 
-            sc_clip(in(Mix)[i], 0.0f, 1.0f) : 
-            slopedMix.consume();
+            sc_clip(in(Mix)[i], 0.0f, 1.0f) : slopedMix.consume();
             
         float feedback = isFeedbackAudioRate ? 
-            sc_clip(in(Feedback)[i], 0.0f, 0.99f) : 
-            slopedFeedback.consume();
+            sc_clip(in(Feedback)[i], 0.0f, 0.99f) : slopedFeedback.consume();
             
         float damping = isDampingAudioRate ? 
-            sc_clip(in(Damping)[i], 0.0f, 1.0f) : 
-            slopedDamping.consume();
+            sc_clip(in(Damping)[i], 0.0f, 1.0f) : slopedDamping.consume();
         
         // 1. Get event data from scheduler
         auto scheduler = m_scheduler.process(triggerRate, reset, m_sampleRate);
@@ -123,7 +116,7 @@ void GrainDelay::next(int nSamples) {
 
                 // Calculate read position
                 float normalizedWritePos = static_cast<float>(m_writePos) / m_bufFrames;
-                float normalizedDelay = std::max(m_sampleDur, delayTime * m_sampleRate / m_bufFrames);
+                float normalizedDelay = sc_max(m_sampleDur, delayTime * m_sampleRate / m_bufFrames);
                 float readPos = sc_frac(normalizedWritePos - normalizedDelay);
                 
                 // Store grain data
@@ -156,7 +149,7 @@ void GrainDelay::next(int nSamples) {
         }
 
         // 4. Apply amplitude compensation based on overlap
-        float effectiveOverlap = std::max(1.0f, overlap);
+        float effectiveOverlap = sc_max(1.0f, overlap);
         float compensationGain = 1.0f / std::sqrt(effectiveOverlap);
         delayed *= compensationGain;
         

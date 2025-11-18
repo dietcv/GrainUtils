@@ -193,7 +193,7 @@ struct SchedulerBurst {
         float subSampleOffset = 0.0f;
     };
    
-    Output process(bool initTrigger, float duration, float cycles, float sampleRate) {
+    Output process(bool initTrigger, float duration, int cycles, float sampleRate) {
         Output output;
     
         // Reset on new trigger

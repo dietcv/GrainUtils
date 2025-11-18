@@ -24,6 +24,7 @@ Disperser::Disperser() : m_sampleRate(static_cast<float>(sampleRate()))
 Disperser::~Disperser() = default;
 
 void Disperser::next(int nSamples) {
+    
     // Audio-rate input
     const float* input = in(Input);
    
@@ -38,22 +39,19 @@ void Disperser::next(int nSamples) {
    
     // Process audio
     for (int i = 0; i < nSamples; ++i) {
+        
         // Get current parameter values (audio-rate or interpolated control-rate)
         float freq = isFreqAudioRate ? 
-            sc_clip(in(Freq)[i], 20.0f, m_sampleRate * 0.49f) : 
-            slopedFreq.consume();
+            sc_clip(in(Freq)[i], 20.0f, m_sampleRate * 0.49f) : slopedFreq.consume();
             
         float resonance = isResonanceAudioRate ? 
-            sc_clip(in(Resonance)[i], 0.0f, 1.0f) : 
-            slopedResonance.consume();
+            sc_clip(in(Resonance)[i], 0.0f, 1.0f) : slopedResonance.consume();
             
         float mix = isMixAudioRate ? 
-            sc_clip(in(Mix)[i], 0.0f, 1.0f) : 
-            slopedMix.consume();
+            sc_clip(in(Mix)[i], 0.0f, 1.0f) : slopedMix.consume();
             
         float feedback = isFeedbackAudioRate ? 
-            sc_clip(in(Feedback)[i], 0.0f, 0.99f) : 
-            slopedFeedback.consume();
+            sc_clip(in(Feedback)[i], 0.0f, 0.99f) : slopedFeedback.consume();
         
         // Add feedback to input
         float inputWithFeedback = input[i] + m_feedbackState;

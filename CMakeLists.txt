@@ -191,7 +191,7 @@ set(UnitSteps_sc_files
 set(UnitSteps_schelp_files
     plugins/UnitSteps/HelpSource/UnitStep.schelp
     plugins/UnitSteps/HelpSource/UnitWalk.schelp
-    plugins/UnitSteps/HelpSource/UnitUSR.schelp
+    plugins/UnitSteps/HelpSource/UnitRegister.schelp
 )
 sc_add_server_plugin(
     "GrainUtils/UnitSteps" # destination directory

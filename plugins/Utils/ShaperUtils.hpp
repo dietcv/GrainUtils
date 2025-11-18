@@ -207,9 +207,9 @@ namespace UnitSteps {
         }
     };
 
-    // ===== UNIT USR =====
+    // ===== UNIT REGISTER =====
 
-    struct UnitUSR {
+    struct UnitRegister {
 
         EventUtils::RampToTrig m_trigDetect;
 

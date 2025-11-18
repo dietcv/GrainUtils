@@ -1,4 +1,4 @@
-class:: UnitUSR
+class:: UnitRegister
 summary:: Universal Shift Register with stepped or interpolated, reverse encoded 3-bit and 8-bit outputs
 related:: Classes/IEnvGen
 categories:: UGens>Granular
@@ -8,7 +8,7 @@ description::
 This library comes with a selection of different unit shaper functions.
 Unit shapers can be used as transfer functions to map the input of a linear ramp signal between 0 and 1 to a non-linear output signal between 0 and 1.
 
-UnitUSR stores and rotates bits based on linear ramp signals between 0 and 1.
+UnitRegister stores and rotates bits based on linear ramp signals between 0 and 1.
 Each ramp cycle advances the register, rotating existing data and potentially adding new data to create evolving patterns.
 
 The shift register rotates for every ramp cycle either to the left or the right, where the rotation amount is set with the rotate parameter between -16 and 16.
@@ -21,7 +21,7 @@ with a random value before added back to the register.
 
 The reset parameter clears the state of the shift register.
 
-UnitUSR has two reverse encoded outputs, 3-bit and 8-bit.
+UnitRegister has two reverse encoded outputs, 3-bit and 8-bit.
 The reverse encoding provides contrapuntal motion between the two outputs, which is useful when driving complementary voices.
 
 classmethods::
@@ -62,7 +62,7 @@ code::
 	RandSeed.kr(\seedtrg.kr(1), \seed.kr(500));
 
 	phase = Phasor.ar(DC.ar(0), 1000 * SampleDur.ir);
-	register = UnitUSR.ar(
+	register = UnitRegister.ar(
 		phase: phase,
 		chance: 0.5,
 		length: 8,
@@ -90,7 +90,7 @@ code::
 	RandSeed.kr(\seedtrg.kr(1), \seed.kr(500));
 
 	phase = Phasor.ar(DC.ar(0), 1000 * SampleDur.ir);
-	register = UnitUSR.ar(
+	register = UnitRegister.ar(
 		phase: phase,
 		chance: 0.5,
 		length: 8,
@@ -127,7 +127,7 @@ code::
 
     events = SchedulerCycle.ar(tFreq, reset);
 
-	register = UnitUSR.ar(
+	register = UnitRegister.ar(
 		phase: events[\phase],
         chance: 0.5,
         length: 8,
@@ -227,7 +227,7 @@ var arrayOfRatios = degrees.collect{ |degree| tuning[degree] };
 
     events = SchedulerCycle.ar(tFreq, reset);
 
-    register = UnitUSR.ar(
+    register = UnitRegister.ar(
         phase: events[\phase],
         chance: 1,
         length: 8,

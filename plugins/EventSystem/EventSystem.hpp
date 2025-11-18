@@ -9,27 +9,31 @@ class SchedulerCycle : public SCUnit {
 public:
     SchedulerCycle();
     ~SchedulerCycle();
+
 private:
     void next(int nSamples);
-   
+    
+    // Constants
+    const float m_sampleRate;
+    
     // Core processing
     EventUtils::SchedulerCycle m_scheduler;
     EventUtils::IsTrigger m_resetTrigger;
     
-    // Constants
-    const float m_sampleRate;
-   
-    // Input parameters
+    // Audio rate flags
+    bool isRateAudioRate;
+    bool isResetAudioRate;
+    
     enum InputParams {
-        Rate,           // Trigger rate in Hz
-        Reset,          // Reset trigger
+        Rate,
+        Reset
     };
-   
+    
     enum Outputs {
-        Trigger,            // derived trigger
-        RateLatched,        // derived and latched frequency in hz
-        SubSampleOffset,    // sub-sample offset
-        Phase,            
+        Trigger,
+        RateLatched,
+        SubSampleOffset,
+        Phase
     };
 };
 
@@ -39,29 +43,33 @@ class SchedulerBurst : public SCUnit {
 public:
     SchedulerBurst();
     ~SchedulerBurst();
-   
+
 private:
     void next(int nSamples);
-   
+    
+    // Constants
+    const float m_sampleRate;
+    
     // Core processing
     EventUtils::SchedulerBurst m_scheduler;
     EventUtils::IsTrigger m_initTrigger;
-   
-    // Constants
-    const float m_sampleRate;
-   
-    // Input parameters
+    
+    // Audio rate flags
+    bool isInitTriggerAudioRate;
+    bool isDurationAudioRate;
+    bool isCyclesAudioRate;
+    
     enum InputParams {
-        InitTrigger,    // Trigger to start sequence
-        Duration,       // Duration of one cycle
-        Cycles          // Number of cycles/events to generate
+        InitTrigger,
+        Duration,
+        Cycles
     };
-   
+    
     enum Outputs {
-        Trigger,            // Event triggers
-        RateLatched,        // Event rate in Hz
-        SubSampleOffset,    // sub-sample offset
-        Phase               // Event phase [0,cycles)
+        Trigger,
+        RateLatched,
+        SubSampleOffset,
+        Phase
     };
 };
 
@@ -71,30 +79,33 @@ class VoiceAllocator : public SCUnit {
 public:
     VoiceAllocator();
     ~VoiceAllocator();
+
 private:
     void next(int nSamples);
    
     // Constants
     static constexpr int MAX_CHANNELS = 64;
+    const float m_sampleRate;
+    const int m_numChannels;
     
     // Core processing
     EventUtils::VoiceAllocator<MAX_CHANNELS> m_allocator;
     EventUtils::IsTrigger m_trigger;
     
-    // Runtime state
-    const float m_sampleRate;
-    int m_numChannels;
+    // Audio rate flags
+    bool isTriggerAudioRate;
+    bool isRateAudioRate;
+    bool isSubSampleOffsetAudioRate;
    
-    // Input parameters
     enum InputParams {
-        NumChannels,        // Number of output channels (init-rate)
-        Trigger,            // Trigger input from EventScheduler
-        Rate,               // Rate from EventScheduler / overlap
-        SubSampleOffset     // Subsample offset from EventScheduler
+        NumChannels,
+        Trigger,
+        Rate,
+        SubSampleOffset
     };
    
     // Outputs: numChannels phases and triggers
-    // Output indices are calculated dynamically based on numChannels
+    // Output indices are calculated dynamically based on m_numChannels
 };
 
 // ===== RAMP INTEGRATOR =====
@@ -103,25 +114,33 @@ class RampIntegrator : public SCUnit {
 public:
     RampIntegrator();
     ~RampIntegrator();
+
 private:
     void next(int nSamples);
-   
-    // Core processing
-    EventUtils::RampIntegrator m_integrator;
-    EventUtils::IsTrigger m_trigger;
    
     // Constants
     const float m_sampleRate;
    
-    // Input parameters
+    // Core processing
+    EventUtils::RampIntegrator m_integrator;
+    EventUtils::IsTrigger m_trigger;
+    
+    // Cache for SlopeSignal state
+    float ratePast;
+    
+    // Audio rate flags
+    bool isTriggerAudioRate;
+    bool isRateAudioRate;
+    bool isSubSampleOffsetAudioRate;
+   
     enum InputParams {
-        Trigger,            // Trigger input
-        Rate,               // Rate in Hz
-        SubSampleOffset     // Subsample offset
+        Trigger,
+        Rate,
+        SubSampleOffset
     };
    
     enum Outputs {
-        Phase               // Wrapped phase output [0,1)
+        Phase
     };
 };
 
@@ -131,20 +150,24 @@ class RampAccumulator : public SCUnit {
 public:
     RampAccumulator();
     ~RampAccumulator();
+
 private:
     void next(int nSamples);
    
     // Core processing
     EventUtils::RampAccumulator m_accumulator;
     EventUtils::IsTrigger m_trigger;
+    
+    // Audio rate flags
+    bool isTriggerAudioRate;
+    bool isSubSampleOffsetAudioRate;
    
-    // Input parameters
     enum InputParams {
-        Trigger,            // Trigger input
-        SubSampleOffset     // Subsample offset
+        Trigger,
+        SubSampleOffset
     };
    
     enum Outputs {
-        Count               // Sample count output
+        Count
     };
 };

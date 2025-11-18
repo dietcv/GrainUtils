@@ -204,29 +204,33 @@ subsection::2.2) Sequence of Durations with Voice Allocation - Pmono
 
 code::
 (
-var numOfSubDivs = 12;
-var arrayOfSubDivs = Array.fill(numOfSubDivs, { 2 ** rrand(-1.0, 1.0) } ).normalizeSum;
+var numOfSubDivs, arrayOfSubDivs;
+
+thisThread.randSeed = 1000;
+
+numOfSubDivs = 12;
+arrayOfSubDivs = Array.fill(numOfSubDivs, { 2 ** rrand(-1.0, 1.0) } ).normalizeSum;
 arrayOfSubDivs.debug(\arrayOfSubDivs);
 
 Pdef(\burst,
-	Pmono(\burst,
+    Pmono(\burst,
 
-		\trig, 1,
-		\legato, 0.8,
-		\dur, 4,
+        \trig, 1,
+        \legato, 0.8,
+        \dur, 4,
 
-		\freq, 440,
-		\overlap, 1,
+        \freq, 440,
+        \overlap, 1,
 
-		\time, Pfunc { |ev| ev.use { ~sustain.value } / thisThread.clock.tempo },
+        \time, Pfunc { |ev| ev.use { ~sustain.value } / thisThread.clock.tempo },
 
-		\arrayOfSubDivs, [arrayOfSubDivs],
-		\numOfSubDivs, numOfSubDivs,
+        \arrayOfSubDivs, [arrayOfSubDivs],
+        \numOfSubDivs, numOfSubDivs,
 
-		\amp, -15,
-		\out, 0,
+        \amp, -15,
+        \out, 0,
 
-	),
+    ),
 ).play;
 )
 ::
@@ -235,46 +239,50 @@ subsection::2.2) Sequence of Durations with Voice Allocation - Routine
 
 code::
 (
-var numOfSubDivs = 12;
-var arrayOfSubDivs = Array.fill(numOfSubDivs, { 2 ** rrand(-1.0, 1.0) } ).normalizeSum;
+var numOfSubDivs, arrayOfSubDivs;
+
+thisThread.randSeed = 1000;
+
+numOfSubDivs = 12;
+arrayOfSubDivs = Array.fill(numOfSubDivs, { 2 ** rrand(-1.0, 1.0) } ).normalizeSum;
 arrayOfSubDivs.debug(\arrayOfSubDivs);
 
 Routine({
 
-	s.bind {
+    s.bind {
 
-		~synth = Synth(\burst, [
+        ~synth = Synth(\burst, [
 
-			\trig, 0,
+            \trig, 0,
 
-			\freq, 440,
-			\overlap, 1,
+            \freq, 440,
+            \overlap, 1,
 
-			\amp, -15,
-			\out, 0,
+            \amp, -15,
+            \out, 0,
 
-		]);
+        ]);
 
-	};
+    };
 
-	s.sync;
+    s.sync;
 
-	loop {
+    loop {
 
-		s.bind {
+        s.bind {
 
-			~synth.set(
-				\trig, 1,
-				\sustain, 3.2,
-				\arrayOfSubDivs, arrayOfSubDivs,
-				\numOfSubDivs, numOfSubDivs,
-			);
+            ~synth.set(
+                \trig, 1,
+                \sustain, 3.2,
+                \arrayOfSubDivs, arrayOfSubDivs,
+                \numOfSubDivs, numOfSubDivs,
+            );
 
-		};
+        };
 
-		4.wait;
+        4.wait;
 
-	};
+    };
 
 }).play;
 )
