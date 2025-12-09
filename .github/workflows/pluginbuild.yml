@@ -12,7 +12,14 @@ jobs:
     timeout-minutes: 20
     strategy:
       matrix:
-        os: [macos-14, macos-13, windows-latest]
+        os: [macos-15, macos-15-intel, windows-latest]
+        include:
+          - os: macos-15
+            artifact_name: macos-15-arm
+          - os: macos-15-intel
+            artifact_name: macos-15-intel
+          - os: windows-latest
+            artifact_name: windows-latest
 
     steps:
     - name: Checkout code
@@ -55,8 +62,8 @@ jobs:
       working-directory: ${{ github.workspace }}/build
       run: cmake --build . --config "Release" --target install
 
-    - name: Package plugin (macOS-14)
-      if: matrix.os == 'macos-14'
+    - name: Package plugin (macOS-15)
+      if: matrix.os == 'macos-15'
       shell: bash
       working-directory: ${{ github.workspace }}/build
       run: |
@@ -74,8 +81,8 @@ jobs:
         # Create zip from the plugin folder
         cd GrainUtils-package && zip -r ../GrainUtils-macOS-ARM.zip GrainUtils && cd ..
 
-    - name: Package plugin (macOS-13)
-      if: matrix.os == 'macos-13'
+    - name: Package plugin (macOS-15-intel)
+      if: matrix.os == 'macos-15-intel'
       shell: bash
       working-directory: ${{ github.workspace }}/build
       run: |
@@ -116,5 +123,5 @@ jobs:
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: GrainUtils-${{ matrix.os }}
+        name: GrainUtils-${{ matrix.artifact_name }}
         path: ${{ github.workspace }}/build/GrainUtils-*.zip

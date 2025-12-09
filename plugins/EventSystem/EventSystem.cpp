@@ -174,7 +174,7 @@ void VoiceAllocator::next(int nSamples) {
 RampIntegrator::RampIntegrator() : m_sampleRate(static_cast<float>(sampleRate()))
 {
     // Initialize parameter cache
-    ratePast = in0(Rate);
+    ratePast = sc_clip(in0(Rate), m_sampleRate * -0.49f, m_sampleRate * 0.49f);
     
     // Check which inputs are audio-rate
     isTriggerAudioRate = isAudioRateIn(Trigger);
@@ -225,8 +225,10 @@ void RampIntegrator::next(int nSamples) {
         );
     }
     
-    // Update parameter cache
-    ratePast = isRateAudioRate ? in(Rate)[nSamples - 1] : slopedRate.value;
+    // Update parameter cache (use last value if audio-rate, otherwise slope value)
+    ratePast = isRateAudioRate ? 
+        sc_clip(in(Rate)[nSamples - 1], m_sampleRate * -0.49f, m_sampleRate * 0.49f) : 
+        slopedRate.value;
 }
 
 // ===== RAMP ACCUMULATOR =====

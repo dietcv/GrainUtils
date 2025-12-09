@@ -8,7 +8,7 @@ static InterfaceTable* ft;
 JCurve::JCurve() {
 
     // Initialize parameter cache
-    shapePast = in0(Shape);
+    shapePast = sc_clip(in0(Shape), 0.0f, 1.0f);
     
     // Check which inputs are audio-rate
     isShapeAudioRate = isAudioRateIn(Shape);
@@ -35,13 +35,16 @@ void JCurve::next(int nSamples) {
         
         // Get current parameter values (audio-rate or interpolated control-rate)
         float shape = isShapeAudioRate ? 
-            sc_clip(in(Shape)[i], 0.0f, 1.0f) : slopedShape.consume();
+            sc_clip(in(Shape)[i], 0.0f, 1.0f) : 
+            slopedShape.consume();
         
-        output[i] = InterpFunctions::jCurve(phase, shape, EasingCores::quintic);
+        output[i] = Easing::Interp::jCurve(phase, shape, Easing::Cores::quintic);
     }
     
-    // Update parameter cache
-    shapePast = isShapeAudioRate ? in(Shape)[nSamples - 1] : slopedShape.value;
+    // Update parameter cache (use last value if audio-rate, otherwise slope value)
+    shapePast = isShapeAudioRate ? 
+        sc_clip(in(Shape)[nSamples - 1], 0.0f, 1.0f) : 
+        slopedShape.value;
 }
 
 // ===== SCURVE =====
@@ -49,8 +52,8 @@ void JCurve::next(int nSamples) {
 SCurve::SCurve() {
 
     // Initialize parameter cache
-    shapePast = in0(Shape);
-    inflectionPast = in0(Inflection);
+    shapePast = sc_clip(in0(Shape), 0.0f, 1.0f);
+    inflectionPast = sc_clip(in0(Inflection), 0.0f, 1.0f);
     
     // Check which inputs are audio-rate
     isShapeAudioRate = isAudioRateIn(Shape);
@@ -79,17 +82,24 @@ void SCurve::next(int nSamples) {
         
         // Get current parameter values (audio-rate or interpolated control-rate)
         float shape = isShapeAudioRate ? 
-            sc_clip(in(Shape)[i], 0.0f, 1.0f) : slopedShape.consume();
+            sc_clip(in(Shape)[i], 0.0f, 1.0f) : 
+            slopedShape.consume();
             
         float inflection = isInflectionAudioRate ? 
-            sc_clip(in(Inflection)[i], 0.0f, 1.0f) : slopedInflection.consume();
+            sc_clip(in(Inflection)[i], 0.0f, 1.0f) : 
+            slopedInflection.consume();
         
-        output[i] = InterpFunctions::sCurve(phase, shape, inflection, EasingCores::quintic);
+        output[i] = Easing::Interp::sCurve(phase, shape, inflection, Easing::Cores::quintic);
     }
     
-    // Update parameter cache
-    shapePast = isShapeAudioRate ? in(Shape)[nSamples - 1] : slopedShape.value;
-    inflectionPast = isInflectionAudioRate ? in(Inflection)[nSamples - 1] : slopedInflection.value;
+    // Update parameter cache (use last value if audio-rate, otherwise slope value)
+    shapePast = isShapeAudioRate ? 
+        sc_clip(in(Shape)[nSamples - 1], 0.0f, 1.0f) : 
+        slopedShape.value;
+        
+    inflectionPast = isInflectionAudioRate ? 
+        sc_clip(in(Inflection)[nSamples - 1], 0.0f, 1.0f) : 
+        slopedInflection.value;
 }
 
 PluginLoad(GrainUtilsUGens) {

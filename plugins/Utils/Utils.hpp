@@ -11,17 +11,12 @@ namespace Utils {
 inline constexpr float SAFE_DENOM_EPSILON = 1e-10f;
 inline constexpr float PI = 3.14159265358979323846f;
 inline constexpr float TWO_PI = 6.28318530717958647692f;
-inline constexpr float TWO_PI_INV = 1.0f / 6.28318530717958647692f;
 
 // ===== BASIC MATH UTILITIES =====
 
-inline float lerp(float a, float b, float t) {
-    return a + t * (b - a);
-}
-
-inline float cosineInterp(float a, float b, float t) {
-    float mu2 = (1.0f - std::cos(t * PI)) / 2.0f;
-    return a * (1.0f - mu2) + b * mu2;
+inline float cosInterp(float x, float a, float b) {
+    float mix = (1.0f - std::cos(x * PI)) * 0.5f;
+    return lininterp(mix, a, b);
 }
 
 // ===== HIGH-PERFORMANCE BUFFER ACCESS UTILITIES =====
@@ -44,7 +39,7 @@ inline float peekLinearInterp(const float* buffer, float phase, int mask) {
     const float a = buffer[idx1];
     const float b = buffer[idx2];
     
-    return lerp(a, b, fracPart);
+    return lininterp(fracPart, a, b);
 }
 
 // Fast cubic interpolation peek with bitwise wrapping - (for power-of-2 sizes)

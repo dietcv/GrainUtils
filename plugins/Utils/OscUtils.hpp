@@ -137,7 +137,7 @@ inline float mipmapInterpolate(float phase, const float* buffer, int bufSize, in
         // Crossfade between adjacent mipmap layers
         const float sig1 = sincInterpolate(scaledPhase, buffer, bufSize, startPos, endPos, spacing1, sincTable);
         const float sig2 = sincInterpolate(scaledPhase, buffer, bufSize, startPos, endPos, spacing2, sincTable);
-        return Utils::lerp(sig1, sig2, sc_frac(octave));
+        return lininterp(sc_frac(octave), sig1, sig2);
     }
 }
 
@@ -173,7 +173,7 @@ inline float wavetableInterpolate(float phase, const float* buffer, int bufSize,
     float sig2 = mipmapInterpolate(phase, buffer, bufSize, startPos2, endPos2, slope, sincTable);
     
     // Crossfade between the two cycles
-    return Utils::lerp(sig1, sig2, fracPart);
+    return lininterp(fracPart, sig1, sig2);
 }
 
 // ===== DUAL OSCILLATOR WITH CROSS-MODULATION =====
@@ -203,8 +203,8 @@ struct DualOsc {
     ) {
 
         // Generate phase modulation signals using previous sample outputs
-        float pmSignalA = (m_prevOscB * Utils::TWO_PI_INV) * pmIndexA;
-        float pmSignalB = (m_prevOscA * Utils::TWO_PI_INV) * pmIndexB;
+        float pmSignalA = m_prevOscB / Utils::TWO_PI * pmIndexA;
+        float pmSignalB = m_prevOscA / Utils::TWO_PI * pmIndexB;
         
         // Filter the phase modulation signals
         float filteredPmA = m_pmFilterA.processLowpass(pmSignalA, slopeA * pmFilterRatioA);

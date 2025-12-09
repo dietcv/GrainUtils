@@ -9,55 +9,34 @@ namespace FilterUtils {
 
 // ===== ONE POLE FILTERS =====
 
-struct OnePole {
+namespace OnePole {
+    // Core processing functions
+    inline float lowpass(float& state, float input, float coeff) {
+        state = input * (1.0f - coeff) + state * coeff;
+        return state;
+    }
+    
+    inline float highpass(float& state, float input, float coeff) {
+        state = input * (1.0f - coeff) + state * coeff;
+        return input - state;
+    }
+}
+
+struct OnePoleDirect {
     float m_state{0.0f};
     
     float processLowpass(float input, float coeff) {
-
-        // Clip coefficient
         coeff = sc_clip(coeff, 0.0f, 1.0f);
-
-        // OnePole formula: y[n] = x[n] * (1-b) + y[n-1] * b
-        m_state = input * (1.0f - coeff) + m_state * coeff;
-
-        return m_state;
+        return OnePole::lowpass(m_state, input, coeff);
     }
 
     float processHighpass(float input, float coeff) {
-        float lowpassed = processLowpass(input, coeff);
-        return input - lowpassed;
+        coeff = sc_clip(coeff, 0.0f, 1.0f);
+        return OnePole::highpass(m_state, input, coeff);
     }
 
-    void reset() {
-        m_state = 0.0f;
-    }
-};
-
-struct OnePoleHz {
-    float m_state{0.0f};
-   
-    float processLowpass(float input, float cutoffHz, float sampleRate) {
-
-        // Clip slope to Nyquist range and take absolute value
-        float slope = cutoffHz / sampleRate;
-        float safeSlope = std::abs(sc_clip(slope, -0.5f, 0.5f));
-        
-        // Calculate coefficient: b = exp(-2π * slope)
-        float coeff = std::exp(-Utils::TWO_PI * safeSlope);
-        
-        // OnePole formula: y[n] = x[n] * (1-b) + y[n-1] * b
-        m_state = input * (1.0f - coeff) + m_state * coeff;
-        
-        return m_state;
-    }
-   
-    float processHighpass(float input, float cutoffHz, float sampleRate) {
-        float lowpassed = processLowpass(input, cutoffHz, sampleRate);
-        return input - lowpassed;
-    }
-
-    void reset() {
-        m_state = 0.0f;
+    void reset() { 
+        m_state = 0.0f; 
     }
 };
 
@@ -65,26 +44,41 @@ struct OnePoleSlope {
     float m_state{0.0f};
       
     float processLowpass(float input, float slope) {
-
-        // Clip slope to Nyquist range and take absolute value
         float safeSlope = std::abs(sc_clip(slope, -0.5f, 0.5f));
-       
-        // Calculate coefficient: b = exp(-2π * slope)
-        float coeff = std::exp(-2.0f * Utils::PI * safeSlope);
-       
-        // OnePole formula: y[n] = x[n] * (1-b) + y[n-1] * b
-        m_state = input * (1.0f - coeff) + m_state * coeff;
-       
-        return m_state;
+        float coeff = std::exp(-Utils::TWO_PI * safeSlope);
+        return OnePole::lowpass(m_state, input, coeff);
     }
    
     float processHighpass(float input, float slope) {
-        float lowpassed = processLowpass(input, slope);
-        return input - lowpassed;
+        float safeSlope = std::abs(sc_clip(slope, -0.5f, 0.5f));
+        float coeff = std::exp(-Utils::TWO_PI * safeSlope);
+        return OnePole::highpass(m_state, input, coeff);
     }
 
-    void reset() {
-        m_state = 0.0f;
+    void reset() { 
+        m_state = 0.0f; 
+    }
+};
+
+struct OnePoleHz {
+    float m_state{0.0f};
+   
+    float processLowpass(float input, float freq, float sampleRate) {
+        float slope = freq / sampleRate;
+        float safeSlope = std::abs(sc_clip(slope, -0.5f, 0.5f));
+        float coeff = std::exp(-Utils::TWO_PI * safeSlope);
+        return OnePole::lowpass(m_state, input, coeff);
+    }
+   
+    float processHighpass(float input, float freq, float sampleRate) {
+        float slope = freq / sampleRate;
+        float safeSlope = std::abs(sc_clip(slope, -0.5f, 0.5f));
+        float coeff = std::exp(-Utils::TWO_PI * safeSlope);
+        return OnePole::highpass(m_state, input, coeff);
+    }
+
+    void reset() { 
+        m_state = 0.0f; 
     }
 };
 

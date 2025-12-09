@@ -6,10 +6,6 @@ DESCRIPTION::
 SingleOscOS is a bandlimited wavetable oscillator with optional oversampling. 
 The wavetable oscillator is bandlimited via dynamic mipmapping and sinc interpolation. 
 
-note::
-This is just my personal implementation, you can just use OscOS from Oversampling Oscillators.
-::
-
 CLASSMETHODS::
 
 METHOD:: ar

@@ -6,10 +6,10 @@ static InterfaceTable* ft;
 Disperser::Disperser() : m_sampleRate(static_cast<float>(sampleRate()))
 {
     // Initialize parameter cache
-    freqPast = in0(Freq);
-    resonancePast = in0(Resonance);
-    mixPast = in0(Mix);
-    feedbackPast = in0(Feedback);
+    freqPast = sc_clip(in0(Freq), 20.0f, m_sampleRate * 0.49f);
+    resonancePast = sc_clip(in0(Resonance), 0.0f, 1.0f);
+    mixPast = sc_clip(in0(Mix), 0.0f, 1.0f);
+    feedbackPast = sc_clip(in0(Feedback), 0.0f, 0.99f);
     
     // Check which inputs are audio-rate
     isFreqAudioRate = isAudioRateIn(Freq);
@@ -42,16 +42,20 @@ void Disperser::next(int nSamples) {
         
         // Get current parameter values (audio-rate or interpolated control-rate)
         float freq = isFreqAudioRate ? 
-            sc_clip(in(Freq)[i], 20.0f, m_sampleRate * 0.49f) : slopedFreq.consume();
+            sc_clip(in(Freq)[i], 20.0f, m_sampleRate * 0.49f) : 
+            slopedFreq.consume();
             
         float resonance = isResonanceAudioRate ? 
-            sc_clip(in(Resonance)[i], 0.0f, 1.0f) : slopedResonance.consume();
+            sc_clip(in(Resonance)[i], 0.0f, 1.0f) : 
+            slopedResonance.consume();
             
         float mix = isMixAudioRate ? 
-            sc_clip(in(Mix)[i], 0.0f, 1.0f) : slopedMix.consume();
+            sc_clip(in(Mix)[i], 0.0f, 1.0f) : 
+            slopedMix.consume();
             
         float feedback = isFeedbackAudioRate ? 
-            sc_clip(in(Feedback)[i], 0.0f, 0.99f) : slopedFeedback.consume();
+            sc_clip(in(Feedback)[i], 0.0f, 0.99f) : 
+            slopedFeedback.consume();
         
         // Add feedback to input
         float inputWithFeedback = input[i] + m_feedbackState;
@@ -68,7 +72,7 @@ void Disperser::next(int nSamples) {
         );
         
         // Crossfade between dry and processed signal
-        float output = Utils::lerp(input[i], processed, mix);
+        float output = lininterp(mix, input[i], processed);
         
         // Write output
         outbuf[i] = output;
@@ -79,10 +83,21 @@ void Disperser::next(int nSamples) {
     }
    
     // Update parameter cache (use last value if audio-rate, otherwise slope value)
-    freqPast = isFreqAudioRate ? in(Freq)[nSamples - 1] : slopedFreq.value;
-    resonancePast = isResonanceAudioRate ? in(Resonance)[nSamples - 1] : slopedResonance.value;
-    mixPast = isMixAudioRate ? in(Mix)[nSamples - 1] : slopedMix.value;
-    feedbackPast = isFeedbackAudioRate ? in(Feedback)[nSamples - 1] : slopedFeedback.value;
+    freqPast = isFreqAudioRate ? 
+        sc_clip(in(Freq)[nSamples - 1], 20.0f, m_sampleRate * 0.49f) : 
+        slopedFreq.value;
+        
+    resonancePast = isResonanceAudioRate ? 
+        sc_clip(in(Resonance)[nSamples - 1], 0.0f, 1.0f) : 
+        slopedResonance.value;
+        
+    mixPast = isMixAudioRate ? 
+        sc_clip(in(Mix)[nSamples - 1], 0.0f, 1.0f) : 
+        slopedMix.value;
+        
+    feedbackPast = isFeedbackAudioRate ? 
+        sc_clip(in(Feedback)[nSamples - 1], 0.0f, 0.99f) : 
+        slopedFeedback.value;
 }
 
 PluginLoad(GrainUtilsUGens) {

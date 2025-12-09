@@ -43,7 +43,7 @@ private:
     std::array<GrainData, NUM_CHANNELS> m_grainData;
    
     // Feedback processing filters
-    FilterUtils::OnePole m_dampingFilter;
+    FilterUtils::OnePoleDirect m_dampingFilter;
     FilterUtils::OnePoleHz m_dcBlocker;
 
     // Cache for SlopeSignal state

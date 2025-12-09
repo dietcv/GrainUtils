@@ -39,7 +39,7 @@ void UnitStep::next(int nSamples) {
 UnitWalk::UnitWalk() {
 
     // Initialize parameter cache
-    stepPast = in0(Step);
+    stepPast = sc_clip(in0(Step), 0.0f, 1.0f);
     
     // Check which inputs are audio-rate
     isStepAudioRate = isAudioRateIn(Step);
@@ -73,13 +73,16 @@ void UnitWalk::next(int nSamples) {
         
         // Get current parameter values (audio-rate or interpolated control-rate)
         float step = isStepAudioRate ? 
-            sc_clip(in(Step)[i], 0.0f, 1.0f) : slopedStep.consume();
+            sc_clip(in(Step)[i], 0.0f, 1.0f) : 
+            slopedStep.consume();
         
         output[i] = m_state.process(phase, step, interp, rgen);
     }
     
-    // Update parameter cache
-    stepPast = isStepAudioRate ? in(Step)[nSamples - 1] : slopedStep.value;
+    // Update parameter cache (use last value if audio-rate, otherwise slope value)
+    stepPast = isStepAudioRate ? 
+        sc_clip(in(Step)[nSamples - 1], 0.0f, 1.0f) : 
+        slopedStep.value;
 }
 
 // ===== UNIT REGISTER =====
@@ -87,7 +90,7 @@ void UnitWalk::next(int nSamples) {
 UnitRegister::UnitRegister() {
 
     // Initialize parameter cache
-    chancePast = in0(Chance);
+    chancePast = sc_clip(in0(Chance), 0.0f, 1.0f);
     
     // Check which inputs are audio-rate
     isChanceAudioRate = isAudioRateIn(Chance);
@@ -126,7 +129,8 @@ void UnitRegister::next(int nSamples) {
         
         // Get current parameter values (audio-rate or interpolated control-rate)
         float chance = isChanceAudioRate ? 
-            sc_clip(in(Chance)[i], 0.0f, 1.0f) : slopedChance.consume();
+            sc_clip(in(Chance)[i], 0.0f, 1.0f) : 
+            slopedChance.consume();
         
         // Integer parameters (no interpolation)
         int length = isLengthAudioRate ? 
@@ -153,8 +157,10 @@ void UnitRegister::next(int nSamples) {
         out8Bit[i] = output.out8Bit;
     }
     
-    // Update parameter cache
-    chancePast = isChanceAudioRate ? in(Chance)[nSamples - 1] : slopedChance.value;
+    // Update parameter cache (use last value if audio-rate, otherwise slope value)
+    chancePast = isChanceAudioRate ? 
+        sc_clip(in(Chance)[nSamples - 1], 0.0f, 1.0f) : 
+        slopedChance.value;
 }
 
 PluginLoad(GrainUtilsUGens) {

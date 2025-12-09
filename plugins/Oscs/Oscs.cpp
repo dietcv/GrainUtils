@@ -26,7 +26,7 @@ static bool getBufferData(OscUtils::BufUnit& bufUnit, float bufNum, int nSamples
 SingleOscOS::SingleOscOS() : m_sampleRate(static_cast<float>(sampleRate()))
 {
     // Initialize parameter cache
-    cyclePosPast = in0(CyclePos);
+    cyclePosPast = sc_clip(in0(CyclePos), 0.0f, 1.0f);
     
     // Check which inputs are audio-rate
     isCyclePosAudioRate = isAudioRateIn(CyclePos);
@@ -77,7 +77,8 @@ void SingleOscOS::next(int nSamples) {
             
             // Get current parameter values (audio-rate or interpolated control-rate)
             float cyclePosVal = isCyclePosAudioRate ? 
-                sc_clip(in(CyclePos)[i], 0.0f, 1.0f) : slopedCyclePos.consume();
+                sc_clip(in(CyclePos)[i], 0.0f, 1.0f) : 
+                slopedCyclePos.consume();
             
             const float slope = m_rampToSlope.process(phase);
             
@@ -102,7 +103,8 @@ void SingleOscOS::next(int nSamples) {
             
             // Get current parameter values (audio-rate or interpolated control-rate)
             float cyclePosVal = isCyclePosAudioRate ? 
-                sc_clip(in(CyclePos)[i], 0.0f, 1.0f) : slopedCyclePos.consume();
+                sc_clip(in(CyclePos)[i], 0.0f, 1.0f) : 
+                slopedCyclePos.consume();
             
             const float slope = m_rampToSlope.process(phase);
 
@@ -128,8 +130,10 @@ void SingleOscOS::next(int nSamples) {
         }
     }
     
-    // Update parameter cache
-    cyclePosPast = isCyclePosAudioRate ? in(CyclePos)[nSamples - 1] : slopedCyclePos.value;
+    // Update parameter cache (use last value if audio-rate, otherwise slope value)
+    cyclePosPast = isCyclePosAudioRate ? 
+        sc_clip(in(CyclePos)[nSamples - 1], 0.0f, 1.0f) : 
+        slopedCyclePos.value;
 }
 
 // ===== DUAL WAVETABLE OSCILLATOR =====
@@ -137,12 +141,12 @@ void SingleOscOS::next(int nSamples) {
 DualOscOS::DualOscOS() : m_sampleRate(static_cast<float>(sampleRate()))
 {
     // Initialize parameter cache
-    cyclePosAPast = in0(CyclePosA);
-    cyclePosBPast = in0(CyclePosB);
-    pmIndexAPast = in0(PMIndexA);
-    pmIndexBPast = in0(PMIndexB);
-    pmFilterRatioAPast = in0(PMFilterRatioA);
-    pmFilterRatioBPast = in0(PMFilterRatioB);
+    cyclePosAPast = sc_clip(in0(CyclePosA), 0.0f, 1.0f);
+    cyclePosBPast = sc_clip(in0(CyclePosB), 0.0f, 1.0f);
+    pmIndexAPast = sc_clip(in0(PMIndexA), 0.0f, 10.0f);
+    pmIndexBPast = sc_clip(in0(PMIndexB), 0.0f, 10.0f);
+    pmFilterRatioAPast = sc_clip(in0(PMFilterRatioA), 0.0f, 10.0f);
+    pmFilterRatioBPast = sc_clip(in0(PMFilterRatioB), 0.0f, 10.0f);
     
     // Check which inputs are audio-rate
     isCyclePosAAudioRate = isAudioRateIn(CyclePosA);
@@ -214,22 +218,28 @@ void DualOscOS::next(int nSamples) {
 
             // Get current parameter values (audio-rate or interpolated control-rate)
             float cyclePosAVal = isCyclePosAAudioRate ? 
-                sc_clip(in(CyclePosA)[i], 0.0f, 1.0f) : slopedCyclePosA.consume();
+                sc_clip(in(CyclePosA)[i], 0.0f, 1.0f) : 
+                slopedCyclePosA.consume();
 
             float cyclePosBVal = isCyclePosBAAudioRate ? 
-                sc_clip(in(CyclePosB)[i], 0.0f, 1.0f) : slopedCyclePosB.consume();
+                sc_clip(in(CyclePosB)[i], 0.0f, 1.0f) : 
+                slopedCyclePosB.consume();
 
             float pmIndexAVal = isPMIndexAAudioRate ? 
-                sc_clip(in(PMIndexA)[i], 0.0f, 10.0f) : slopedPMIndexA.consume();
+                sc_clip(in(PMIndexA)[i], 0.0f, 10.0f) : 
+                slopedPMIndexA.consume();
 
             float pmIndexBVal = isPMIndexBAudioRate ? 
-                sc_clip(in(PMIndexB)[i], 0.0f, 10.0f) : slopedPMIndexB.consume();
+                sc_clip(in(PMIndexB)[i], 0.0f, 10.0f) : 
+                slopedPMIndexB.consume();
 
             float pmFilterRatioAVal = isPMFilterRatioAAudioRate ? 
-                sc_clip(in(PMFilterRatioA)[i], 0.0f, 10.0f) : slopedPMFilterRatioA.consume();
+                sc_clip(in(PMFilterRatioA)[i], 0.0f, 10.0f) : 
+                slopedPMFilterRatioA.consume();
 
             float pmFilterRatioBVal = isPMFilterRatioBAudioRate ? 
-                sc_clip(in(PMFilterRatioB)[i], 0.0f, 10.0f) : slopedPMFilterRatioB.consume();
+                sc_clip(in(PMFilterRatioB)[i], 0.0f, 10.0f) : 
+                slopedPMFilterRatioB.consume();
             
             const float slopeA = m_rampToSlopeA.process(phaseA);
             const float slopeB = m_rampToSlopeB.process(phaseB);
@@ -265,22 +275,28 @@ void DualOscOS::next(int nSamples) {
 
             // Get current parameter values (audio-rate or interpolated control-rate)
             float cyclePosAVal = isCyclePosAAudioRate ? 
-                sc_clip(in(CyclePosA)[i], 0.0f, 1.0f) : slopedCyclePosA.consume();
+                sc_clip(in(CyclePosA)[i], 0.0f, 1.0f) : 
+                slopedCyclePosA.consume();
 
             float cyclePosBVal = isCyclePosBAAudioRate ? 
-                sc_clip(in(CyclePosB)[i], 0.0f, 1.0f) : slopedCyclePosB.consume();
+                sc_clip(in(CyclePosB)[i], 0.0f, 1.0f) : 
+                slopedCyclePosB.consume();
 
             float pmIndexAVal = isPMIndexAAudioRate ? 
-                sc_clip(in(PMIndexA)[i], 0.0f, 10.0f) : slopedPMIndexA.consume();
+                sc_clip(in(PMIndexA)[i], 0.0f, 10.0f) : 
+                slopedPMIndexA.consume();
 
             float pmIndexBVal = isPMIndexBAudioRate ? 
-                sc_clip(in(PMIndexB)[i], 0.0f, 10.0f) : slopedPMIndexB.consume();
+                sc_clip(in(PMIndexB)[i], 0.0f, 10.0f) : 
+                slopedPMIndexB.consume();
 
             float pmFilterRatioAVal = isPMFilterRatioAAudioRate ? 
-                sc_clip(in(PMFilterRatioA)[i], 0.0f, 10.0f) : slopedPMFilterRatioA.consume();
+                sc_clip(in(PMFilterRatioA)[i], 0.0f, 10.0f) : 
+                slopedPMFilterRatioA.consume();
 
             float pmFilterRatioBVal = isPMFilterRatioBAudioRate ? 
-                sc_clip(in(PMFilterRatioB)[i], 0.0f, 10.0f) : slopedPMFilterRatioB.consume();
+                sc_clip(in(PMFilterRatioB)[i], 0.0f, 10.0f) : 
+                slopedPMFilterRatioB.consume();
 
             const float slopeA = m_rampToSlopeA.process(phaseA);
             const float slopeB = m_rampToSlopeB.process(phaseB);
@@ -319,13 +335,30 @@ void DualOscOS::next(int nSamples) {
         }
     }
     
-    // Update parameter cache
-    cyclePosAPast = isCyclePosAAudioRate ? in(CyclePosA)[nSamples - 1] : slopedCyclePosA.value;
-    cyclePosBPast = isCyclePosBAAudioRate ? in(CyclePosB)[nSamples - 1] : slopedCyclePosB.value;
-    pmIndexAPast = isPMIndexAAudioRate ? in(PMIndexA)[nSamples - 1] : slopedPMIndexA.value;
-    pmIndexBPast = isPMIndexBAudioRate ? in(PMIndexB)[nSamples - 1] : slopedPMIndexB.value;
-    pmFilterRatioAPast = isPMFilterRatioAAudioRate ? in(PMFilterRatioA)[nSamples - 1] : slopedPMFilterRatioA.value;
-    pmFilterRatioBPast = isPMFilterRatioBAudioRate ? in(PMFilterRatioB)[nSamples - 1] : slopedPMFilterRatioB.value;
+    // Update parameter cache (use last value if audio-rate, otherwise slope value)
+    cyclePosAPast = isCyclePosAAudioRate ? 
+        sc_clip(in(CyclePosA)[nSamples - 1], 0.0f, 1.0f) : 
+        slopedCyclePosA.value;
+        
+    cyclePosBPast = isCyclePosBAAudioRate ? 
+        sc_clip(in(CyclePosB)[nSamples - 1], 0.0f, 1.0f) : 
+        slopedCyclePosB.value;
+        
+    pmIndexAPast = isPMIndexAAudioRate ? 
+        sc_clip(in(PMIndexA)[nSamples - 1], 0.0f, 10.0f) : 
+        slopedPMIndexA.value;
+        
+    pmIndexBPast = isPMIndexBAudioRate ? 
+        sc_clip(in(PMIndexB)[nSamples - 1], 0.0f, 10.0f) : 
+        slopedPMIndexB.value;
+        
+    pmFilterRatioAPast = isPMFilterRatioAAudioRate ? 
+        sc_clip(in(PMFilterRatioA)[nSamples - 1], 0.0f, 10.0f) : 
+        slopedPMFilterRatioA.value;
+        
+    pmFilterRatioBPast = isPMFilterRatioBAudioRate ? 
+        sc_clip(in(PMFilterRatioB)[nSamples - 1], 0.0f, 10.0f) : 
+        slopedPMFilterRatioB.value;
 }
 
 PluginLoad(OscUGens)
