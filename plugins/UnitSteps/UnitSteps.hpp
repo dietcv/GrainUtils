@@ -1,6 +1,43 @@
 #pragma once
 #include "SC_PlugIn.hpp"
-#include "ShaperUtils.hpp"
+#include "StepUtils.hpp"
+
+// ===== UNIT URN =====
+
+class UnitUrn : public SCUnit {
+public:
+    UnitUrn();
+    
+private:
+    void next(int nSamples);
+    
+    // Constants
+    static constexpr int MAX_DECK_SIZE = 32;
+    
+    // Core processing
+    UnitSteps::UnitUrn<MAX_DECK_SIZE> m_urn;
+    EventUtils::IsTrigger m_resetTrigger;
+    
+    // Cache for SlopeSignal state
+    float chancePast;
+    
+    // Audio rate flags
+    bool isLengthAudioRate;
+    bool isChanceAudioRate;
+    
+    // Input parameter indices
+    enum Inputs {
+        Phase,
+        Chance,
+        Length,
+        Reset
+    };
+    
+    // Output indices
+    enum Outputs {
+        Out
+    };
+};
 
 // ===== UNIT STEP =====
 

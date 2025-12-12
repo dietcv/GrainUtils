@@ -1,3 +1,9 @@
+UnitUrn : UGen {
+    *ar { |phase, chance, length, reset = 0|
+        ^this.multiNew('audio', phase, chance, length, reset)
+    }
+}
+
 UnitStep : UGen {
     *ar { |phase, interp = 0|
         ^this.multiNew('audio', phase, interp)

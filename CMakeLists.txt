@@ -189,6 +189,7 @@ set(UnitSteps_sc_files
     plugins/UnitSteps/Classes/UnitSteps.sc
 )
 set(UnitSteps_schelp_files
+    plugins/UnitSteps/HelpSource/UnitUrn.schelp
     plugins/UnitSteps/HelpSource/UnitStep.schelp
     plugins/UnitSteps/HelpSource/UnitWalk.schelp
     plugins/UnitSteps/HelpSource/UnitRegister.schelp

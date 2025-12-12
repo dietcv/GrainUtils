@@ -3,6 +3,70 @@
 
 static InterfaceTable* ft;
 
+// ===== UNIT URN =====
+
+UnitUrn::UnitUrn() {
+    
+    // Initialize parameter cache
+    chancePast = sc_clip(in0(Chance), 0.0f, 1.0f);
+    
+    // Check which inputs are audio-rate
+    isChanceAudioRate = isAudioRateIn(Chance);
+    isLengthAudioRate = isAudioRateIn(Length);
+    
+    mCalcFunc = make_calc_function<UnitUrn, &UnitUrn::next>();
+    next(1);
+    
+    // Reset state after priming
+    m_urn.reset();
+    m_resetTrigger.reset();
+}
+
+void UnitUrn::next(int nSamples) {
+    RGen& rgen = *mParent->mRGen;
+    
+    // Audio-rate input
+    const float* phaseIn = in(Phase);
+    
+    // Control-rate parameters with smooth interpolation
+    auto slopedChance = makeSlope(sc_clip(in0(Chance), 0.0f, 1.0f), chancePast);
+    
+    // Control-rate parameters
+    bool reset = m_resetTrigger.process(in0(Reset));
+    
+    // Output pointer
+    float* output = out(Out);
+    
+    for (int i = 0; i < nSamples; ++i) {
+        
+        // Wrap phase between 0 and 1
+        float phase = sc_frac(phaseIn[i]);
+        
+        // Get current parameter values (audio-rate or interpolated control-rate)
+        float chance = isChanceAudioRate ? 
+            sc_clip(in(Chance)[i], 0.0f, 1.0f) : 
+            slopedChance.consume();
+
+        int length = isLengthAudioRate ? 
+            sc_clip(static_cast<int>(in(Length)[i]), 2, MAX_DECK_SIZE) : 
+            sc_clip(static_cast<int>(in0(Length)), 2, MAX_DECK_SIZE);    
+        
+        // Process urn
+        output[i] = m_urn.process(
+            phase,
+            chance,
+            length,
+            reset,
+            rgen
+        );
+    }
+    
+    // Update parameter cache (use last value if audio-rate, otherwise slope value)
+    chancePast = isChanceAudioRate ? 
+        sc_clip(in(Chance)[nSamples - 1], 0.0f, 1.0f) : 
+        slopedChance.value;
+}
+
 // ===== UNIT STEP =====
 
 UnitStep::UnitStep() {
@@ -165,6 +229,7 @@ void UnitRegister::next(int nSamples) {
 
 PluginLoad(GrainUtilsUGens) {
     ft = inTable;
+    registerUnit<UnitUrn>(ft, "UnitUrn", false);
     registerUnit<UnitStep>(ft, "UnitStep", false);
     registerUnit<UnitWalk>(ft, "UnitWalk", false);
     registerUnit<UnitRegister>(ft, "UnitRegisterUgen", false);

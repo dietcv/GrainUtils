@@ -208,9 +208,7 @@ var multiChannelDswitch = { |triggers, reset, index, arrayOfItems, numOfItems, r
 	};
 };
 
-var tuning = Tuning.new((0..12) * (3.ratiomidi / 13), 3.0, "Bohlen-Pierce").ratios;
-var degrees = [0, 5, 6, 7, 4, 0];
-var arrayOfRatios = degrees.collect{ |degree| tuning[degree] };
+var arrayOfRatios = Tuning.new((0..12) * (3.ratiomidi / 13), 3.0, "Bohlen-Pierce").ratios;
 
 {
     var numChannels = 8;
@@ -261,7 +259,7 @@ var arrayOfRatios = degrees.collect{ |degree| tuning[degree] };
 				reset,
 				register[\bit3],
 				arrayOfRatios,
-				\numOfItemsA.kr(6),
+				\numOfItemsA.kr(13),
 				\repeatItemA.kr(1)
 			);
             \freqA.kr(220) * mod;
@@ -272,7 +270,7 @@ var arrayOfRatios = degrees.collect{ |degree| tuning[degree] };
 				reset,
 				register[\bit8],
 				arrayOfRatios,
-				\numOfItemsB.kr(6),
+				\numOfItemsB.kr(13),
 				\repeatItemB.kr(1)
 			);
             \freqB.kr(440) * mod;
