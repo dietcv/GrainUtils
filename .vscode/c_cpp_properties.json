@@ -4,7 +4,6 @@
             "name": "Win32",
             "includePath": [
                 "${workspaceFolder}/**",
-                "${workspaceFolder}/external",
                 "${workspaceFolder}/plugins/Utils",
                 "../supercollider/include/plugin_interface",
                 "../supercollider/include/common"

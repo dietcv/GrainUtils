@@ -112,8 +112,8 @@ void SingleOscOS::next(int nSamples) {
             const float phaseDiff = slope / static_cast<float>(osRatio);
             
             m_oversampling.upsample(0.0f);
+
             float osPhase = phase;
-            
             for (int k = 0; k < osRatio; k++) {
                 // Increment phase
                 osPhase += phaseDiff;
@@ -307,9 +307,9 @@ void DualOscOS::next(int nSamples) {
             
             m_oversamplingA.upsample(0.0f);
             m_oversamplingB.upsample(0.0f);
+
             float osPhaseA = phaseA;
             float osPhaseB = phaseB;
-            
             for (int k = 0; k < osRatio; k++) {
                 // Increment phases
                 osPhaseA += phaseDiffA;

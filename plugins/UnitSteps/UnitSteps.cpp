@@ -3,6 +3,59 @@
 
 static InterfaceTable* ft;
 
+// ===== UNIT URN =====
+
+UnitUrn::UnitUrn() {
+    
+    // Check which inputs are audio-rate
+    isChanceAudioRate = isAudioRateIn(Chance);
+    isSizeAudioRate = isAudioRateIn(Size);
+    
+    mCalcFunc = make_calc_function<UnitUrn, &UnitUrn::next>();
+    next(1);
+    
+    // Reset state after priming
+    m_urn.reset();
+    m_resetTrigger.reset();
+}
+
+void UnitUrn::next(int nSamples) {
+    RGen& rgen = *mParent->mRGen;
+    
+    // Audio-rate input
+    const float* phaseIn = in(Phase);
+    
+    // Control-rate parameters
+    bool reset = m_resetTrigger.process(in0(Reset));
+    
+    // Output pointer
+    float* output = out(Out);
+    
+    for (int i = 0; i < nSamples; ++i) {
+        
+        // Wrap phase between 0 and 1
+        float phase = sc_frac(phaseIn[i]);
+        
+        // Get current parameter values (no interpolation - latched per trigger)
+        float chance = isChanceAudioRate ? 
+            sc_clip(in(Chance)[i], 0.0f, 1.0f) : 
+            sc_clip(in0(Chance), 0.0f, 1.0f);
+
+        int size = isSizeAudioRate ? 
+            sc_clip(static_cast<int>(in(Size)[i]), 2, MAX_DECK_SIZE) : 
+            sc_clip(static_cast<int>(in0(Size)), 2, MAX_DECK_SIZE);    
+        
+        // Process urn
+        output[i] = m_urn.process(
+            phase,
+            chance,
+            size,
+            reset,
+            rgen
+        );
+    }
+}
+
 // ===== UNIT STEP =====
 
 UnitStep::UnitStep() {
@@ -37,9 +90,6 @@ void UnitStep::next(int nSamples) {
 // ===== UNIT WALK =====
 
 UnitWalk::UnitWalk() {
-
-    // Initialize parameter cache
-    stepPast = sc_clip(in0(Step), 0.0f, 1.0f);
     
     // Check which inputs are audio-rate
     isStepAudioRate = isAudioRateIn(Step);
@@ -57,9 +107,6 @@ void UnitWalk::next(int nSamples) {
     // Audio-rate input
     const float* phaseIn = in(Phase);
     
-    // Control-rate parameters with smooth interpolation
-    auto slopedStep = makeSlope(sc_clip(in0(Step), 0.0f, 1.0f), stepPast);
-    
     // Control-rate parameters
     bool interp = in0(Interp) > 0.5f;
     
@@ -71,30 +118,22 @@ void UnitWalk::next(int nSamples) {
         // Wrap phase between 0 and 1
         float phase = sc_frac(phaseIn[i]);
         
-        // Get current parameter values (audio-rate or interpolated control-rate)
+        // Get current parameter values (no interpolation - latched per trigger)
         float step = isStepAudioRate ? 
             sc_clip(in(Step)[i], 0.0f, 1.0f) : 
-            slopedStep.consume();
+            sc_clip(in0(Step), 0.0f, 1.0f);
         
         output[i] = m_state.process(phase, step, interp, rgen);
     }
-    
-    // Update parameter cache (use last value if audio-rate, otherwise slope value)
-    stepPast = isStepAudioRate ? 
-        sc_clip(in(Step)[nSamples - 1], 0.0f, 1.0f) : 
-        slopedStep.value;
 }
 
 // ===== UNIT REGISTER =====
 
 UnitRegister::UnitRegister() {
-
-    // Initialize parameter cache
-    chancePast = sc_clip(in0(Chance), 0.0f, 1.0f);
     
     // Check which inputs are audio-rate
     isChanceAudioRate = isAudioRateIn(Chance);
-    isLengthAudioRate = isAudioRateIn(Length);
+    isSizeAudioRate = isAudioRateIn(Size);
     isRotateAudioRate = isAudioRateIn(Rotate);
     
     mCalcFunc = make_calc_function<UnitRegister, &UnitRegister::next>();
@@ -111,9 +150,6 @@ void UnitRegister::next(int nSamples) {
     // Audio-rate input
     const float* phaseIn = in(Phase);
     
-    // Control-rate parameters with smooth interpolation
-    auto slopedChance = makeSlope(sc_clip(in0(Chance), 0.0f, 1.0f), chancePast);
-    
     // Control-rate parameters
     bool interp = in0(Interp) > 0.5f;
     bool reset = m_resetTrigger.process(in0(Reset));
@@ -127,15 +163,14 @@ void UnitRegister::next(int nSamples) {
         // Wrap phase between 0 and 1
         float phase = sc_frac(phaseIn[i]);
         
-        // Get current parameter values (audio-rate or interpolated control-rate)
+        // Get current parameter values (no interpolation - latched per trigger)
         float chance = isChanceAudioRate ? 
             sc_clip(in(Chance)[i], 0.0f, 1.0f) : 
-            slopedChance.consume();
+            sc_clip(in0(Chance), 0.0f, 1.0f);
         
-        // Integer parameters (no interpolation)
-        int length = isLengthAudioRate ? 
-            sc_clip(static_cast<int>(in(Length)[i]), 1, MAX_LENGTH) : 
-            sc_clip(static_cast<int>(in0(Length)), 1, MAX_LENGTH);
+        int size = isSizeAudioRate ? 
+            sc_clip(static_cast<int>(in(Size)[i]), 1, MAX_LENGTH) : 
+            sc_clip(static_cast<int>(in0(Size)), 1, MAX_LENGTH);
             
         int rotation = isRotateAudioRate ? 
             sc_clip(static_cast<int>(in(Rotate)[i]), -MAX_LENGTH, MAX_LENGTH) : 
@@ -145,7 +180,7 @@ void UnitRegister::next(int nSamples) {
         auto output = m_shiftRegister.process(
             phase, 
             chance, 
-            length, 
+            size, 
             rotation, 
             interp,
             reset,  
@@ -156,15 +191,11 @@ void UnitRegister::next(int nSamples) {
         out3Bit[i] = output.out3Bit;
         out8Bit[i] = output.out8Bit;
     }
-    
-    // Update parameter cache (use last value if audio-rate, otherwise slope value)
-    chancePast = isChanceAudioRate ? 
-        sc_clip(in(Chance)[nSamples - 1], 0.0f, 1.0f) : 
-        slopedChance.value;
 }
 
 PluginLoad(GrainUtilsUGens) {
     ft = inTable;
+    registerUnit<UnitUrn>(ft, "UnitUrn", false);
     registerUnit<UnitStep>(ft, "UnitStep", false);
     registerUnit<UnitWalk>(ft, "UnitWalk", false);
     registerUnit<UnitRegister>(ft, "UnitRegisterUgen", false);

@@ -3,7 +3,6 @@
 #include "Utils.hpp"
 #include <array>
 #include <cmath>  
-#include <algorithm>
 
 namespace FilterUtils {
 
@@ -87,7 +86,45 @@ struct OnePoleHz {
 struct BiquadCoefficients {
     float a1, a2;
     float b0, b2;
+
+    // RBJ Audio EQ Cookbook lowpass
+    static BiquadCoefficients lowpass(float freq, float q, float sampleRate) {
+        BiquadCoefficients coeffs;
+        
+        float w0 = Utils::TWO_PI * freq / sampleRate;
+        float cosw0 = std::cos(w0);
+        float sinw0 = std::sin(w0);
+        float alpha = sinw0 / (2.0f * q);
+        
+        float a0 = 1.0f + alpha;
+        
+        coeffs.a1 = -2.0f * cosw0 / a0;
+        coeffs.a2 = (1.0f - alpha) / a0;
+        coeffs.b0 = ((1.0f - cosw0) / 2.0f) / a0;
+        coeffs.b2 = coeffs.b0;  // b2 = b0 for lowpass
+        
+        return coeffs;
+    }
     
+    // RBJ Audio EQ Cookbook bandpass
+    static BiquadCoefficients bandpass(float freq, float q, float sampleRate) {
+        BiquadCoefficients coeffs;
+        
+        float w0 = Utils::TWO_PI * freq / sampleRate;
+        float cosw0 = std::cos(w0);
+        float sinw0 = std::sin(w0);
+        float alpha = sinw0 / (2.0f * q);
+        
+        float a0 = 1.0f + alpha;
+        
+        coeffs.a1 = -2.0f * cosw0 / a0;
+        coeffs.a2 = (1.0f - alpha) / a0;
+        coeffs.b0 = (sinw0 / 2.0f) / a0;   // Constant skirt gain: peak gain = Q
+        coeffs.b2 = -(sinw0 / 2.0f) / a0;
+        
+        return coeffs;
+    }
+
     // RBJ Audio EQ Cookbook allpass
     static BiquadCoefficients allpass(float freq, float q, float sampleRate) {
         BiquadCoefficients coeffs;
@@ -106,59 +143,17 @@ struct BiquadCoefficients {
         
         return coeffs;
     }
-    
-    // RBJ Audio EQ Cookbook bandpass (constant skirt gain, peak gain = Q)
-    static BiquadCoefficients bandpass(float freq, float q, float sampleRate) {
-        BiquadCoefficients coeffs;
-        
-        float w0 = Utils::TWO_PI * freq / sampleRate;
-        float cosw0 = std::cos(w0);
-        float sinw0 = std::sin(w0);
-        float alpha = sinw0 / (2.0f * q);
-        
-        float a0 = 1.0f + alpha;
-        
-        coeffs.a1 = -2.0f * cosw0 / a0;
-        coeffs.a2 = (1.0f - alpha) / a0;
-        coeffs.b0 = (sinw0 / 2.0f) / a0;   // Constant skirt gain: peak gain = Q
-        coeffs.b2 = -(sinw0 / 2.0f) / a0;
-        
-        return coeffs;
-    }
 };
 
-// ===== BIQUAD ALLPASS FILTERS =====
+// ===== BIQUAD LOWPASS FILTER =====
 
-// Direct Form I (4 states)
-struct BiquadAllpass_DF1 {
-    float x1{0.0f}, x2{0.0f};
-    float y1{0.0f}, y2{0.0f};
-    
-    inline float process(float x0, const BiquadCoefficients& coeffs) {
-        // Allpass: y[n] = a2*x[n] + a1*x[n-1] + x[n-2] - a1*y[n-1] - a2*y[n-2]
-        float y0 = coeffs.a2 * x0 + coeffs.a1 * x1 + x2 - coeffs.a1 * y1 - coeffs.a2 * y2;
-        
-        y2 = zapgremlins(y1);
-        x2 = zapgremlins(x1);
-        x1 = zapgremlins(x0);
-        y1 = zapgremlins(y0);
-        
-        return y0;
-    }
-    
-    void reset() {
-        x1 = x2 = y1 = y2 = 0.0f;
-    }
-};
-
-// Transposed Direct Form II (2 states)
-struct BiquadAllpass_TDF2 {
+struct BiquadLowpass_TDF2 {
     float z1{0.0f}, z2{0.0f};
     
     inline float process(float x, const BiquadCoefficients& coeffs) {
-        float y = coeffs.a2 * x + z1;
-        z1 = coeffs.a1 * x - coeffs.a1 * y + z2;
-        z2 = x - coeffs.a2 * y;
+        float y = coeffs.b0 * x + z1;
+        z1 = 2.0f * coeffs.b0 * x - coeffs.a1 * y + z2;
+        z2 = coeffs.b0 * x - coeffs.a2 * y;
         
         z1 = zapgremlins(z1);
         z2 = zapgremlins(z2);
@@ -171,39 +166,36 @@ struct BiquadAllpass_TDF2 {
     }
 };
 
-// ===== BIQUAD BANDPASS FILTERS =====
+// ===== BIQUAD BANDPASS FILTER =====
 
-// Direct Form I (4 states)
-struct BiquadBandpass_DF1 {
-    float x1{0.0f}, x2{0.0f};
-    float y1{0.0f}, y2{0.0f};
-    
-    inline float process(float x0, const BiquadCoefficients& coeffs) {
-        // BPF: y[n] = b0*x[n] + b2*x[n-2] - a1*y[n-1] - a2*y[n-2]
-        // (b1 = 0, so x[n-1] term is omitted)
-        float y0 = coeffs.b0 * x0 + coeffs.b2 * x2 - coeffs.a1 * y1 - coeffs.a2 * y2;
-        
-        y2 = zapgremlins(y1);
-        x2 = zapgremlins(x1);
-        x1 = zapgremlins(x0);
-        y1 = zapgremlins(y0);
-        
-        return y0;
-    }
-    
-    void reset() {
-        x1 = x2 = y1 = y2 = 0.0f;
-    }
-};
-
-// Transposed Direct Form II (2 states)
 struct BiquadBandpass_TDF2 {
     float z1{0.0f}, z2{0.0f};
     
     inline float process(float x, const BiquadCoefficients& coeffs) {
         float y = coeffs.b0 * x + z1;
-        z1 = -coeffs.a1 * y + z2;  // b1 = 0, so b1*x term omitted
+        z1 = -coeffs.a1 * y + z2;
         z2 = coeffs.b2 * x - coeffs.a2 * y;
+        
+        z1 = zapgremlins(z1);
+        z2 = zapgremlins(z2);
+        
+        return y;
+    }
+    
+    void reset() {
+        z1 = z2 = 0.0f;
+    }
+};
+
+// ===== BIQUAD ALLPASS FILTER =====
+
+struct BiquadAllpass_TDF2 {
+    float z1{0.0f}, z2{0.0f};
+    
+    inline float process(float x, const BiquadCoefficients& coeffs) {
+        float y = coeffs.a2 * x + z1;
+        z1 = coeffs.a1 * x - coeffs.a1 * y + z2;
+        z2 = x - coeffs.a2 * y;
         
         z1 = zapgremlins(z1);
         z2 = zapgremlins(z2);
@@ -226,8 +218,9 @@ struct AllpassCascade {
     
     // Process audio through cascaded allpass filters
     inline float process(float input, float freq, float resonance, float sampleRate) {
-        // Convert resonance (0 - 1) to Q (1.0 - 0.01) (inverted for allpass) 
-        float q = sc_clip(1.0f - resonance, 0.01f, 1.0f);
+
+        // Convert resonance (0 - 1) to Q (0.5 - 2.0)
+        float q = 0.5f + std::sqrt(sc_clip(resonance, 0.0f, 1.0f)) * 1.5f;
         
         // Calculate coefficients
         auto coeffs = BiquadCoefficients::allpass(freq, q, sampleRate);

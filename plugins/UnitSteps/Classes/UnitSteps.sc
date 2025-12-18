@@ -1,3 +1,9 @@
+UnitUrn : UGen {
+    *ar { |phase, chance = 0, size = 8, reset = 0|
+        ^this.multiNew('audio', phase, chance, size, reset)
+    }
+}
+
 UnitStep : UGen {
     *ar { |phase, interp = 0|
         ^this.multiNew('audio', phase, interp)
@@ -11,8 +17,8 @@ UnitWalk : UGen {
 }
 
 UnitRegisterUgen : MultiOutUGen {
-    *ar { |phase, chance, length, rotate, interp = 0, reset = 0|
-        ^this.multiNew('audio', phase, chance, length, rotate, interp, reset);
+    *ar { |phase, chance, size, rotate, interp = 0, reset = 0|
+        ^this.multiNew('audio', phase, chance, size, rotate, interp, reset);
     }
 
     init { arg ... theInputs;
@@ -26,8 +32,8 @@ UnitRegisterUgen : MultiOutUGen {
 }
 
 UnitRegister {
-	*ar { |phase, chance, length, rotate, interp = 0, reset = 0|
-		var register = UnitRegisterUgen.ar(phase, chance, length, rotate, interp, reset);
+	*ar { |phase, chance, size, rotate, interp = 0, reset = 0|
+		var register = UnitRegisterUgen.ar(phase, chance, size, rotate, interp, reset);
 		^(
 			bit3: register[0],
 			bit8: register[1]

@@ -3,7 +3,7 @@
 #include "Utils.hpp"
 #include "EventUtils.hpp"
 #include "OscUtils.hpp"
-#include "VariableOversampling.hpp"
+#include "OversamplingUtils.hpp"
 
 // ===== SINGLE WAVETABLE OSCILLATOR =====
 
@@ -22,7 +22,7 @@ private:
     EventUtils::RampToSlope m_rampToSlope;
     OscUtils::SincTable m_sincTable;
     OscUtils::BufUnit m_bufUnit;
-    VariableOversampling<4> m_oversampling;
+    OversamplingUtils::VariableOversampling<4> m_oversampling;
     
     // Cache for SlopeSignal state
     float cyclePosPast;
@@ -35,7 +35,7 @@ private:
         Phase,
         NumCycles,
         CyclePos,
-        Oversample      // 0=1x, 1=2x, 2=4x, 3=8x, 4=16x
+        Oversample
     };
     
     enum Outputs { 
@@ -63,8 +63,8 @@ private:
     OscUtils::DualOsc m_dualOsc;
     OscUtils::BufUnit m_bufUnitA;
     OscUtils::BufUnit m_bufUnitB;
-    VariableOversampling<4> m_oversamplingA;
-    VariableOversampling<4> m_oversamplingB;
+    OversamplingUtils::VariableOversampling<4> m_oversamplingA;
+    OversamplingUtils::VariableOversampling<4> m_oversamplingB;
     
     // Cache for SlopeSignal state
     float cyclePosAPast, cyclePosBPast;
@@ -98,7 +98,7 @@ private:
         PMFilterRatioB,
         
         // Global parameters
-        Oversample      // 0=1x, 1=2x, 2=4x, 3=8x, 4=16x
+        Oversample
     };
     
     enum Outputs { 

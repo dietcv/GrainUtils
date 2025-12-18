@@ -12,7 +12,7 @@ UnitRegister stores and rotates bits based on linear ramp signals between 0 and 
 Each ramp cycle advances the register, rotating existing data and potentially adding new data to create evolving patterns.
 
 The shift register rotates for every ramp cycle either to the left or the right, where the rotation amount is set with the rotate parameter between -16 and 16.
-The current loop point of the shift register can be set with the length parameter between 1 and 16. 
+The current loop point of the shift register can be set with the size parameter between 1 and 16. 
 Bit rotation is similar to shifting but without losing any data. Any bits shifted off the left end appear at the right and vice versa.
 
 The shift register extracts the current least significant bit (LSB) for every ramp cycle, 
@@ -34,8 +34,8 @@ linear ramp between 0 and 1
 argument::chance
 chance parameter between 0 and 1 - probability for LSB inversion via XOR logic
 
-argument::length
-length parameter between 1 and 16 - sets the active register size and loop point
+argument::size
+size parameter between 1 and 16 - sets the active register size and loop point
 
 argument::rotate
 rotation amount between -16 and 16 - rotates register left (positive) or right (negative) on each ramp cycle
@@ -65,7 +65,7 @@ code::
 	register = UnitRegister.ar(
 		phase: phase,
 		chance: 0.5,
-		length: 8,
+		size: 8,
 		rotate: 1,
 		interp: 0,
 		reset: 0
@@ -93,7 +93,7 @@ code::
 	register = UnitRegister.ar(
 		phase: phase,
 		chance: 0.5,
-		length: 8,
+		size: 8,
 		rotate: 1,
 		interp: 1,
 		reset: 0
@@ -130,7 +130,7 @@ code::
 	register = UnitRegister.ar(
 		phase: events[\phase],
         chance: 0.5,
-        length: 8,
+        size: 8,
         rotate: 1,
 		interp: 0,
 		reset: reset
@@ -208,9 +208,7 @@ var multiChannelDswitch = { |triggers, reset, index, arrayOfItems, numOfItems, r
 	};
 };
 
-var tuning = Tuning.new((0..12) * (3.ratiomidi / 13), 3.0, "Bohlen-Pierce").ratios;
-var degrees = [0, 5, 6, 7, 4, 0];
-var arrayOfRatios = degrees.collect{ |degree| tuning[degree] };
+var arrayOfRatios = Tuning.new((0..12) * (3.ratiomidi / 13), 3.0, "Bohlen-Pierce").ratios;
 
 {
     var numChannels = 8;
@@ -230,7 +228,7 @@ var arrayOfRatios = degrees.collect{ |degree| tuning[degree] };
     register = UnitRegister.ar(
         phase: events[\phase],
         chance: 1,
-        length: 8,
+        size: 8,
         rotate: 1,
         interp: 0,
         reset: reset
@@ -261,7 +259,7 @@ var arrayOfRatios = degrees.collect{ |degree| tuning[degree] };
 				reset,
 				register[\bit3],
 				arrayOfRatios,
-				\numOfItemsA.kr(6),
+				\numOfItemsA.kr(13),
 				\repeatItemA.kr(1)
 			);
             \freqA.kr(220) * mod;
@@ -272,7 +270,7 @@ var arrayOfRatios = degrees.collect{ |degree| tuning[degree] };
 				reset,
 				register[\bit8],
 				arrayOfRatios,
-				\numOfItemsB.kr(6),
+				\numOfItemsB.kr(13),
 				\repeatItemB.kr(1)
 			);
             \freqB.kr(440) * mod;

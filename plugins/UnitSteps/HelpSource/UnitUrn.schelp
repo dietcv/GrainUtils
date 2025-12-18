@@ -1,0 +1,150 @@
+class:: UnitUrn
+summary:: non-repeating normalized random integers
+related:: Classes/IEnvGen
+categories:: UGens>Granular
+
+description::
+This library comes with a selection of different unit shaper functions.
+Unit shapers can be used as transfer functions to map the input of a linear ramp signal between 0 and 1 to a non-linear output signal between 0 and 1.
+
+UnitUrn outputs non-repeating normalized random integers. 
+It implements an online Fisher-Yates shuffle algorithm where shuffling occurs on each draw rather than once per cycle.
+This ensures no value repeats within a cycle while allowing continuous randomization.
+Additionally, it ensures no repeats across cycle boundaries - the first value of a new cycle will never match the last value of the previous cycle.
+The chance parameter sets the probability of shuffling on each individual draw.
+
+classmethods::
+
+method::ar
+
+argument::phase
+linear ramp between 0 and 1
+
+argument::chance
+chance parameter between 0 and 1 - probability of shuffling on each draw.
+
+argument::size
+size parameter between 2 and 32 - sets the number of unique values in the current deck
+
+argument::reset
+reset trigger - reinitializes and reshuffles the deck when triggered
+
+returns:: non-repeating normalized random integers
+
+SECTION::1) Examples - Plots
+
+subsection::1.1) No shuffling
+code::
+(
+{
+    var phase, urn;
+    
+    RandSeed.kr(\seedtrg.kr(1), \seed.kr(1000));
+    
+    phase = Phasor.ar(DC.ar(0), 1000 * SampleDur.ir);
+    urn = UnitUrn.ar(phase, \chance.kr(0), \size.kr(8));
+    
+    [phase, urn];
+}.plot(0.041);
+)
+::
+
+subsection::1.2) Probabilistic shuffling
+code::
+(
+{
+    var phase, urn;
+    
+    RandSeed.kr(\seedtrg.kr(1), \seed.kr(1000));
+    
+    phase = Phasor.ar(DC.ar(0), 1000 * SampleDur.ir);
+    urn = UnitUrn.ar(phase, \chance.kr(0.5), \size.kr(8));
+    
+    [phase, urn];
+}.plot(0.041);
+)
+::
+
+SECTION::2) Examples - Audio
+
+subsection::2.1) Overlapping Grains with Voice Allocation and non-repeating pitch sequences
+
+code::
+(
+var multiChannelDswitch = { |triggers, reset, index, arrayOfItems, numOfItems, repeatItem|
+	var indexScaled = index * (numOfItems - 1);
+    var demand = Ddup(repeatItem, Dswitch1(arrayOfItems, indexScaled));
+    triggers.collect{ |localTrig|
+        Demand.ar(localTrig + reset, reset, demand)
+    };
+};
+
+var arrayOfRatios = Tuning.new((0..12) * (3.ratiomidi / 13), 3.0, "Bohlen-Pierce").ratios;
+
+{
+    var numChannels = 8;
+    var numSpeakers = 2;
+
+    var reset, tFreq;
+    var events, urn, voices;
+	var grainWindows, ratios, grainFreqs, grainPhases, grainOscs;
+    var grains, sig, pan;
+
+    reset = Trig1.ar(\reset.tr(0), SampleDur.ir);
+    tFreq = \tFreq.kr(10);
+
+    events = SchedulerCycle.ar(tFreq, reset);
+
+    urn = UnitUrn.ar(
+        phase: events[\phase],
+        chance: 0.5,
+        size: 8,
+        reset: reset
+    );
+
+    voices = VoiceAllocator.ar(
+        numChannels: numChannels,
+        trig: events[\trigger],
+        rate: events[\rate] / \overlap.kr(4),
+        subSampleOffset: events[\subSampleOffset],
+    );
+
+	grainWindows = ExponentialWindow.ar(
+		phase: voices[\phases],
+		skew: \skew.kr(0.05),
+		shape: \shape.kr(0)
+	);
+
+	ratios = multiChannelDswitch.(
+		voices[\triggers],
+		reset,
+		urn,
+		arrayOfRatios,
+		\numOfItems.kr(8),
+		\repeatItem.kr(1)
+	);
+
+	grainFreqs = \freqA.kr(440) * ratios;
+
+	grainPhases = RampIntegrator.ar(
+		trig: voices[\triggers],
+		rate: grainFreqs,
+		subSampleOffset: events[\subSampleOffset]
+	);
+    grainOscs = SinOsc.ar(DC.ar(0), grainPhases * 2pi);
+
+    grains = grainOscs * grainWindows;
+
+    pan = UnitWalk.ar(voices[\phases]);
+    grains = PanAz.ar(
+        numChans: numSpeakers,
+        in: grains,
+        pos: pan.linlin(0, 1, -1 / numSpeakers, (2 * numSpeakers - 3) / numSpeakers);
+    );
+    sig = grains.sum;
+
+    sig = LeakDC.ar(sig);
+    sig * 0.1;
+}.play;
+)
+::

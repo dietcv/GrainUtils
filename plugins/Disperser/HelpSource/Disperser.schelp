@@ -40,7 +40,7 @@ code::
 	Disperser.ar(
 		input: sig,
 		freq: 500,
-		resonance: 0.5,
+		resonance: 0,
 		mix: 1.0,
 		feedback: 0.0
 	)!2;
@@ -57,7 +57,7 @@ code::
 	Disperser.ar(
 		input: sig,
 		freq: SinOsc.ar(0.3).linlin(-1, 1, 200, 4000),
-		resonance: 0.5,
+		resonance: 0,
 		mix: 0.5,
 		feedback: 0.85,
 	)!2 * 0.1
