@@ -274,6 +274,70 @@ void RampAccumulator::next(int nSamples) {
     }
 }
 
+// ===== RAMP DIVIDER =====
+
+RampDivider::RampDivider()
+{
+    // Initialize parameter cache
+    ratioPast = in0(Ratio);
+    
+    // Check which inputs are audio-rate
+    isRatioAudioRate = isAudioRateIn(Ratio);
+    isResetAudioRate = isAudioRateIn(Reset);
+    
+    mCalcFunc = make_calc_function<RampDivider, &RampDivider::next>();
+    next(1);
+    
+    // Reset state after priming
+    m_divider.reset();
+    m_resetTrigger.reset();
+}
+
+RampDivider::~RampDivider() = default;
+
+void RampDivider::next(int nSamples) {
+    
+    // Audio-rate input
+    const float* phaseIn = in(Phase);
+    
+    // Control-rate parameters with smooth interpolation
+    auto slopedRatio = makeSlope(in0(Ratio), ratioPast);
+    
+    // Control-rate parameters (no interpolation)
+    bool autosync = in0(Autosync) > 0.5f;
+    float threshold = sc_clip(in0(Threshold), 0.0f, 1.0f);
+    
+    // Output pointer
+    float* phaseOut = out(PhaseOut);
+    
+    for (int i = 0; i < nSamples; ++i) {
+        
+        // Get current parameter values (audio-rate or interpolated control-rate)
+        float ratio = isRatioAudioRate ? 
+            in(Ratio)[i] : 
+            slopedRatio.consume();
+        
+        // Trigger input (audio-rate or control-rate)
+        bool reset = isResetAudioRate ? 
+            m_resetTrigger.process(in(Reset)[i]) : 
+            m_resetTrigger.process(in0(Reset));
+        
+        // Process divider
+        phaseOut[i] = m_divider.process(
+            phaseIn[i], 
+            ratio,
+            reset,
+            autosync,
+            threshold
+        );
+    }
+    
+    // Update parameter cache (use last value if audio-rate, otherwise slope value)
+    ratioPast = isRatioAudioRate ? 
+        in(Ratio)[nSamples - 1] : 
+        slopedRatio.value;
+}
+
 PluginLoad(GrainUtilsUGens) {
     ft = inTable;
     registerUnit<SchedulerCycle>(ft, "SchedulerCycleUGen", false);
@@ -281,4 +345,5 @@ PluginLoad(GrainUtilsUGens) {
     registerUnit<VoiceAllocator>(ft, "VoiceAllocatorUGen", false);
     registerUnit<RampIntegrator>(ft, "RampIntegrator", false);
     registerUnit<RampAccumulator>(ft, "RampAccumulator", false);
+    registerUnit<RampDivider>(ft, "RampDivider", false);
 }

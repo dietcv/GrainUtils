@@ -106,3 +106,15 @@ RampAccumulator : UGen {
 		^this.checkValidInputs
 	}
 }
+
+// ===== RAMP DIVIDER =====
+
+RampDivider : UGen {
+	*ar { |phase, ratio, reset = 0, autosync = 1, threshold = 0.01|
+		^this.multiNew('audio', phase, ratio, reset, autosync, threshold)
+	}
+
+	checkInputs {
+		^this.checkValidInputs
+	}
+}

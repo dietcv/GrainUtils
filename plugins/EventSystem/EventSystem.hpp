@@ -171,3 +171,37 @@ private:
         Count
     };
 };
+
+// ===== RAMP DIVIDER =====
+
+class RampDivider : public SCUnit {
+public:
+    RampDivider();
+    ~RampDivider();
+    
+private:
+    void next(int nSamples);
+    
+    // Core processing
+    EventUtils::RampDivider m_divider;
+    EventUtils::IsTrigger m_resetTrigger;
+    
+    // Cache for SlopeSignal state
+    float ratioPast;
+    
+    // Audio rate flags
+    bool isRatioAudioRate;
+    bool isResetAudioRate;
+    
+    enum InputParams {
+        Phase,
+        Ratio,
+        Reset,
+        Autosync,
+        Threshold
+    };
+    
+    enum Outputs {
+        PhaseOut
+    };
+};

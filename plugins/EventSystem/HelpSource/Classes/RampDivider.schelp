@@ -1,0 +1,68 @@
+class:: RampDivider
+summary:: Subdivision of ramp signals
+related:: Classes/Phasor
+categories:: UGens>Granular
+
+description::
+RampDivider tracks the slope of an input ramp signal between 0 and 1, 
+scales the derived slope by a ratio and integrates the scaled slope to output a subdivided ramp signal between 0 and 1.
+This is similiar to clock divison but ramps can be subdivided by non-integer ratios with perfect precision.
+
+When autosync is enabled, the derived ramp will automatically sync to the main ramp whenever the ratio changes 
+significantly and the main ramp begins a new cycle. The sync operation snaps to the nearest valid grid point 
+to minimize phase discontinuity.
+
+classmethods::
+
+method::ar
+
+argument::phase
+ramp signal between 0 and 1
+
+argument::ratio
+clock division factor
+
+argument::reset
+Trigger to manually force synchronization
+
+argument::autosync
+Enable automatic sync on ratio changes
+
+argument::threshold
+Sensitivity for detecting ratio changes
+
+returns:: A subdivided ramp signal between 0 and 1
+
+SECTION::1) Examples - Plots
+
+subsection::1.1) Basic Clock Division
+
+code::
+(
+{
+    var phase = Phasor.ar(DC.ar(0), 500 * SampleDur.ir);
+    var div2 = RampDivider.ar(phase, 2);
+    var div4 = RampDivider.ar(phase, 4);
+    [phase, div2, div4];
+}.plot(0.021);
+)
+::
+
+subsection::1.2) Ratio Change with Autosync
+
+code::
+(
+{
+    var phase = Phasor.ar(DC.ar(0), 20 * SampleDur.ir);
+	var ratio = EnvGen.ar(Env([3, 3, 2], [0.2, 0]));
+	var rampDiv = RampDivider.ar(
+		phase: phase,
+		ratio: ratio,
+		reset: DC.ar(0),
+		autosync: 1,
+		threshold: 0.01
+	);
+    [phase, rampDiv, ratio * 0.1];
+}.plot(1);
+)
+::

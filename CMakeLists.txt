@@ -53,6 +53,25 @@ if (NOVA_SIMD)
     include_directories(${SC_PATH}/external_libraries/nova-simd)
 endif()
 
+# Distortion Plugins
+set(Distortion_cpp_files
+    plugins/Distortion/Distortion.cpp
+)
+set(Distortion_sc_files
+    plugins/Distortion/Classes/Distortion.sc
+)
+set(Distortion_schelp_files
+    plugins/Distortion/HelpSource/BuchlaFoldADAA.schelp
+)
+sc_add_server_plugin(
+    "GrainUtils/Distortion" # destination directory
+    "Distortion" # target name
+    "${Distortion_cpp_files}"
+    "${Distortion_sc_files}"
+    "${Distortion_schelp_files}"
+    ""
+)
+
 # Disperser Plugin
 set(Disperser_cpp_files
     plugins/Disperser/Disperser.cpp
@@ -104,6 +123,7 @@ set(EventSystem_schelp_files
     plugins/EventSystem/HelpSource/Classes/VoiceAllocator.schelp
     plugins/EventSystem/HelpSource/Classes/RampIntegrator.schelp
     plugins/EventSystem/HelpSource/Classes/RampAccumulator.schelp
+    plugins/EventSystem/HelpSource/Classes/RampDivider.schelp
 )
 sc_add_server_plugin(
     "GrainUtils/EventSystem" # destination directory

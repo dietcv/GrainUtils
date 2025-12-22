@@ -108,7 +108,6 @@ struct RampToSlope {
 // ===== SCHEDULER CYCLE =====
 
 struct SchedulerCycle {
-
     RampToTrig trigDetect;
    
     double m_phase{0.0};        
@@ -179,7 +178,6 @@ struct SchedulerCycle {
 // ===== SCHEDULER BURST =====
 
 struct SchedulerBurst {
-
     StepToTrig trigDetect;
 
     double m_phaseScaled{0.0};          
@@ -358,6 +356,7 @@ struct RampAccumulator {
     bool m_hasTriggered{false};
    
     float process(bool trigger, float subSampleOffset) {
+        
         // 1. Handle trigger - reset sample count with subsample offset
         if (trigger) {
             m_sampleCount = subSampleOffset;
@@ -379,6 +378,72 @@ struct RampAccumulator {
     void reset() {
         m_sampleCount = 0.0;
         m_hasTriggered = false;
+    }
+};
+
+// ===== RAMP DIVIDER =====
+
+struct RampDivider {
+    RampToTrig m_wrapDetect;
+    RampToSlope m_slopeCalc;
+    
+    double m_phase{0.0};
+    double m_lastRatio{1.0};
+    bool m_syncRequest{false};
+    
+    float process(float phase, float ratio, bool resetTrigger, bool autosync, float threshold) {
+        
+        // Calculate slope and scale by ratio
+        float safeRatio = sc_max(std::abs(ratio), Utils::SAFE_DENOM_EPSILON);
+        float slope = m_slopeCalc.process(phase);
+        float scaledSlope = slope / safeRatio;
+        
+        // Detect wrap trigger
+        bool wrapTrigger = m_wrapDetect.process(phase);
+        
+        // Detect proportional change in ratio
+        double delta = safeRatio - m_lastRatio;
+        double sum = safeRatio + m_lastRatio;
+        bool ratioChanged = (sum != 0.0) && (std::abs(delta / sum) > threshold);
+        
+        // Latch sync request (only if autosync enabled)
+        if (ratioChanged && autosync) {
+            m_syncRequest = true;
+        }
+        
+        // Request sync on wrap trigger
+        bool syncTrigger = false;
+        if (wrapTrigger) {
+            syncTrigger = m_syncRequest;
+            m_syncRequest = false;
+        }
+
+        // Update phase: sync to grid on sync request or reset otherwise increment 
+        if (syncTrigger || resetTrigger) {
+            float scaledPhase = phase / safeRatio;
+            double nextPhase = m_phase + scaledSlope;
+            double offset = nextPhase - scaledPhase;
+            double quantized = std::trunc(offset * safeRatio) / safeRatio;
+            m_phase = quantized + scaledPhase;
+        } else {
+            m_phase += scaledSlope;
+        }
+        
+        // Wrap phase between 0 and 1
+        float output = sc_frac(static_cast<float>(m_phase));
+        
+        // Update state for next sample
+        m_lastRatio = safeRatio;
+        
+        return output;
+    }
+    
+    void reset() {
+        m_wrapDetect.reset();
+        m_slopeCalc.reset();
+        m_phase = 0.0;
+        m_lastRatio = 1.0;
+        m_syncRequest = false;
     }
 };
 

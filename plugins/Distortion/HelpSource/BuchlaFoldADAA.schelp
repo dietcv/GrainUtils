@@ -1,0 +1,41 @@
+class:: BuchlaFoldADAA
+summary:: Buchla 259 Wavefolder with Anti-Aliasing and Oversampling
+categories:: UGens>Distortion
+
+description::
+Buchla 259 Wavefolder with anti-aliasing using first-order ADAA and optional oversampling.
+
+CLASSMETHODS::
+
+METHOD:: ar
+
+ARGUMENT:: input
+Audio input signal to be processed
+
+ARGUMENT:: drive
+Input amplitude scaling
+Range: 0-10
+Default: 0
+
+ARGUMENT:: oversample
+Oversampling factor
+Range: 0=1x, 1=2x, 2=4x, 3=8x, 4=16x
+Default: 0
+
+returns:: Processed audio signal
+
+EXAMPLES::
+
+subsection::1.1) Basic Wavefolding
+
+code::
+(
+{
+	var freq = MouseY.kr(100, 1000);
+	var drive = MouseX.kr(0, 10);
+	var sig = SinOsc.ar(freq);
+	sig = BuchlaFoldADAA.ar(sig, drive, 1);
+	sig!2 * 0.1;
+}.play;
+)
+::
