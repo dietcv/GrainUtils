@@ -7,99 +7,9 @@
 
 namespace UnitSteps {
 
-    // ===== UNIT URN =====
-
-    template<int MaxSize>
-    struct UnitUrn {
-        
-        EventUtils::RampToTrig m_trigDetect;
-        
-        std::array<int, MaxSize> m_deck;
-        int m_size{0};
-        int m_position{0};
-        int m_lastDrawn{-1};
-        float m_output{0.0f};
-        bool m_initialized{false};
-        
-        void initDeck(int size) {
-            for (int i = 0; i < size; ++i) {
-                m_deck[i] = i;
-            }
-            m_size = size;
-            m_position = 0;
-        }
-        
-        void shuffleDeck(RGen& rgen) {
-            for (int i = m_size - 1; i > 0; --i) {
-                int j = rgen.irand(i + 1);
-                std::swap(m_deck[i], m_deck[j]);
-            }
-        }
-        
-        float process(float phase, float chance, int size, bool resetTrigger, RGen& rgen) {
-            
-            // Handle reset
-            if (resetTrigger) {
-                reset();
-            }
-            
-            // Rebuild deck if size changed
-            if (size != m_size) {
-                m_initialized = false;
-            }
-            
-            // Initialize
-            if (!m_initialized) {
-                initDeck(size);
-                shuffleDeck(rgen);
-                m_initialized = true;
-            }
-            
-            // Detect trigger
-            bool trigger = m_trigDetect.process(phase);
-            
-            // Draw a card for each trigger (Fisher-Yates shuffle)
-            if (trigger) {
-                // Cycle wrap
-                if (m_position >= m_size) {
-                    m_position = 0;
-                }
-                
-                // Swap current card with random remaining card
-                if (rgen.frand() < chance) {
-                    int remaining = m_size - m_position;
-                    int swapOffset = rgen.irand(remaining);
-                    std::swap(m_deck[m_position], m_deck[m_position + swapOffset]);
-                }
-                
-                // Prevent repeats across cycle boundaries
-                if (m_position == 0 && m_deck[0] == m_lastDrawn) {
-                    int remaining = m_size - 1;
-                    int swapOffset = rgen.irand(remaining);
-                    std::swap(m_deck[0], m_deck[1 + swapOffset]);
-                }
-
-                // Draw card and advance position
-                m_lastDrawn = m_deck[m_position++];
-                m_output = static_cast<float>(m_lastDrawn) / (m_size - 1);
-            }
-            
-            return m_output;
-        }
-        
-        void reset() {
-            m_position = 0;
-            m_lastDrawn = -1;
-            m_output = 0.0f;
-            m_initialized = false;
-            m_trigDetect.reset();
-        }
-    };
-
     // ===== UNIT STEP =====
 
     struct UnitStep {
-
         EventUtils::RampToTrig m_trigDetect;
 
         float m_currentValue{0.0f};
@@ -143,7 +53,6 @@ namespace UnitSteps {
     // ===== UNIT WALK =====
 
     struct UnitWalk {
-
         EventUtils::RampToTrig m_trigDetect;
 
         float m_currentValue{0.0f};
@@ -188,7 +97,6 @@ namespace UnitSteps {
     // ===== UNIT REGISTER =====
 
     struct UnitRegister {
-
         EventUtils::RampToTrig m_trigDetect;
 
         int m_register{0};
@@ -213,7 +121,7 @@ namespace UnitSteps {
 
             // Initialize
             if (!m_initialized) {
-                m_register = static_cast<int>(rgen.frand() * 255.0f);
+                m_register = rgen.irand(256);
                 m_current3Bit = Utils::getMSBBits(m_register, 3, 8);
                 m_current8Bit = 1.0f - Utils::getLSBBits(m_register, 8, 8);
                 m_next3Bit = m_current3Bit;

@@ -13,8 +13,8 @@ struct IsTrigger {
     float m_prevIn{0.0f};
     
     bool process(float currentIn) {
-        // SC canonical trigger: rising edge detection (prevIn <= 0 && currentIn > 0)
-        bool trigger = (currentIn > 0.0f && m_prevIn <= 0.0f);
+        // SCs canonical trigger definition
+        bool trigger = currentIn > 0.0f && m_prevIn <= 0.0f;
         
         // Update state for next sample
         m_prevIn = currentIn;

@@ -49,6 +49,7 @@ private:
     
     // Constants
     const float m_sampleRate;
+    const float m_sampleDur;
     
     // Core processing
     EventUtils::SchedulerBurst m_scheduler;

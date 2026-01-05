@@ -58,7 +58,9 @@ void SchedulerCycle::next(int nSamples) {
 
 // ===== SCHEDULER BURST =====
 
-SchedulerBurst::SchedulerBurst() : m_sampleRate(static_cast<float>(sampleRate()))
+SchedulerBurst::SchedulerBurst() : 
+    m_sampleRate(static_cast<float>(sampleRate())),
+    m_sampleDur(static_cast<float>(sampleDur()))
 {
     // Check which inputs are audio-rate
     isInitTriggerAudioRate = isAudioRateIn(InitTrigger);
@@ -92,8 +94,8 @@ void SchedulerBurst::next(int nSamples) {
         
         // Get current parameter values (no interpolation - latched per trigger)
         float duration = isDurationAudioRate ? 
-            sc_max(in(Duration)[i], 0.001f) : 
-            sc_max(in0(Duration), 0.001f);
+            sc_max(in(Duration)[i], m_sampleDur) : 
+            sc_max(in0(Duration), m_sampleDur);
         
         int cycles = isCyclesAudioRate ? 
             sc_max(static_cast<int>(in(Cycles)[i]), 1) : 
@@ -311,6 +313,9 @@ void RampDivider::next(int nSamples) {
     float* phaseOut = out(PhaseOut);
     
     for (int i = 0; i < nSamples; ++i) {
+
+        // Wrap phase between 0 and 1
+        float phase = sc_frac(phaseIn[i]);
         
         // Get current parameter values (audio-rate or interpolated control-rate)
         float ratio = isRatioAudioRate ? 
@@ -324,7 +329,7 @@ void RampDivider::next(int nSamples) {
         
         // Process divider
         phaseOut[i] = m_divider.process(
-            phaseIn[i], 
+            phase, 
             ratio,
             reset,
             autosync,

@@ -9,7 +9,7 @@ namespace OversamplingUtils {
 
 template<int NumBiquads>
 struct AAFilter {
-    std::array<FilterUtils::BiquadLowpass_TDF2, NumBiquads> filters;
+    std::array<FilterUtils::BiquadFilter, NumBiquads> filters;
     std::array<FilterUtils::BiquadCoefficients, NumBiquads> coeffs;
     
     AAFilter() = default;

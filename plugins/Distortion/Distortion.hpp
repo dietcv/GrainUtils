@@ -18,7 +18,16 @@ private:
     
     // Core processing
     DistortionUtils::BuchlaFoldADAA m_folder;
-    OversamplingUtils::VariableOversampling<4> m_oversampling;
+    
+    // Oversampling objects
+    OversamplingUtils::VariableOversampling<4> m_outputOversampling;
+    OversamplingUtils::VariableOversampling<4> m_driveOversampling;
+    
+    // Stored oversampling state
+    int m_oversampleIndex;
+    int m_osRatio;
+    float* m_outputOSBuffer;
+    float* m_osDriveBuffer;
     
     // Cache for SlopeSignal state
     float drivePast;

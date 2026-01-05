@@ -2,39 +2,6 @@
 #include "SC_PlugIn.hpp"
 #include "StepUtils.hpp"
 
-// ===== UNIT URN =====
-class UnitUrn : public SCUnit {
-public:
-    UnitUrn();
-    
-private:
-    void next(int nSamples);
-    
-    // Constants
-    static constexpr int MAX_DECK_SIZE = 32;
-    
-    // Core processing
-    UnitSteps::UnitUrn<MAX_DECK_SIZE> m_urn;
-    EventUtils::IsTrigger m_resetTrigger;
-    
-    // Audio rate flags
-    bool isChanceAudioRate;
-    bool isSizeAudioRate;
-    
-    // Input parameter indices
-    enum Inputs {
-        Phase,
-        Chance,
-        Size,
-        Reset
-    };
-    
-    // Output indices
-    enum Outputs {
-        Out
-    };
-};
-
 // ===== UNIT STEP =====
 class UnitStep : public SCUnit {
 public:
@@ -98,7 +65,7 @@ private:
     static constexpr int MAX_LENGTH = 16;
     
     // Core processing
-    UnitSteps::UnitRegister m_shiftRegister;
+    UnitSteps::UnitRegister m_register;
     EventUtils::IsTrigger m_resetTrigger;
     
     // Audio rate flags

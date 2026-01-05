@@ -53,6 +53,25 @@ if (NOVA_SIMD)
     include_directories(${SC_PATH}/external_libraries/nova-simd)
 endif()
 
+# Demand Plugins
+set(Demand_cpp_files
+    plugins/Demand/Demand.cpp
+)
+set(Demand_sc_files
+    plugins/Demand/Classes/Demand.sc
+)
+set(Demand_schelp_files
+    plugins/Demand/HelpSource/Durn.schelp
+)
+sc_add_server_plugin(
+    "GrainUtils/Demand" # destination directory
+    "Demand" # target name
+    "${Demand_cpp_files}"
+    "${Demand_sc_files}"
+    "${Demand_schelp_files}"
+    ""
+)
+
 # Distortion Plugins
 set(Distortion_cpp_files
     plugins/Distortion/Distortion.cpp
@@ -208,7 +227,6 @@ set(UnitSteps_sc_files
     plugins/UnitSteps/Classes/UnitSteps.sc
 )
 set(UnitSteps_schelp_files
-    plugins/UnitSteps/HelpSource/UnitUrn.schelp
     plugins/UnitSteps/HelpSource/UnitStep.schelp
     plugins/UnitSteps/HelpSource/UnitWalk.schelp
     plugins/UnitSteps/HelpSource/UnitRegister.schelp

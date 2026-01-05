@@ -11,7 +11,7 @@ class SingleOscOS : public SCUnit {
 public:
     SingleOscOS();
     ~SingleOscOS();
-
+    
 private:
     void next(int nSamples);
     
@@ -22,7 +22,16 @@ private:
     EventUtils::RampToSlope m_rampToSlope;
     OscUtils::SincTable m_sincTable;
     OscUtils::BufUnit m_bufUnit;
-    OversamplingUtils::VariableOversampling<4> m_oversampling;
+    
+    // Oversampling objects
+    OversamplingUtils::VariableOversampling<4> m_outputOversampling;
+    OversamplingUtils::VariableOversampling<4> m_cyclePosOversampling;
+    
+    // Stored oversampling state
+    int m_oversampleIndex;
+    int m_osRatio;
+    float* m_outputOSBuffer;
+    float* m_osCyclePosBuffer;
     
     // Cache for SlopeSignal state
     float cyclePosPast;
@@ -49,7 +58,7 @@ class DualOscOS : public SCUnit {
 public:
     DualOscOS();
     ~DualOscOS();
-
+    
 private:
     void next(int nSamples);
     
@@ -63,9 +72,29 @@ private:
     OscUtils::DualOsc m_dualOsc;
     OscUtils::BufUnit m_bufUnitA;
     OscUtils::BufUnit m_bufUnitB;
-    OversamplingUtils::VariableOversampling<4> m_oversamplingA;
-    OversamplingUtils::VariableOversampling<4> m_oversamplingB;
     
+    // Oversampling objects
+    OversamplingUtils::VariableOversampling<4> m_outputOversamplingA;
+    OversamplingUtils::VariableOversampling<4> m_outputOversamplingB;
+    OversamplingUtils::VariableOversampling<4> m_cyclePosAOversampling;     
+    OversamplingUtils::VariableOversampling<4> m_cyclePosBOversampling;   
+    OversamplingUtils::VariableOversampling<4> m_pmIndexAOversampling;    
+    OversamplingUtils::VariableOversampling<4> m_pmIndexBOversampling;       
+    OversamplingUtils::VariableOversampling<4> m_pmFilterRatioAOversampling; 
+    OversamplingUtils::VariableOversampling<4> m_pmFilterRatioBOversampling;
+    
+    // Stored oversampling state
+    int m_oversampleIndex;
+    int m_osRatio;
+    float* m_outputOSBufferA;
+    float* m_outputOSBufferB;
+    float* m_osCyclePosABuffer;
+    float* m_osCyclePosBBuffer;
+    float* m_osPMIndexABuffer;
+    float* m_osPMIndexBBuffer;
+    float* m_osPMFilterRatioABuffer;
+    float* m_osPMFilterRatioBBuffer;
+        
     // Cache for SlopeSignal state
     float cyclePosAPast, cyclePosBPast;
     float pmIndexAPast, pmIndexBPast, pmFilterRatioAPast, pmFilterRatioBPast;

@@ -97,7 +97,6 @@ inline float sincInterpolate(float scaledPhase, const float* buffer, int bufSize
     const int waveMask = (endPos - startPos) - 1;
 
     float result = 0.0f;
-    
     for (int i = 0; i < SincTable::COUNT; ++i) {
 
         // === WAVEFORM BUFFER ACCESS (no interpolation) ===
@@ -116,18 +115,12 @@ inline float sincInterpolate(float scaledPhase, const float* buffer, int bufSize
 
 // ===== MIPMAP UTILITIES =====
 
-inline float mipmapInterpolate(float phase, const float* buffer, int bufSize, int startPos, int endPos, float slope, const SincTable& sincTable) {
+inline float mipmapInterpolate(float phase, const float* buffer, int bufSize, int startPos, int endPos, 
+                               int spacing1, int spacing2, float crossfade, const SincTable& sincTable) {
     
-    // Calculate mipmap parameters
+    // Scale phase to cycle range
     const float rangeSize = static_cast<float>(endPos - startPos);
     const float scaledPhase = phase * rangeSize;
-    const float samplesPerFrame = std::abs(slope) * rangeSize;
-    const float octave = std::max(0.0f, sc_log2(samplesPerFrame));
-    const int layer = static_cast<int>(sc_ceil(octave)); 
-    
-    // Calculate spacings for adjacent mipmap levels  
-    const int spacing1 = 1 << layer;     
-    const int spacing2 = spacing1 << 1;
     
     // Check for sinc kernel bandwidth limit (1024)
     if (spacing1 >= SincTable::SPACING) {
@@ -137,19 +130,17 @@ inline float mipmapInterpolate(float phase, const float* buffer, int bufSize, in
         // Crossfade between adjacent mipmap layers
         const float sig1 = sincInterpolate(scaledPhase, buffer, bufSize, startPos, endPos, spacing1, sincTable);
         const float sig2 = sincInterpolate(scaledPhase, buffer, bufSize, startPos, endPos, spacing2, sincTable);
-        return lininterp(sc_frac(octave), sig1, sig2);
+        return lininterp(crossfade, sig1, sig2);
     }
 }
 
 // ===== MULTI-CYCLE WAVETABLE UTILITIES =====
 
-inline float wavetableInterpolate(float phase, const float* buffer, int bufSize, int cycleSamples, int numCycles, float cyclePos, float slope, const SincTable& sincTable) {
+inline float wavetableInterpolate(float phase, const float* buffer, int bufSize, int cycleSamples, int numCycles, float cyclePos, 
+                                  int spacing1, int spacing2, float crossfade, const SincTable& sincTable) {
 
-    // clip cyclePos to 0-1, then scale by (numCycles - 1)
-    const float clippedPos = sc_clip(cyclePos, 0.0f, 1.0f);
-    const float scaledPos = clippedPos * static_cast<float>(numCycles - 1);
-
-    // Calculate frac and int part
+    // Scale cyclePos and calculate frac and int part
+    const float scaledPos = cyclePos * static_cast<float>(numCycles - 1);
     const int intPart = static_cast<int>(scaledPos);
     const float fracPart = scaledPos - static_cast<float>(intPart);
     
@@ -160,7 +151,7 @@ inline float wavetableInterpolate(float phase, const float* buffer, int bufSize,
     
     // Early exit for fracPart == 0 (no crossfade needed)
     if (fracPart == 0.0f) {
-        return mipmapInterpolate(phase, buffer, bufSize, startPos1, endPos1, slope, sincTable);
+        return mipmapInterpolate(phase, buffer, bufSize, startPos1, endPos1, spacing1, spacing2, crossfade, sincTable);
     }
     
     // Calculate second cycle only when needed
@@ -169,8 +160,8 @@ inline float wavetableInterpolate(float phase, const float* buffer, int bufSize,
     const int endPos2 = startPos2 + cycleSamples;
     
     // Process each cycle
-    float sig1 = mipmapInterpolate(phase, buffer, bufSize, startPos1, endPos1, slope, sincTable);
-    float sig2 = mipmapInterpolate(phase, buffer, bufSize, startPos2, endPos2, slope, sincTable);
+    float sig1 = mipmapInterpolate(phase, buffer, bufSize, startPos1, endPos1, spacing1, spacing2, crossfade, sincTable);
+    float sig2 = mipmapInterpolate(phase, buffer, bufSize, startPos2, endPos2, spacing1, spacing2, crossfade, sincTable);
     
     // Crossfade between the two cycles
     return lininterp(fracPart, sig1, sig2);
@@ -197,28 +188,30 @@ struct DualOsc {
         float slopeA, float slopeB,
         float pmIndexA, float pmIndexB,
         float pmFilterRatioA, float pmFilterRatioB,
+        int spacing1A, int spacing2A, float crossfadeA,
+        int spacing1B, int spacing2B, float crossfadeB,
         const float* bufferA, int bufSizeA, int cycleSamplesA, int numCyclesA,
         const float* bufferB, int bufSizeB, int cycleSamplesB, int numCyclesB,
         const SincTable& sincTable
     ) {
 
         // Generate phase modulation signals using previous sample outputs
-        float pmSignalA = m_prevOscB / Utils::TWO_PI * pmIndexA;
-        float pmSignalB = m_prevOscA / Utils::TWO_PI * pmIndexB;
+        float pmSignalA = m_prevOscB / Utils::TWO_PI;
+        float pmSignalB = m_prevOscA / Utils::TWO_PI;
         
         // Filter the phase modulation signals
         float filteredPmA = m_pmFilterA.processLowpass(pmSignalA, slopeA * pmFilterRatioA);
         float filteredPmB = m_pmFilterB.processLowpass(pmSignalB, slopeB * pmFilterRatioB);
         
         // Apply phase modulation and wrap between 0 and 1
-        float modulatedPhaseA = sc_frac(phaseA + filteredPmA);
-        float modulatedPhaseB = sc_frac(phaseB + filteredPmB);
+        float modulatedPhaseA = sc_frac(phaseA + (filteredPmA * pmIndexA));
+        float modulatedPhaseB = sc_frac(phaseB + (filteredPmB * pmIndexB));
         
         // Generate oscillator outputs
-        float oscA = wavetableInterpolate(modulatedPhaseA, bufferA, bufSizeA, 
-                                         cycleSamplesA, numCyclesA, cyclePosA, slopeA, sincTable);
-        float oscB = wavetableInterpolate(modulatedPhaseB, bufferB, bufSizeB, 
-                                         cycleSamplesB, numCyclesB, cyclePosB, slopeB, sincTable);
+        float oscA = wavetableInterpolate(modulatedPhaseA, bufferA, bufSizeA, cycleSamplesA, numCyclesA, cyclePosA, 
+                                         spacing1A, spacing2A, crossfadeA, sincTable);
+        float oscB = wavetableInterpolate(modulatedPhaseB, bufferB, bufSizeB, cycleSamplesB, numCyclesB, cyclePosB, 
+                                         spacing1B, spacing2B, crossfadeB, sincTable);
         
         // Store current outputs for next sample
         m_prevOscA = oscA;

@@ -115,7 +115,6 @@ void GrainDelay::next(int nSamples) {
         
         // 3. Process all grains
         float delayed = 0.0f;
-   
         for (int g = 0; g < NUM_CHANNELS; ++g) {
 
             // Trigger new grain if needed

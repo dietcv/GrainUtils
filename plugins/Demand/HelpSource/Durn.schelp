@@ -1,0 +1,137 @@
+class:: Durn
+summary:: non-repeating random integers
+related:: Classes/Demand
+categories:: UGens>Demand
+
+description::
+Durn outputs non-repeating random integers. 
+It implements an online Fisher-Yates shuffle algorithm where shuffling occurs on each draw rather than once per cycle.
+This ensures no value repeats within a cycle while allowing continuous randomization.
+Additionally, it ensures no repeats across cycle boundaries - the first value of a new cycle will never match the last value of the previous cycle.
+The chance parameter sets the probability of shuffling on each individual draw.
+
+classmethods::
+
+method::new
+
+argument::chance
+chance parameter between 0 and 1 - probability of shuffling on each draw
+
+argument::size
+size parameter between 2 and 32 - sets the number of unique values in the current deck
+
+argument::length
+Number of values to create
+
+returns:: non-repeating random integers
+
+SECTION::1) Examples - Plots
+
+subsection::1.1) No shuffling
+code::
+(
+{
+    var trig, urn;
+
+    RandSeed.kr(\seedtrg.kr(1), \seed.kr(1000));
+
+	trig = Impulse.ar(1000);
+	urn = Demand.ar(trig, DC.ar(0), Durn(\chance.kr(0), \size.kr(8), inf));
+
+	[Sweep.ar(trig, 1000), urn / (8 - 1)];
+}.plot(0.041);
+)
+::
+
+subsection::1.2) Probabilistic shuffling
+code::
+(
+{
+    var trig, urn;
+
+    RandSeed.kr(\seedtrg.kr(1), \seed.kr(1000));
+
+	trig = Impulse.ar(1000);
+	urn = Demand.ar(trig, DC.ar(0), Durn(\chance.kr(0.5), \size.kr(8), inf));
+
+	[Sweep.ar(trig, 1000), urn / (8 - 1)];
+}.plot(0.041);
+)
+::
+
+SECTION::2) Examples - Audio
+
+subsection::2.1) Overlapping Grains with Voice Allocation and Indexing into MultiChannel Dswitch1
+
+code::
+(
+var multiChannelDswitch = { |triggers, reset, arrayOfItems, index|
+    var demand = Dswitch1(arrayOfItems, index);
+    triggers.collect{ |localTrig|
+        Demand.ar(localTrig + reset, reset, demand)
+    };
+};
+
+var arrayOfRatios = Tuning.new((0..12) * (3.ratiomidi / 13), 3.0, "Bohlen-Pierce").ratios;
+
+{
+    var numChannels = 8;
+    var numSpeakers = 2;
+
+    var reset, tFreq;
+    var events, voices;
+    var grainWindows, index, ratios, grainFreqs, grainPhases, grainOscs;
+    var grains, sig, pan;
+
+	RandSeed.kr(\seedtrg.kr(1), \seed.kr(1000));
+
+    reset = Trig1.ar(\reset.tr(0), SampleDur.ir);
+    tFreq = \tFreq.kr(10);
+
+    events = SchedulerCycle.ar(tFreq, reset);
+
+    voices = VoiceAllocator.ar(
+        numChannels: numChannels,
+        trig: events[\trigger],
+        rate: events[\rate] / \overlap.kr(4),
+        subSampleOffset: events[\subSampleOffset],
+    );
+
+    grainWindows = ExponentialWindow.ar(
+        phase: voices[\phases],
+        skew: \skew.kr(0.05),
+        shape: \shape.kr(0)
+    );
+
+    index = Durn(\chance.kr(0.5), \size.kr(8), inf);
+    ratios = multiChannelDswitch.(
+        voices[\triggers],
+        reset,
+		arrayOfRatios,
+        index
+    );
+
+    grainFreqs = \freqA.kr(440) * ratios;
+
+    grainPhases = RampIntegrator.ar(
+        trig: voices[\triggers],
+        rate: grainFreqs,
+        subSampleOffset: events[\subSampleOffset]
+    );
+    grainOscs = SinOsc.ar(DC.ar(0), grainPhases * 2pi);
+
+    grains = grainOscs * grainWindows;
+
+    pan = UnitWalk.ar(voices[\phases]);
+    grains = PanAz.ar(
+        numChans: numSpeakers,
+        in: grains,
+        pos: pan.linlin(0, 1, -1 / numSpeakers, (2 * numSpeakers - 3) / numSpeakers);
+    );
+    sig = grains.sum;
+
+    sig = LeakDC.ar(sig);
+    sig * 0.1;
+}.play;
+)
+::
