@@ -8,8 +8,8 @@ DualOscOS : MultiOutUGen {
 		  oversample = 0|
 
 		// Validate buffers
-		if(bufnumA.isNil) { "DualOscOS: Invalid buffer A".throw };
-		if(bufnumB.isNil) { "DualOscOS: Invalid buffer B".throw };
+		if(bufnumA.isNil) { Error("DualOscOS: Invalid buffer A").throw };
+		if(bufnumB.isNil) { Error("DualOscOS: Invalid buffer B").throw };
 
 		^this.multiNew('audio',
 			bufnumA, phaseA, numCyclesA, cyclePosA,
@@ -30,7 +30,7 @@ SingleOscOS : UGen {
 	*ar { |bufnum, phase, numCycles = 1, cyclePos = 0, oversample = 0|
 
 		// Validate buffer
-		if(bufnum.isNil) { "SingleOscOS: Invalid buffer".throw };
+		if(bufnum.isNil) { Error("SingleOscOS: Invalid buffer").throw };
 
 		^this.multiNew('audio', bufnum, phase, numCycles, cyclePos, oversample)
 	}

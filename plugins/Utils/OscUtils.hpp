@@ -206,7 +206,7 @@ struct DualOsc {
         // Apply phase modulation and wrap between 0 and 1
         float modulatedPhaseA = sc_frac(phaseA + (filteredPmA * pmIndexA));
         float modulatedPhaseB = sc_frac(phaseB + (filteredPmB * pmIndexB));
-        
+
         // Generate oscillator outputs
         float oscA = wavetableInterpolate(modulatedPhaseA, bufferA, bufSizeA, cycleSamplesA, numCyclesA, cyclePosA, 
                                          spacing1A, spacing2A, crossfadeA, sincTable);
