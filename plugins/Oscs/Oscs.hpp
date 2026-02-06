@@ -20,7 +20,6 @@ private:
     
     // Core processing
     EventUtils::RampToSlope m_rampToSlope;
-    OscUtils::SincTable m_sincTable;
     OscUtils::BufUnit m_bufUnit;
     
     // Oversampling objects
@@ -68,7 +67,6 @@ private:
     // Core processing
     EventUtils::RampToSlope m_rampToSlopeA;
     EventUtils::RampToSlope m_rampToSlopeB;
-    OscUtils::SincTable m_sincTable;
     OscUtils::DualOsc m_dualOsc;
     OscUtils::BufUnit m_bufUnitA;
     OscUtils::BufUnit m_bufUnitB;

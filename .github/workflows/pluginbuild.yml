@@ -31,7 +31,7 @@ jobs:
       timeout-minutes: 8
       id: git_clone
       continue-on-error: true
-      run: git clone --depth 1 https://github.com/supercollider/supercollider.git ${{ github.workspace }}/supercollider
+      run: git clone --depth 1 --branch 3.14 https://github.com/supercollider/supercollider.git ${{ github.workspace }}/supercollider
 
     - name: Fallback SuperCollider download
       if: steps.git_clone.outcome == 'failure'
@@ -39,9 +39,9 @@ jobs:
       shell: pwsh
       run: |
         Write-Host "Git clone failed, downloading zip..."
-        Invoke-WebRequest -Uri "https://github.com/supercollider/supercollider/archive/refs/heads/main.zip" -OutFile "sc.zip"
+        Invoke-WebRequest -Uri "https://github.com/supercollider/supercollider/archive/refs/heads/3.14.zip" -OutFile "sc.zip"
         Expand-Archive -Path "sc.zip" -DestinationPath "."
-        Move-Item "supercollider-main" "${{ github.workspace }}/supercollider"
+        Move-Item "supercollider-3.14" "${{ github.workspace }}/supercollider"
 
     - name: Create build environment
       run: cmake -E make_directory ${{ github.workspace }}/build

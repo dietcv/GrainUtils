@@ -2,7 +2,6 @@
 #include "SC_PlugIn.hpp"
 #include "Utils.hpp"
 #include "FilterUtils.hpp"
-#include "wavetables.h"
 #include <array>
 #include <cmath>
 
@@ -57,32 +56,76 @@ struct BufUnit {
 // ===== SINC INTERPOLATION UTILITIES =====
 
 struct SincTable {
+    static constexpr int POINTS = 8;
+    static constexpr int HALF_POINTS = POINTS / 2;
     static constexpr int SIZE = 8192;
-    static constexpr int COUNT = 8;
-    static constexpr int SPACING = SIZE / COUNT;
-    
-    std::array<float, SIZE> table;
-    std::array<int, COUNT> sinc_points{0, 1024, 2048, 3072, 4096, 5120, 6144, 7168};
-    std::array<int, COUNT> wave_points{-4, -3, -2, -1, 0, 1, 2, 3};
+    static constexpr int SPACING = SIZE / POINTS;
+    static constexpr double ALPHA = 3.0;
 
-    SincTable() {
-        // Load table and convert in constructor
-        auto doubleTable = get_sinc_window8();
-        for (int i = 0; i < SIZE; ++i) {
-            table[i] = static_cast<float>(doubleTable[i]);
+    // Modified Bessel function I₀
+    static inline double bessel_i0(double x) {
+        double abs_x = sc_abs(x);
+        
+        if (abs_x < 3.75) {
+            // Polynomial approximation for |x| < 3.75
+            double t = (x / 3.75) * (x / 3.75);
+            return 1.0 + 3.5156229 * t + 3.0899424 * (t * t) + 
+                   1.2067492 * (t * t * t) + 0.2659732 * (t * t * t * t) + 
+                   0.0360768 * (t * t * t * t * t) + 0.0045813 * (t * t * t * t * t * t);
+        } else {
+            // Asymptotic expansion for |x| >= 3.75
+            double t = 3.75 / abs_x;
+            double result = (std::exp(abs_x) / std::sqrt(abs_x)) *
+                          (0.39894228 + 0.01328592 * t + 0.00225319 * (t * t) - 
+                           0.00157565 * (t * t * t) + 0.00916281 * (t * t * t * t) - 
+                           0.02057706 * (t * t * t * t * t) + 
+                           0.02635537 * (t * t * t * t * t * t) - 
+                           0.01647633 * (t * t * t * t * t * t * t) + 
+                           0.00392377 * (t * t * t * t * t * t * t * t));
+            return result;
         }
     }
-    
-    // table access
-    const float* data() const { return table.data(); }
+
+    // Kaiser window
+    static inline double kaiser(double x, double alpha) {
+        double beta = alpha * Utils::PI;
+        return bessel_i0(beta * std::sqrt(1.0 - x * x)) / bessel_i0(beta);
+    }
+
+    // Sinc function
+    static inline double sincPi(double x, int ripples) {
+        // Handle edge case when x is exactly 0
+        if (sc_abs(x) < Utils::SAFE_DENOM_EPSILON) {
+            return 1.0;
+        }
+
+        double arg = x * ripples * Utils::PI;
+        return std::sin(arg) / arg;
+    }
+        
+    // Windowed sinc interpolation table
+    static inline const std::array<float, SIZE> TABLE = []() {
+        std::array<float, SIZE> result{};
+
+        for (int i = 0; i < SIZE; ++i) {
+            double x = (static_cast<double>(i) / (SIZE - 1)) * 2.0 - 1.0;
+            
+            double sinc = sincPi(x, HALF_POINTS);
+            double window = kaiser(x, ALPHA);
+            
+            result[i] = static_cast<float>(sinc * window);
+        }
+        
+        return result;
+    }();
 };
 
 // ===== HIGH-PERFORMANCE SINC INTERPOLATION =====
 
-inline float sincInterpolate(float scaledPhase, const float* buffer, int bufSize, int startPos, int endPos, int sampleSpacing, const SincTable& sincTable) {
+inline float sincInterp(float scaledPhase, const float* buffer, int startPos, int endPos, int sampleSpacing) {
 
     // const pointer to sincTable data
-    const float* const sincData = sincTable.data();
+    const float* const sincData = SincTable::TABLE.data();
 
     const float sampleIndex = scaledPhase / static_cast<float>(sampleSpacing);
     const int intPart = static_cast<int>(sampleIndex);
@@ -97,14 +140,14 @@ inline float sincInterpolate(float scaledPhase, const float* buffer, int bufSize
     const int waveMask = (endPos - startPos) - 1;
 
     float result = 0.0f;
-    for (int i = 0; i < SincTable::COUNT; ++i) {
+    for (int i = 0; i < SincTable::POINTS; ++i) {
 
         // === WAVEFORM BUFFER ACCESS (no interpolation) ===
-        const int waveIndex = sincTable.wave_points[i] * sampleSpacing + waveOffset;
+        const int waveIndex = (i - SincTable::HALF_POINTS) * sampleSpacing + waveOffset;
         const float waveSample = Utils::peekNoInterp(buffer, waveIndex, startPos, waveMask);
         
         // === SINC TABLE ACCESS (linear interpolation) ===
-        const float sincPos = static_cast<float>(sincTable.sinc_points[i]) - sincOffset;
+        const float sincPos = static_cast<float>(i * SincTable::SPACING) - sincOffset;
         const float sincSample = Utils::peekLinearInterp(sincData, sincPos, sincMask);
         
         result += waveSample * sincSample;
@@ -115,8 +158,8 @@ inline float sincInterpolate(float scaledPhase, const float* buffer, int bufSize
 
 // ===== MIPMAP UTILITIES =====
 
-inline float mipmapInterpolate(float phase, const float* buffer, int bufSize, int startPos, int endPos, 
-                               int spacing1, int spacing2, float crossfade, const SincTable& sincTable) {
+inline float mipmapInterp(float phase, const float* buffer, int startPos, int endPos, 
+                               int spacing1, int spacing2, float crossfade) {
     
     // Scale phase to cycle range
     const float rangeSize = static_cast<float>(endPos - startPos);
@@ -125,19 +168,19 @@ inline float mipmapInterpolate(float phase, const float* buffer, int bufSize, in
     // Check for sinc kernel bandwidth limit (1024)
     if (spacing1 >= SincTable::SPACING) {
         // no crossfade to next mipmap layer
-        return sincInterpolate(scaledPhase, buffer, bufSize, startPos, endPos, SincTable::SPACING, sincTable);
+        return sincInterp(scaledPhase, buffer, startPos, endPos, SincTable::SPACING);
     } else {
         // Crossfade between adjacent mipmap layers
-        const float sig1 = sincInterpolate(scaledPhase, buffer, bufSize, startPos, endPos, spacing1, sincTable);
-        const float sig2 = sincInterpolate(scaledPhase, buffer, bufSize, startPos, endPos, spacing2, sincTable);
+        const float sig1 = sincInterp(scaledPhase, buffer, startPos, endPos, spacing1);
+        const float sig2 = sincInterp(scaledPhase, buffer, startPos, endPos, spacing2);
         return lininterp(crossfade, sig1, sig2);
     }
 }
 
 // ===== MULTI-CYCLE WAVETABLE UTILITIES =====
 
-inline float wavetableInterpolate(float phase, const float* buffer, int bufSize, int cycleSamples, int numCycles, float cyclePos, 
-                                  int spacing1, int spacing2, float crossfade, const SincTable& sincTable) {
+inline float wavetableOsc(float phase, const float* buffer, int cycleSamples, int numCycles, float cyclePos, 
+                                  int spacing1, int spacing2, float crossfade) {
 
     // Scale cyclePos and calculate frac and int part
     const float scaledPos = cyclePos * static_cast<float>(numCycles - 1);
@@ -151,7 +194,7 @@ inline float wavetableInterpolate(float phase, const float* buffer, int bufSize,
     
     // Early exit for fracPart == 0 (no crossfade needed)
     if (fracPart == 0.0f) {
-        return mipmapInterpolate(phase, buffer, bufSize, startPos1, endPos1, spacing1, spacing2, crossfade, sincTable);
+        return mipmapInterp(phase, buffer, startPos1, endPos1, spacing1, spacing2, crossfade);
     }
     
     // Calculate second cycle only when needed
@@ -160,8 +203,8 @@ inline float wavetableInterpolate(float phase, const float* buffer, int bufSize,
     const int endPos2 = startPos2 + cycleSamples;
     
     // Process each cycle
-    float sig1 = mipmapInterpolate(phase, buffer, bufSize, startPos1, endPos1, spacing1, spacing2, crossfade, sincTable);
-    float sig2 = mipmapInterpolate(phase, buffer, bufSize, startPos2, endPos2, spacing1, spacing2, crossfade, sincTable);
+    float sig1 = mipmapInterp(phase, buffer, startPos1, endPos1, spacing1, spacing2, crossfade);
+    float sig2 = mipmapInterp(phase, buffer, startPos2, endPos2, spacing1, spacing2, crossfade);
     
     // Crossfade between the two cycles
     return lininterp(fracPart, sig1, sig2);
@@ -190,9 +233,8 @@ struct DualOsc {
         float pmFilterRatioA, float pmFilterRatioB,
         int spacing1A, int spacing2A, float crossfadeA,
         int spacing1B, int spacing2B, float crossfadeB,
-        const float* bufferA, int bufSizeA, int cycleSamplesA, int numCyclesA,
-        const float* bufferB, int bufSizeB, int cycleSamplesB, int numCyclesB,
-        const SincTable& sincTable
+        const float* bufferA, int cycleSamplesA, int numCyclesA,
+        const float* bufferB, int cycleSamplesB, int numCyclesB
     ) {
 
         // Generate phase modulation signals using previous sample outputs
@@ -208,10 +250,10 @@ struct DualOsc {
         float modulatedPhaseB = sc_frac(phaseB + (filteredPmB * pmIndexB));
 
         // Generate oscillator outputs
-        float oscA = wavetableInterpolate(modulatedPhaseA, bufferA, bufSizeA, cycleSamplesA, numCyclesA, cyclePosA, 
-                                         spacing1A, spacing2A, crossfadeA, sincTable);
-        float oscB = wavetableInterpolate(modulatedPhaseB, bufferB, bufSizeB, cycleSamplesB, numCyclesB, cyclePosB, 
-                                         spacing1B, spacing2B, crossfadeB, sincTable);
+        float oscA = wavetableOsc(modulatedPhaseA, bufferA, cycleSamplesA, numCyclesA, cyclePosA, 
+                                         spacing1A, spacing2A, crossfadeA);
+        float oscB = wavetableOsc(modulatedPhaseB, bufferB, cycleSamplesB, numCyclesB, cyclePosB, 
+                                         spacing1B, spacing2B, crossfadeB);
         
         // Store current outputs for next sample
         m_prevOscA = oscA;

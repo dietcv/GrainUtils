@@ -106,11 +106,11 @@ void SingleOscOS::next(int nSamples) {
             const float crossfade = sc_frac(octave);
             
             // Process wavetable oscillator
-            output[i] = OscUtils::wavetableInterpolate(
-                phase, bufData, tableSize, 
+            output[i] = OscUtils::wavetableOsc(
+                phase, bufData, 
                 cycleSamples, numCyclesInt, cyclePosVal, 
-                spacing1, spacing2, crossfade,
-                m_sincTable);
+                spacing1, spacing2, crossfade
+            );
         }
     } else {
 
@@ -154,11 +154,11 @@ void SingleOscOS::next(int nSamples) {
                 osPhase += osSlope;
                 
                 // Process wavetable oscillator with upsampled parameter values
-                m_outputOSBuffer[k] = OscUtils::wavetableInterpolate(
-                    sc_frac(osPhase), bufData, tableSize, 
+                m_outputOSBuffer[k] = OscUtils::wavetableOsc(
+                    sc_frac(osPhase), bufData, 
                     cycleSamples, numCyclesInt, m_osCyclePosBuffer[k], 
-                    spacing1, spacing2, crossfade,
-                    m_sincTable);
+                    spacing1, spacing2, crossfade
+                );
             }
             
             // Downsample output
@@ -338,9 +338,8 @@ void DualOscOS::next(int nSamples) {
                 pmFilterRatioAVal, pmFilterRatioBVal,
                 spacing1A, spacing2A, crossfadeA,
                 spacing1B, spacing2B, crossfadeB,
-                bufDataA, tableSizeA, cycleSamplesA, numCyclesIntA,
-                bufDataB, tableSizeB, cycleSamplesB, numCyclesIntB,
-                m_sincTable
+                bufDataA, cycleSamplesA, numCyclesIntA,
+                bufDataB, cycleSamplesB, numCyclesIntB
             );
             
             outputA[i] = result.oscA;
@@ -442,9 +441,8 @@ void DualOscOS::next(int nSamples) {
                     m_osPMFilterRatioABuffer[k], m_osPMFilterRatioBBuffer[k],
                     spacing1A, spacing2A, crossfadeA,
                     spacing1B, spacing2B, crossfadeB,
-                    bufDataA, tableSizeA, cycleSamplesA, numCyclesIntA,
-                    bufDataB, tableSizeB, cycleSamplesB, numCyclesIntB,
-                    m_sincTable
+                    bufDataA, cycleSamplesA, numCyclesIntA,
+                    bufDataB, cycleSamplesB, numCyclesIntB
                 );
                 
                 m_outputOSBufferA[k] = result.oscA;
