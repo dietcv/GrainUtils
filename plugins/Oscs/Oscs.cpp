@@ -143,7 +143,7 @@ void SingleOscOS::next(int nSamples) {
 
             // Initialize phase and slope for oversampling
             float osSlope = slope / static_cast<float>(m_osRatio);
-            float osPhase = phase;
+            float osPhase = phase - slope;
             
             for (int k = 0; k < m_osRatio; k++) {
                 
@@ -415,8 +415,8 @@ void DualOscOS::next(int nSamples) {
             // Initialize phases and slopes for oversampling
             float osSlopeA = slopeA / static_cast<float>(m_osRatio);
             float osSlopeB = slopeB / static_cast<float>(m_osRatio);
-            float osPhaseA = phaseA;
-            float osPhaseB = phaseB;
+            float osPhaseA = phaseA - slopeA;
+            float osPhaseB = phaseB - slopeB;
             
             for (int k = 0; k < m_osRatio; k++) {
                 
