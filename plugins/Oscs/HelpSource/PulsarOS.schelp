@@ -1,0 +1,152 @@
+class:: PulsarOS
+summary:: A subsample-accurate and bandlimited pulsar oscillator with oversampling
+categories:: UGens>Oscillator
+
+DESCRIPTION::
+PulsarOS is a bandlimited pulsar oscillator with optional oversampling, supporting up to 16 simultaneously active grains with smart voice allocation. 
+Subsample-accurate event scheduling of grains can be achieved by combining PulsarOS with SchedulerCycle or SchedulerBurst, 
+which provide the necessary timing information (trigger, rate, and subsample offset).
+Each grain consists of a carrier wavetable oscillator with phase modulation from a modulator wavetable oscillator, 
+shaped by an envelope wavetable oscillator. The wavetable oscillators are bandlimited via dynamic mipmapping and sinc interpolation.
+Grains can be overlapped by dividing the scheduler rate by the desired overlap amount before passing it as the trigger frequency. 
+An overlap of 1 means each grain lasts exactly one trigger period, while higher values produce longer, overlapping grains.
+
+note::
+High overlap values require more CPU as more grains are active simultaneously
+::
+
+CLASSMETHODS::
+
+METHOD:: ar
+
+ARGUMENT:: numChannels
+Number of output channels. 1 = mono, 2 = stereo with equal-power panning.
+
+ARGUMENT:: trig
+Trigger signal, for example derived from SchedulerCycle or SchedulerBurst.
+
+ARGUMENT:: triggerFreq
+Trigger frequency in Hz, for example derived from SchedulerCycle or SchedulerBurst.
+Used by the internal voice allocator to calculate the grain duration.
+Typically the scheduler rate divided by the overlap amount.
+
+ARGUMENT:: subSampleOffset
+Subsample offset for accurate grain timing, for example derived from SchedulerCycle or SchedulerBurst.
+
+ARGUMENT:: grainFreq
+Carrier oscillator frequency in Hz. Latched per grain trigger.
+
+ARGUMENT:: modFreq
+Modulator oscillator frequency in Hz. Latched per grain trigger.
+
+ARGUMENT:: modIndex
+Phase modulation depth. Latched per grain trigger.
+
+ARGUMENT:: pan
+Stereo pan position. Only used when numChannels = 2. Latched per grain trigger.
+
+ARGUMENT:: amp
+Grain amplitude. Latched per grain trigger.
+
+ARGUMENT:: oscBuffer
+Buffer containing carrier wavetable data (the size has to be a power-of-2).
+
+ARGUMENT:: oscNumCycles
+Number of cycles in the carrier wavetable buffer.
+
+ARGUMENT:: oscCyclePos
+Position within the carrier multi-cycle wavetable (0.0 to 1.0).
+
+ARGUMENT:: envBuffer
+Buffer containing envelope wavetable data (the size has to be a power-of-2).
+
+ARGUMENT:: envNumCycles
+Number of cycles in the envelope wavetable buffer.
+
+ARGUMENT:: envCyclePos
+Position within the envelope multi-cycle wavetable (0.0 to 1.0).
+
+ARGUMENT:: modBuffer
+Buffer containing modulator wavetable data (the size has to be a power-of-2).
+
+ARGUMENT:: modNumCycles
+Number of cycles in the modulator wavetable buffer.
+
+ARGUMENT:: modCyclePos
+Position within the modulator multi-cycle wavetable (0.0 to 1.0).
+
+ARGUMENT:: oversample
+Oversampling factor: 0=1x, 1=2x, 2=4x, 3=8x, 4=16x.
+
+returns:: A multichannel UGen with one or two outputs depending on numChannels.
+
+EXAMPLES::
+
+code::
+// load multi-cycle wavetable
+(
+t = Signal.sineFill(2048, [1], [0]);
+u = Signal.sineFill(2048, 1.0/((1..512)**2)*([1,0,-1,0]!128).flatten);
+w = Signal.sineFill(2048, 1.0/(1..512)*([1,0]!256).flatten);
+x = Signal.sineFill(2048, 1.0/(1..512));
+v = t.addAll(u).addAll(w).addAll(x);
+b = Buffer.loadCollection(s, v);
+)
+
+// load single-cycle envelope
+(
+e = Buffer.alloc(s, 2048);
+e.loadCollection(Signal.hanningWindow(2048));
+)
+
+(
+{
+	var reset, tFreq, grainFreq, events, windowRate, sig;
+	var fmIndex, fmRatio, modFreq;
+
+	reset = Trig1.ar(\reset.tr(0), SampleDur.ir);
+	tFreq = \tFreq.kr(100);
+	grainFreq = SinOsc.ar(0.1, 1.5pi).linlin(-1, 1, 100, 4000);
+
+    events = SchedulerCycle.ar(tFreq, reset);
+
+	windowRate = events[\rate] / \overlap.kr(5);
+
+	fmRatio = \fmRatio.kr(1);
+	fmIndex = \fmIndex.kr(2);
+
+	modFreq = windowRate * fmRatio;
+
+	sig = PulsarOS.ar(
+
+		numChannels: 2,
+		trig: events[\trigger],
+		triggerFreq: windowRate,
+		subSampleOffset: events[\subSampleOffset],
+
+		grainFreq: grainFreq,
+		modFreq: modFreq,
+		modIndex: fmIndex,
+		pan: 0,
+		amp: 1,
+
+		oscBuffer: b,
+		oscNumCycles: 4,
+		oscCyclePos: 0,
+
+		envBuffer: e,
+		envNumCycles: 1,
+		envCyclePos: 0,
+
+		modBuffer: b,
+		modNumCycles: 4,
+		modCyclePos: 0,
+
+		oversample: 1,
+	);
+
+	sig = LeakDC.ar(sig);
+	sig * 0.1;
+}.play;
+)
+::

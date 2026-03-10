@@ -12,7 +12,7 @@ private:
     void next(int nSamples);
    
     // Constants
-    static constexpr int NUM_CHANNELS = 16;
+    static constexpr int NUM_VOICES = 16;
     static constexpr float MAX_DELAY_TIME = 2.0f;
    
     // Constants cached at construction
@@ -24,7 +24,7 @@ private:
    
     // Core trigger system
     EventUtils::SchedulerCycle m_scheduler;
-    EventUtils::VoiceAllocator<NUM_CHANNELS> m_allocator;
+    EventUtils::VoiceAllocator<NUM_VOICES> m_allocator;
     EventUtils::IsTrigger m_resetTrigger;
    
     // Audio buffer and processing
@@ -36,11 +36,10 @@ private:
         float readPos = 0.0f;
         float rate = 1.0f;
         float sampleCount = 0.0f;
-        bool hasTriggered = false;
     };
    
     // Grain voices
-    std::array<GrainData, NUM_CHANNELS> m_grainData;
+    std::array<GrainData, NUM_VOICES> m_grainData;
    
     // Feedback processing filters
     FilterUtils::OnePoleDirect m_dampingFilter;

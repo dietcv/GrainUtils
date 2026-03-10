@@ -12,7 +12,7 @@ GrainDelay::GrainDelay() :
 {
     // Initialize parameter cache
     triggerRatePast = sc_clip(in0(TriggerRate), 0.1f, 500.0f);
-    overlapPast = sc_clip(in0(Overlap), 0.001f, static_cast<float>(NUM_CHANNELS));
+    overlapPast = sc_clip(in0(Overlap), 0.001f, static_cast<float>(NUM_VOICES));
     delayTimePast = sc_clip(in0(DelayTime), m_sampleDur, MAX_DELAY_TIME);
     grainRatePast = sc_clip(in0(GrainRate), 0.125f, 4.0f);
     mixPast = sc_clip(in0(Mix), 0.0f, 1.0f);
@@ -57,7 +57,7 @@ void GrainDelay::next(int nSamples) {
     
     // Control-rate parameters with smooth interpolation
     auto slopedTriggerRate = makeSlope(sc_clip(in0(TriggerRate), 0.1f, 500.0f), triggerRatePast);
-    auto slopedOverlap = makeSlope(sc_clip(in0(Overlap), 0.001f, static_cast<float>(NUM_CHANNELS)), overlapPast);
+    auto slopedOverlap = makeSlope(sc_clip(in0(Overlap), 0.001f, static_cast<float>(NUM_VOICES)), overlapPast);
     auto slopedDelayTime = makeSlope(sc_clip(in0(DelayTime), m_sampleDur, MAX_DELAY_TIME), delayTimePast);
     auto slopedGrainRate = makeSlope(sc_clip(in0(GrainRate), 0.125f, 4.0f), grainRatePast);
     auto slopedMix = makeSlope(sc_clip(in0(Mix), 0.0f, 1.0f), mixPast);
@@ -78,7 +78,7 @@ void GrainDelay::next(int nSamples) {
             slopedTriggerRate.consume();
             
         float overlap = isOverlapAudioRate ? 
-            sc_clip(in(Overlap)[i], 0.001f, static_cast<float>(NUM_CHANNELS)) : 
+            sc_clip(in(Overlap)[i], 0.001f, static_cast<float>(NUM_VOICES)) : 
             slopedOverlap.consume();
             
         float delayTime = isDelayTimeAudioRate ? 
@@ -115,7 +115,7 @@ void GrainDelay::next(int nSamples) {
         
         // 3. Process all grains
         float delayed = 0.0f;
-        for (int g = 0; g < NUM_CHANNELS; ++g) {
+        for (int g = 0; g < NUM_VOICES; ++g) {
 
             // Trigger new grain if needed
             if (m_allocator.triggers[g]) {
@@ -129,7 +129,6 @@ void GrainDelay::next(int nSamples) {
                 m_grainData[g].readPos = readPos;
                 m_grainData[g].rate = grainRate;
                 m_grainData[g].sampleCount = scheduler.subSampleOffset;
-                m_grainData[g].hasTriggered = true;
             }
             
             // Process grain if voice allocator says it's active
@@ -182,7 +181,7 @@ void GrainDelay::next(int nSamples) {
         slopedTriggerRate.value;
         
     overlapPast = isOverlapAudioRate ? 
-        sc_clip(in(Overlap)[nSamples - 1], 0.001f, static_cast<float>(NUM_CHANNELS)) : 
+        sc_clip(in(Overlap)[nSamples - 1], 0.001f, static_cast<float>(NUM_VOICES)) : 
         slopedOverlap.value;
         
     delayTimePast = isDelayTimeAudioRate ? 

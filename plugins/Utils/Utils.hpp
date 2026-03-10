@@ -11,6 +11,7 @@ namespace Utils {
 inline constexpr float SAFE_DENOM_EPSILON = 1e-10f;
 inline constexpr float PI = 3.14159265358979323846f;
 inline constexpr float TWO_PI = 6.28318530717958647692f;
+inline constexpr float HALF_PI = 1.57079632679489661923f;
 
 // ===== BASIC MATH UTILITIES =====
 
@@ -18,6 +19,23 @@ inline float cosInterp(float x, float a, float b) {
     float mix = (1.0f - std::cos(x * PI)) * 0.5f;
     return lininterp(mix, a, b);
 }
+
+// ===== PANNING UTILITIES =====
+
+struct EqualPowerPan {
+    
+    struct Output {
+        float left = 1.0f;
+        float right = 0.0f;
+    };
+    
+    Output process(float pan) {
+        float panAngle = (pan + 1.0f) * 0.5f * HALF_PI;
+        float left = std::cos(panAngle);
+        float right = std::sin(panAngle);
+        return { left, right };
+    }
+};
 
 // ===== HIGH-PERFORMANCE BUFFER ACCESS UTILITIES =====
 

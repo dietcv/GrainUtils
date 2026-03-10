@@ -35,3 +35,34 @@ SingleOscOS : UGen {
 		^this.multiNew('audio', bufnum, phase, numCycles, cyclePos, oversample)
 	}
 }
+
+// ===== PULSAR OSCILLATOR =====
+
+PulsarOS : MultiOutUGen {
+	*ar { |numChannels = 1,
+		  trig, triggerFreq, subSampleOffset = 0,
+		  grainFreq = 440, modFreq = 0, modIndex = 0, pan = 0, amp = 1,
+		  oscBuffer, oscNumCycles = 1, oscCyclePos = 0,
+		  envBuffer, envNumCycles = 1, envCyclePos = 0,
+		  modBuffer, modNumCycles = 1, modCyclePos = 0,
+		  oversample = 0|
+
+		if(oscBuffer.isNil) { Error("PulsarOS: Invalid osc buffer").throw };
+		if(envBuffer.isNil) { Error("PulsarOS: Invalid env buffer").throw };
+		if(modBuffer.isNil) { Error("PulsarOS: Invalid mod buffer").throw };
+
+		^this.multiNew('audio',
+			numChannels,
+			trig, triggerFreq, subSampleOffset,
+			grainFreq, modFreq, modIndex, pan, amp,
+			oscBuffer, oscNumCycles, oscCyclePos,
+			envBuffer, envNumCycles, envCyclePos,
+			modBuffer, modNumCycles, modCyclePos,
+			oversample)
+	}
+	
+	init { arg ... theInputs;
+		inputs = theInputs;
+		^this.initOutputs(inputs[0], rate);
+	}
+}

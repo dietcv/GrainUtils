@@ -167,6 +167,7 @@ set(Oscs_sc_files
 )
 set(Oscs_schelp_files
     plugins/Oscs/HelpSource/DualOscOS.schelp
+    plugins/Oscs/HelpSource/PulsarOS.schelp
     plugins/Oscs/HelpSource/SingleOscOS.schelp
 )
 sc_add_server_plugin(
