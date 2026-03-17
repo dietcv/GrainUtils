@@ -13,9 +13,39 @@ LIST::
 
 SECTION:: Classes
 
-SUBSECTION:: Demand
+SUBSECTION:: Event System
 LIST::
-## LINK::Classes/Durn::
+## LINK::Classes/RampAccumulator::
+## LINK::Classes/RampDivider::
+## LINK::Classes/RampIntegrator::
+## LINK::Classes/SchedulerBurst::
+## LINK::Classes/SchedulerCycle::
+## LINK::Classes/VoiceAllocator::
+::
+SUBSECTION:: Unit Shapers
+LIST::
+## LINK::Classes/UnitCubic::
+## LINK::Classes/UnitKink::
+## LINK::Classes/UnitTriangle::
+::
+SUBSECTION:: Unit Steppers
+LIST::
+## LINK::Classes/UnitRegister::
+## LINK::Classes/UnitStep::
+## LINK::Classes/UnitWalk::
+::
+SUBSECTION:: Unit Easing
+LIST::
+## LINK::Classes/JCurve::
+## LINK::Classes/SCurve::
+::
+SUBSECTION:: Unit Windows
+LIST::
+## LINK::Classes/ExponentialWindow::
+## LINK::Classes/GaussianWindow::
+## LINK::Classes/HanningWindow::
+## LINK::Classes/TrapezoidalWindow::
+## LINK::Classes/TukeyWindow::
 ::
 SUBSECTION:: Oscillators
 LIST::
@@ -27,45 +57,15 @@ SUBSECTION:: Delays
 LIST::
 ## LINK::Classes/GrainDelay::
 ::
-SUBSECTION:: Unit Steppers
-LIST::
-## LINK::Classes/UnitRegister::
-## LINK::Classes/UnitStep::
-## LINK::Classes/UnitWalk::
-::
-SUBSECTION:: Unit Shapers
-LIST::
-## LINK::Classes/UnitCubic::
-## LINK::Classes/UnitKink::
-## LINK::Classes/UnitTriangle::
-::
-SUBSECTION:: Event System
-LIST::
-## LINK::Classes/RampAccumulator::
-## LINK::Classes/RampDivider::
-## LINK::Classes/RampIntegrator::
-## LINK::Classes/SchedulerBurst::
-## LINK::Classes/SchedulerCycle::
-## LINK::Classes/VoiceAllocator::
-::
-SUBSECTION:: Disperser
+SUBSECTION:: Filters
 LIST::
 ## LINK::Classes/Disperser::
-::
-SUBSECTION:: Unit Easing
-LIST::
-## LINK::Classes/JCurve::
-## LINK::Classes/SCurve::
 ::
 SUBSECTION:: Distortion
 LIST::
 ## LINK::Classes/BuchlaFoldADAA::
 ::
-SUBSECTION:: Unit Windows
+SUBSECTION:: Demand
 LIST::
-## LINK::Classes/ExponentialWindow::
-## LINK::Classes/GaussianWindow::
-## LINK::Classes/HanningWindow::
-## LINK::Classes/TrapezoidalWindow::
-## LINK::Classes/TukeyWindow::
+## LINK::Classes/Durn::
 ::
