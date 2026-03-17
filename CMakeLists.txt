@@ -91,41 +91,41 @@ sc_add_server_plugin(
     ""
 )
 
-# Disperser Plugin
-set(Disperser_cpp_files
-    plugins/Disperser/Disperser.cpp
+# Filter Plugins
+set(Filters_cpp_files
+    plugins/Filters/Filters.cpp
 )
-set(Disperser_sc_files
-    plugins/Disperser/Classes/Disperser.sc
+set(Filters_sc_files
+    plugins/Filters/Classes/Filters.sc
 )
-set(Disperser_schelp_files
-    plugins/Disperser/HelpSource/Disperser.schelp
+set(Filters_schelp_files
+    plugins/Filters/HelpSource/Disperser.schelp
 )
 sc_add_server_plugin(
-    "GrainUtils/Disperser" # destination directory
-    "Disperser" # target name
-    "${Disperser_cpp_files}"
-    "${Disperser_sc_files}"
-    "${Disperser_schelp_files}"
+    "GrainUtils/Filters" # destination directory
+    "Filters" # target name
+    "${Filters_cpp_files}"
+    "${Filters_sc_files}"
+    "${Filters_schelp_files}"
     ""
 )
 
-# GrainDelay Plugin
-set(GrainDelay_cpp_files
-    plugins/GrainDelay/GrainDelay.cpp
+# Delay Plugins
+set(Delays_cpp_files
+    plugins/Delays/Delays.cpp
 )
-set(GrainDelay_sc_files
-    plugins/GrainDelay/Classes/GrainDelay.sc
+set(Delays_sc_files
+    plugins/Delays/Classes/Delays.sc
 )
-set(GrainDelay_schelp_files
-    plugins/GrainDelay/HelpSource/GrainDelay.schelp
+set(Delays_schelp_files
+    plugins/Delays/HelpSource/GrainDelay.schelp
 )
 sc_add_server_plugin(
-    "GrainUtils/GrainDelay" # destination directory
-    "GrainDelay" # target name
-    "${GrainDelay_cpp_files}"
-    "${GrainDelay_sc_files}"
-    "${GrainDelay_schelp_files}"
+    "GrainUtils/Delays" # destination directory
+    "Delays" # target name
+    "${Delays_cpp_files}"
+    "${Delays_sc_files}"
+    "${Delays_schelp_files}"
     ""
 )
 

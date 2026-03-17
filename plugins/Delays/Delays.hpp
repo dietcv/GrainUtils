@@ -8,46 +8,49 @@ class GrainDelay : public SCUnit {
 public:
     GrainDelay();
     ~GrainDelay();
+
 private:
     void next(int nSamples);
-   
+    
     // Constants
     static constexpr int NUM_VOICES = 16;
     static constexpr float MAX_DELAY_TIME = 2.0f;
-   
+    
     // Constants cached at construction
     const float m_sampleRate;
     const float m_sampleDur;
     const int m_bufSize;
     const float m_bufFrames;
     const int m_bufMask;
-   
+    
     // Core trigger system
     EventUtils::SchedulerCycle m_scheduler;
     EventUtils::VoiceAllocator<NUM_VOICES> m_allocator;
     EventUtils::IsTrigger m_resetTrigger;
-   
+    
     // Audio buffer and processing
     float *m_buffer;
     int m_writePos = 0;
-   
+    
     // Grain data structure
     struct GrainData {
         float readPos = 0.0f;
         float rate = 1.0f;
         float sampleCount = 0.0f;
     };
-   
+    
     // Grain voices
     std::array<GrainData, NUM_VOICES> m_grainData;
-   
+    
     // Feedback processing filters
     FilterUtils::OnePoleDirect m_dampingFilter;
     FilterUtils::OnePoleHz m_dcBlocker;
 
     // Cache for SlopeSignal state
-    float triggerRatePast, overlapPast, delayTimePast, grainRatePast;
-    float mixPast, feedbackPast, dampingPast;
+    float delayTimePast;
+    float mixPast;
+    float feedbackPast;
+    float dampingPast;
     
     // Audio rate flags
     bool isTriggerRateAudioRate;
@@ -57,7 +60,7 @@ private:
     bool isMixAudioRate;
     bool isFeedbackAudioRate;
     bool isDampingAudioRate;
-   
+    
     // Input parameters for audio processing
     enum InputParams {
         Input,
@@ -71,7 +74,7 @@ private:
         Freeze,
         Reset
     };
-   
+    
     enum Outputs {
         Output        
     };

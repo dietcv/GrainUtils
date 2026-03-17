@@ -343,7 +343,7 @@ void RampDivider::next(int nSamples) {
         slopedRatio.value;
 }
 
-PluginLoad(GrainUtilsUGens) {
+PluginLoad(EventSytemUGens) {
     ft = inTable;
     registerUnit<SchedulerCycle>(ft, "SchedulerCycleUGen", false);
     registerUnit<SchedulerBurst>(ft, "SchedulerBurstUGen", false);

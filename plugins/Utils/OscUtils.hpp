@@ -261,6 +261,13 @@ struct DualOsc {
         
         return {oscA, oscB};
     }
+
+    void reset() {
+        m_pmFilterA.reset();
+        m_pmFilterB.reset();
+        m_prevOscA = 0.0f;
+        m_prevOscB = 0.0f;
+    }   
 };
 
 } // namespace OscUtils

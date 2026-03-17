@@ -1,4 +1,4 @@
-#include "Disperser.hpp"
+#include "Filters.hpp"
 #include "SC_PlugIn.hpp"
 
 static InterfaceTable* ft;
@@ -100,7 +100,7 @@ void Disperser::next(int nSamples) {
         slopedFeedback.value;
 }
 
-PluginLoad(GrainUtilsUGens) {
+PluginLoad(FilterUGens) {
     ft = inTable;
     registerUnit<Disperser>(ft, "Disperser", false);
 }
