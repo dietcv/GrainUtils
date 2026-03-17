@@ -66,3 +66,5 @@ PulsarOS : MultiOutUGen {
 		^this.initOutputs(inputs[0], rate);
 	}
 }
+
+}
