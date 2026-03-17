@@ -8,7 +8,7 @@ class GrainDelay : public SCUnit {
 public:
     GrainDelay();
     ~GrainDelay();
-
+ 
 private:
     void next(int nSamples);
     
@@ -45,7 +45,7 @@ private:
     // Feedback processing filters
     FilterUtils::OnePoleDirect m_dampingFilter;
     FilterUtils::OnePoleHz m_dcBlocker;
-
+ 
     // Cache for SlopeSignal state
     float delayTimePast;
     float mixPast;
@@ -60,6 +60,8 @@ private:
     bool isMixAudioRate;
     bool isFeedbackAudioRate;
     bool isDampingAudioRate;
+    bool isFreezeAudioRate;
+    bool isResetAudioRate;
     
     // Input parameters for audio processing
     enum InputParams {

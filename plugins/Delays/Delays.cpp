@@ -24,6 +24,8 @@ GrainDelay::GrainDelay() :
     isMixAudioRate = isAudioRateIn(Mix);
     isFeedbackAudioRate = isAudioRateIn(Feedback);
     isDampingAudioRate = isAudioRateIn(Damping);
+    isFreezeAudioRate = isAudioRateIn(Freeze);
+    isResetAudioRate = isAudioRateIn(Reset);
 
     // Allocate audio buffer
     m_buffer = (float*)RTAlloc(mWorld, m_bufSize * sizeof(float));
@@ -57,9 +59,6 @@ void GrainDelay::next(int nSamples) {
     auto slopedMix = makeSlope(sc_clip(in0(Mix), 0.0f, 1.0f), mixPast);
     auto slopedFeedback = makeSlope(sc_clip(in0(Feedback), 0.0f, 0.99f), feedbackPast);
     auto slopedDamping = makeSlope(sc_clip(in0(Damping), 0.0f, 1.0f), dampingPast);
-    
-    bool freeze = in0(Freeze) > 0.5f;
-    bool reset = m_resetTrigger.process(in0(Reset));
 
     // Output pointers
     float* output = out(Output);
@@ -95,6 +94,16 @@ void GrainDelay::next(int nSamples) {
         float damping = isDampingAudioRate ? 
             sc_clip(in(Damping)[i], 0.0f, 1.0f) : 
             slopedDamping.consume();
+
+        // Freeze input (audio-rate or control-rate)
+        bool freeze = isFreezeAudioRate ? 
+            in(Freeze)[i] > 0.5f : 
+            in0(Freeze) > 0.5f;
+
+        // Reset input (audio-rate or control-rate)
+        bool reset = isResetAudioRate ? 
+            m_resetTrigger.process(in(Reset)[i]) : 
+            m_resetTrigger.process(in0(Reset));
         
         // 1. Get event data from scheduler
         auto scheduler = m_scheduler.process(triggerRate, reset, m_sampleRate);
