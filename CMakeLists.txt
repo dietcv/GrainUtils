@@ -153,9 +153,9 @@ sc_add_server_plugin(
     ""
 )
 
-# Install GrainUtils Overview(s)
+# Install GrainUtils Overview
 install(FILES HelpSource/Overviews/GrainUtils.schelp
-	DESTINATION HelpSource/Overviews)
+	DESTINATION GrainUtils/HelpSource/Overviews)
 
 # Install guides to the HelpSource/Guides directory 
 install(DIRECTORY plugins/EventSystem/HelpSource/Guides/
