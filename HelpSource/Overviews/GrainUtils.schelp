@@ -1,0 +1,71 @@
+TITLE:: GrainUtils - Overview
+SUMMARY:: an overview over dietcv's sub-sample accurate UGens
+CATEGORIES:: UGen, Demand
+
+A collection of utilities for granulation. This page should give you an overview.
+
+SECTION:: Guides
+
+LIST::
+## LINK::Guides/GuideAllocation##Allocation Guide:: - an introduction into sub-sample accurate granulation - voice allocation
+## LINK::Guides/GuideScheduling##Scheduling Guide:: - an introduction into sub-sample accurate granulation - event scheduling
+::
+
+SECTION:: Classes
+
+SUBSECTION:: Event System
+LIST::
+## LINK::Classes/RampAccumulator::
+## LINK::Classes/RampDivider::
+## LINK::Classes/RampIntegrator::
+## LINK::Classes/SchedulerBurst::
+## LINK::Classes/SchedulerCycle::
+## LINK::Classes/VoiceAllocator::
+::
+SUBSECTION:: Unit Shapers
+LIST::
+## LINK::Classes/UnitCubic::
+## LINK::Classes/UnitKink::
+## LINK::Classes/UnitTriangle::
+::
+SUBSECTION:: Unit Steppers
+LIST::
+## LINK::Classes/UnitRegister::
+## LINK::Classes/UnitStep::
+## LINK::Classes/UnitWalk::
+::
+SUBSECTION:: Unit Easing
+LIST::
+## LINK::Classes/JCurve::
+## LINK::Classes/SCurve::
+::
+SUBSECTION:: Unit Windows
+LIST::
+## LINK::Classes/ExponentialWindow::
+## LINK::Classes/GaussianWindow::
+## LINK::Classes/HanningWindow::
+## LINK::Classes/TrapezoidalWindow::
+## LINK::Classes/TukeyWindow::
+::
+SUBSECTION:: Oscillators
+LIST::
+## LINK::Classes/DualOscOS::
+## LINK::Classes/PulsarOS::
+## LINK::Classes/SingleOscOS::
+::
+SUBSECTION:: Delays
+LIST::
+## LINK::Classes/GrainDelay::
+::
+SUBSECTION:: Filters
+LIST::
+## LINK::Classes/Disperser::
+::
+SUBSECTION:: Distortion
+LIST::
+## LINK::Classes/BuchlaFoldADAA::
+::
+SUBSECTION:: Demand
+LIST::
+## LINK::Classes/Durn::
+::
