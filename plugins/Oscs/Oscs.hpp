@@ -2,6 +2,7 @@
 #include "SC_PlugIn.hpp"
 #include "Utils.hpp"
 #include "EventUtils.hpp"
+#include "ShaperUtils.hpp"
 #include "OscUtils.hpp"
 #include "OversamplingUtils.hpp"
 
@@ -243,6 +244,121 @@ private:
     enum Outputs {
         OutL,
         OutR
+    };
+};
+
+// ===== DUAL PULSAR OSCILLATOR =====
+ 
+class DualPulsarOS : public SCUnit {
+public:
+    DualPulsarOS();
+    ~DualPulsarOS();
+ 
+private:
+    void next(int nSamples);
+ 
+    // Constants
+    static constexpr int NUM_VOICES = 16;
+ 
+    // Constants cached at construction
+    const float m_sampleRate;
+    const float m_sampleDur;
+ 
+    // Core processing
+    EventUtils::VoiceAllocator<NUM_VOICES> m_allocator;
+    EventUtils::IsTrigger m_trigger;
+ 
+    // Per-voice cross-modulation state
+    std::array<OscUtils::DualOscScaled, NUM_VOICES> m_dualOscs;
+ 
+    // Buffer units
+    OscUtils::BufUnit m_oscBufUnit;
+    OscUtils::BufUnit m_modBufUnit;
+ 
+    // Oversampling
+    OversamplingUtils::VariableOversampling<4> m_outputOversampling;
+    OversamplingUtils::VariableOversampling<4> m_oscCyclePosOversampling;
+    OversamplingUtils::VariableOversampling<4> m_modCyclePosOversampling;
+    OversamplingUtils::VariableOversampling<4> m_skewOversampling;
+    OversamplingUtils::VariableOversampling<4> m_indexOversampling;
+    int m_oversampleIndex;
+    int m_osRatio;
+    float* m_outputOSBuffer;
+    float* m_osOscCyclePosBuffer;
+    float* m_osModCyclePosBuffer;
+    float* m_osSkewBuffer;
+    float* m_osIndexBuffer;
+ 
+    // Grain data structure
+    struct GrainData {
+        float oscFreq = 0.0f;
+        float modFreq = 0.0f;
+        float pmIndexOsc = 0.0f;
+        float pmIndexMod = 0.0f;
+        float pmFilterRatioOsc = 1.0f;
+        float pmFilterRatioMod = 1.0f;
+        float warpOsc = 0.5f;
+        float warpMod = 0.5f;
+        double sampleCount = 0.0;
+    };
+    std::array<GrainData, NUM_VOICES> m_grainData;
+ 
+    // Output processing
+    FilterUtils::OnePoleHz m_dcBlocker;
+ 
+    // Cache for SlopeSignal state
+    float oscCyclePosPast;
+    float modCyclePosPast;
+    float skewPast;
+    float indexPast;
+ 
+    // Audio rate flags
+    bool isTriggerAudioRate;
+    bool isTriggerFreqAudioRate;
+    bool isSubSampleOffsetAudioRate;
+    bool isOscFreqAudioRate;
+    bool isModFreqAudioRate;
+    bool isPmIndexOscAudioRate;
+    bool isPmIndexModAudioRate;
+    bool isPmFilterRatioOscAudioRate;
+    bool isPmFilterRatioModAudioRate;
+    bool isWarpOscAudioRate;
+    bool isWarpModAudioRate;
+    bool isOscCyclePosAudioRate;
+    bool isModCyclePosAudioRate;
+    bool isSkewAudioRate;
+    bool isIndexAudioRate;
+ 
+    enum InputParams {
+        Trigger,
+        TriggerFreq,
+        SubSampleOffset,
+ 
+        OscFreq,
+        ModFreq,
+        PmIndexOsc,
+        PmIndexMod,
+        PmFilterRatioOsc,
+        PmFilterRatioMod,
+        WarpOsc,
+        WarpMod,
+ 
+        OscBuffer,
+        OscNumCycles,
+        OscCyclePos,
+ 
+        ModBuffer,
+        ModNumCycles,
+        ModCyclePos,
+ 
+        Skew,
+        Index,
+ 
+        Oversample
+    };
+ 
+    enum Outputs {
+        Out
     };
 };
 

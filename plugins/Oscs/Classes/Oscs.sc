@@ -66,3 +66,32 @@ PulsarOS : MultiOutUGen {
 		^this.initOutputs(inputs[0], rate);
 	}
 }
+
+// ===== DUAL PULSAR OSCILLATOR =====
+
+DualPulsarOS : UGen {
+	*ar { |trig, triggerFreq, subSampleOffset = 0,
+		  oscFreq = 440, modFreq = 440,
+		  pmIndexOsc = 0, pmIndexMod = 0,
+		  pmFilterRatioOsc = 1, pmFilterRatioMod = 1,
+		  warpOsc = 0.5, warpMod = 0.5,
+		  oscBuffer, oscNumCycles = 1, oscCyclePos = 0,
+		  modBuffer, modNumCycles = 1, modCyclePos = 0,
+		  skew = 0.5, index = 0,
+		  oversample = 0|
+
+		if(oscBuffer.isNil) { Error("DualPulsarOS: Invalid osc buffer").throw };
+		if(modBuffer.isNil) { Error("DualPulsarOS: Invalid mod buffer").throw };
+		
+		^this.multiNew('audio',
+			trig, triggerFreq, subSampleOffset,
+			oscFreq, modFreq,
+			pmIndexOsc, pmIndexMod,
+			pmFilterRatioOsc, pmFilterRatioMod,
+			warpOsc, warpMod,
+			oscBuffer, oscNumCycles, oscCyclePos,
+			modBuffer, modNumCycles, modCyclePos,
+			skew, index,
+			oversample)
+	}
+}

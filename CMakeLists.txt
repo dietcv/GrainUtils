@@ -170,9 +170,10 @@ set(Oscs_sc_files
     plugins/Oscs/Classes/Oscs.sc
 )
 set(Oscs_schelp_files
+    plugins/Oscs/HelpSource/SingleOscOS.schelp
     plugins/Oscs/HelpSource/DualOscOS.schelp
     plugins/Oscs/HelpSource/PulsarOS.schelp
-    plugins/Oscs/HelpSource/SingleOscOS.schelp
+    plugins/Oscs/HelpSource/DualPulsarOS.schelp
 )
 sc_add_server_plugin(
     "GrainUtils/Oscs" # destination directory

@@ -52,6 +52,7 @@ LIST::
 ## LINK::Classes/SingleOscOS::
 ## LINK::Classes/DualOscOS::
 ## LINK::Classes/PulsarOS::
+## LINK::Classes/DualPulsarOS::
 ::
 SUBSECTION:: Delays
 LIST::

@@ -1,0 +1,188 @@
+class:: DualPulsarOS
+summary:: A subsample-accurate and bandlimited pulsar oscillator with cross-modulation, phase increment distortion, and oversampling
+categories:: UGens>Oscillator
+
+DESCRIPTION::
+DualPulsarOS is a bandlimited pulsar oscillator with optional oversampling, supporting up to 16 simultaneously active grains with smart voice allocation.
+Subsample-accurate event scheduling of grains can be achieved by combining DualPulsarOS with SchedulerCycle or SchedulerBurst,
+which provide the necessary timing information (trigger, rate, and subsample offset).
+
+Each grain consists of two cross-modulated wavetable oscillators (osc and mod) shaped by a gaussian window.
+The two oscillators modulate each other's phase in a single-sample feedback loop.
+The wavetable oscillators are bandlimited via dynamic mipmapping and sinc interpolation.
+
+Phase increment distortion (warpOsc, warpMod) redistributes the oscillator cycles per grain via a cubic easing function.
+At the center value of 0.5, cycles are evenly distributed. Values below 0.5 concentrate cycles toward the grain start (pitch glide down),
+while values above 0.5 concentrate cycles toward the grain end (pitch glide up).
+
+Grains can be overlapped by dividing the scheduler rate by the desired overlap amount before passing it as the trigger frequency.
+An overlap of 1 means each grain lasts exactly one trigger period, while higher values produce longer, overlapping grains.
+
+note::
+High overlap values require more CPU as more grains are active simultaneously.
+::
+
+CLASSMETHODS::
+
+METHOD:: ar
+
+ARGUMENT:: trig
+Trigger signal, for example derived from SchedulerCycle or SchedulerBurst.
+
+ARGUMENT:: triggerFreq
+Trigger frequency in Hz, for example derived from SchedulerCycle or SchedulerBurst.
+Used by the internal voice allocator to calculate the grain duration.
+Typically the scheduler rate divided by the overlap amount.
+
+ARGUMENT:: subSampleOffset
+Subsample offset for accurate grain timing, for example derived from SchedulerCycle or SchedulerBurst.
+
+ARGUMENT:: oscFreq
+Carrier oscillator frequency in Hz. Latched per grain trigger.
+
+ARGUMENT:: modFreq
+Modulator oscillator frequency in Hz. Latched per grain trigger.
+
+ARGUMENT:: pmIndexOsc
+Phase modulation depth that the osc receives from the mod. Latched per grain trigger.
+
+ARGUMENT:: pmIndexMod
+Phase modulation depth that the mod receives from the osc. Latched per grain trigger.
+
+ARGUMENT:: pmFilterRatioOsc
+Lowpass filter ratio for the cross-modulation path into the osc. A value of 1 sets the filter cutoff to the mod frequency,
+higher values raise the cutoff proportionally. Controls the harmonic content of the modulation signal before it modulates the osc phase.
+Latched per grain trigger.
+
+ARGUMENT:: pmFilterRatioMod
+Lowpass filter ratio for the cross-modulation path into the mod. A value of 1 sets the filter cutoff to the osc frequency,
+higher values raise the cutoff proportionally. Controls the harmonic content of the modulation signal before it modulates the mod phase.
+Latched per grain trigger.
+
+ARGUMENT:: warpOsc
+Phase increment distortion for the osc. Redistributes the osc cycles per grain via a cubic easing function.
+0.5 = linear (no effect), < 0.5 = cycles concentrated at grain start, > 0.5 = cycles concentrated at grain end.
+Latched per grain trigger.
+
+ARGUMENT:: warpMod
+Phase increment distortion for the mod. Redistributes the osc cycles per grain via a cubic easing function.
+0.5 = linear (no effect), < 0.5 = cycles concentrated at grain start, > 0.5 = cycles concentrated at grain end.
+Latched per grain trigger.
+
+ARGUMENT:: oscBuffer
+Buffer containing carrier wavetable data (the size has to be a power-of-2).
+
+ARGUMENT:: oscNumCycles
+Number of cycles in the carrier wavetable buffer.
+
+ARGUMENT:: oscCyclePos
+Position within the carrier multi-cycle wavetable (0.0 to 1.0).
+
+ARGUMENT:: modBuffer
+Buffer containing modulator wavetable data (the size has to be a power-of-2).
+
+ARGUMENT:: modNumCycles
+Number of cycles in the modulator wavetable buffer.
+
+ARGUMENT:: modCyclePos
+Position within the modulator multi-cycle wavetable (0.0 to 1.0).
+
+ARGUMENT:: skew
+Skew of the gaussian window (0.0 to 1.0). At 0.5 the window is symmetric. Lower values shift the peak toward the grain start, higher values toward the grain end.
+
+ARGUMENT:: index
+Shape index of the gaussian window (0.0 to 10.0). At 0 the window is a hanning window. Higher values narrow the gaussian peak.
+
+ARGUMENT:: oversample
+Oversampling factor: 0=1x, 1=2x, 2=4x, 3=8x, 4=16x.
+
+returns:: Audio rate UGen.
+
+EXAMPLES::
+
+code::
+// load multi-cycle wavetable
+(
+t = Signal.sineFill(2048, [1], [0]);
+u = Signal.sineFill(2048, 1.0/((1..512)**2)*([1,0,-1,0]!128).flatten);
+w = Signal.sineFill(2048, 1.0/(1..512)*([1,0]!256).flatten);
+x = Signal.sineFill(2048, 1.0/(1..512));
+v = t.addAll(u).addAll(w).addAll(x);
+~oscBuf = Buffer.loadCollection(s, v);
+~modBuf = Buffer.loadCollection(s, v);
+)
+
+// Basic cross-modulated pulsar
+(
+{
+	var events, overlap, windowRate, sig;
+
+	events = SchedulerCycle.ar(\tFreq.kr(100));
+
+	overlap = \overlap.kr(4);
+	windowRate = events[\rate] / max(0.001, overlap);
+
+	sig = DualPulsarOS.ar(
+		trig: events[\trigger],
+		triggerFreq: windowRate,
+		subSampleOffset: events[\subSampleOffset],
+		oscFreq: \oscFreq.kr(440),
+		modFreq: \modFreq.kr(440),
+		pmIndexOsc: \pmIndexOsc.kr(1),
+		pmIndexMod: \pmIndexMod.kr(0.5),
+		pmFilterRatioOsc: 1,
+		pmFilterRatioMod: 1,
+		warpOsc: 0.5,
+		warpMod: 0.5,
+		oscBuffer: ~oscBuf,
+		oscNumCycles: 4,
+		oscCyclePos: 0,
+		modBuffer: ~modBuf,
+		modNumCycles: 4,
+		modCyclePos: 0,
+		skew: 0.5,
+		index: 0,
+		oversample: 0,
+	);
+
+	sig = LeakDC.ar(sig);
+	sig ! 2 * 0.1;
+}.play;
+)
+
+// Phase increment distortion — pitch glide within grains
+(
+{
+	var events, overlap, windowRate, sig;
+
+	events = SchedulerCycle.ar(\tFreq.kr(5));
+
+	overlap = \overlap.kr(1);
+	windowRate = events[\rate] / max(0.001, overlap);
+
+	sig = DualPulsarOS.ar(
+		trig: events[\trigger],
+		triggerFreq: windowRate,
+		subSampleOffset: events[\subSampleOffset],
+		oscFreq: 800,
+		modFreq: 400,
+		pmIndexOsc: 1,
+		pmIndexMod: 0,
+		warpOsc: \warpOsc.kr(0),
+		warpMod: 0.5,
+		oscBuffer: ~oscBuf,
+		oscNumCycles: 4,
+		oscCyclePos: 0,
+		modBuffer: ~modBuf,
+		modNumCycles: 4,
+		modCyclePos: 0,
+		skew: 0.5,
+		index: 0,
+		oversample: 0,
+	);
+
+	sig = LeakDC.ar(sig);
+	sig ! 2 * 0.3;
+}.play;
+)
+::

@@ -237,17 +237,13 @@ struct DualOsc {
         const float* bufferB, int cycleSamplesB, int numCyclesB
     ) {
 
-        // Generate phase modulation signals using previous sample outputs
-        float pmSignalA = m_prevOscB / Utils::TWO_PI;
-        float pmSignalB = m_prevOscA / Utils::TWO_PI;
-        
-        // Filter the phase modulation signals
-        float filteredPmA = m_pmFilterA.processLowpass(pmSignalA, slopeA * pmFilterRatioA);
-        float filteredPmB = m_pmFilterB.processLowpass(pmSignalB, slopeB * pmFilterRatioB);
+        // Filter previous outputs with tracking OnePole filter
+        float filteredB = m_pmFilterB.processLowpass(m_prevOscB, slopeB * pmFilterRatioA);
+        float filteredA = m_pmFilterA.processLowpass(m_prevOscA, slopeA * pmFilterRatioB);
         
         // Apply phase modulation and wrap between 0 and 1
-        float modulatedPhaseA = sc_frac(phaseA + (filteredPmA * pmIndexA));
-        float modulatedPhaseB = sc_frac(phaseB + (filteredPmB * pmIndexB));
+        float modulatedPhaseA = sc_frac(phaseA + (filteredB / Utils::TWO_PI * pmIndexA));
+        float modulatedPhaseB = sc_frac(phaseB + (filteredA / Utils::TWO_PI * pmIndexB));
 
         // Generate oscillator outputs
         float oscA = wavetableOsc(modulatedPhaseA, bufferA, cycleSamplesA, numCyclesA, cyclePosA, 
@@ -268,6 +264,72 @@ struct DualOsc {
         m_prevOscA = 0.0f;
         m_prevOscB = 0.0f;
     }   
+};
+
+// ===== DUAL OSCILLATOR WITH CROSS-MODULATION AND INDEX SCALING =====
+
+struct DualOscScaled {
+
+    FilterUtils::OnePoleSlope m_pmFilterA;
+    FilterUtils::OnePoleSlope m_pmFilterB;
+
+    float m_prevOscA{0.0f};
+    float m_prevOscB{0.0f};
+    
+    struct Output {
+        float oscA;
+        float oscB;
+    };
+    
+    Output process(
+        float phaseA, float phaseB,
+        float cyclePosA, float cyclePosB,
+        float slopeA, float slopeB,
+        float pmIndexA, float pmIndexB,
+        float pmFilterRatioA, float pmFilterRatioB,
+        int spacing1A, int spacing2A, float crossfadeA,
+        int spacing1B, int spacing2B, float crossfadeB,
+        const float* bufferA, int cycleSamplesA, int numCyclesA,
+        const float* bufferB, int cycleSamplesB, int numCyclesB
+    ) {
+
+        // Filter previous outputs with tracking OnePole filter
+        float filteredB = m_pmFilterB.processLowpass(m_prevOscB, slopeB * pmFilterRatioA);
+        float filteredA = m_pmFilterA.processLowpass(m_prevOscA, slopeA * pmFilterRatioB);
+
+        // Index scaling: normalize by modulator, scale by carrier
+        float modRatioA = 0.0f;
+        if (sc_abs(slopeB) > Utils::SAFE_DENOM_EPSILON) {
+            modRatioA = sc_abs(slopeA / slopeB);
+        }
+        float modRatioB = 0.0f;
+        if (sc_abs(slopeA) > Utils::SAFE_DENOM_EPSILON) {
+            modRatioB = sc_abs(slopeB / slopeA);
+        }
+        
+        // Apply phase modulation with index scaling and wrap between 0 and 1
+        float modulatedPhaseA = sc_frac(phaseA + (filteredB / Utils::TWO_PI * modRatioA * pmIndexA));
+        float modulatedPhaseB = sc_frac(phaseB + (filteredA / Utils::TWO_PI * modRatioB * pmIndexB));
+
+        // Generate oscillator outputs
+        float oscA = wavetableOsc(modulatedPhaseA, bufferA, cycleSamplesA, numCyclesA, cyclePosA,
+                                  spacing1A, spacing2A, crossfadeA);
+        float oscB = wavetableOsc(modulatedPhaseB, bufferB, cycleSamplesB, numCyclesB, cyclePosB,
+                                  spacing1B, spacing2B, crossfadeB);
+        
+        // Store current outputs for next sample
+        m_prevOscA = oscA;
+        m_prevOscB = oscB;
+        
+        return {oscA, oscB};
+    }
+    
+    void reset() {
+        m_pmFilterA.reset();
+        m_pmFilterB.reset();
+        m_prevOscA = 0.0f;
+        m_prevOscB = 0.0f;
+    }
 };
 
 } // namespace OscUtils
