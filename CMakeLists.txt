@@ -80,7 +80,7 @@ set(Distortion_sc_files
     plugins/Distortion/Classes/Distortion.sc
 )
 set(Distortion_schelp_files
-    plugins/Distortion/HelpSource/BuchlaFoldADAA.schelp
+    plugins/Distortion/HelpSource/BuchlaFold.schelp
 )
 sc_add_server_plugin(
     "GrainUtils/Distortion" # destination directory

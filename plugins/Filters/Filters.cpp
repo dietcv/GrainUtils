@@ -3,6 +3,8 @@
 
 static InterfaceTable* ft;
 
+// ===== DISPERSER =====
+
 Disperser::Disperser() : m_sampleRate(static_cast<float>(sampleRate()))
 {
     // Initialize parameter cache
@@ -100,7 +102,73 @@ void Disperser::next(int nSamples) {
         slopedFeedback.value;
 }
 
+// ===== STATE VARIABLE FILTER =====
+
+SimperSVF::SimperSVF() :
+    m_sampleRate(static_cast<float>(sampleRate())),
+    m_filterType(static_cast<FilterUtils::SVFCoefficients::FilterType>(
+        sc_clip(static_cast<int>(in0(Type)), 0, 2)))
+{
+    // Initialize parameter cache
+    freqPast = sc_clip(in0(Freq), 20.0f, m_sampleRate * 0.49f);
+    resonancePast = sc_clip(in0(Resonance), 0.0f, 1.0f);
+ 
+    // Check which inputs are audio-rate
+    isFreqAudioRate = isAudioRateIn(Freq);
+    isResonanceAudioRate = isAudioRateIn(Resonance);
+ 
+    mCalcFunc = make_calc_function<SimperSVF, &SimperSVF::next>();
+    next(1);
+}
+ 
+SimperSVF::~SimperSVF() = default;
+ 
+void SimperSVF::next(int nSamples) {
+
+    // Audio-rate input
+    const float* input = in(Input);
+ 
+    // Control-rate parameters with smooth interpolation
+    auto slopedFreq = makeSlope(sc_clip(in0(Freq), 20.0f, m_sampleRate * 0.49f), freqPast);
+    auto slopedResonance = makeSlope(sc_clip(in0(Resonance), 0.0f, 1.0f), resonancePast);
+ 
+    // Output pointer
+    float* outbuf = out(Out);
+ 
+    // Process audio
+    for (int i = 0; i < nSamples; ++i) {
+ 
+        // Get current parameter values (audio-rate or interpolated control-rate)
+        float freq = isFreqAudioRate ?
+            sc_clip(in(Freq)[i], 20.0f, m_sampleRate * 0.49f) :
+            slopedFreq.consume();
+ 
+        float resonance = isResonanceAudioRate ?
+            sc_clip(in(Resonance)[i], 0.0f, 1.0f) :
+            slopedResonance.consume();
+ 
+        // Map resonance (0..1) to Q (0.707..25.0)
+        float q = 0.707f + sc_squared(resonance) * 24.293f;
+ 
+        // Calculate coefficients
+        auto coeffs = FilterUtils::SVFCoefficients::calculate(freq, q, m_filterType, m_sampleRate);
+ 
+        // Process through SVF
+        outbuf[i] = m_svf.process(input[i], coeffs);
+    }
+ 
+    // Update parameter cache (use last value if audio-rate, otherwise slope value)
+    freqPast = isFreqAudioRate ?
+        sc_clip(in(Freq)[nSamples - 1], 20.0f, m_sampleRate * 0.49f) :
+        slopedFreq.value;
+ 
+    resonancePast = isResonanceAudioRate ?
+        sc_clip(in(Resonance)[nSamples - 1], 0.0f, 1.0f) :
+        slopedResonance.value;
+}
+
 PluginLoad(FilterUGens) {
     ft = inTable;
     registerUnit<Disperser>(ft, "Disperser", false);
+    registerUnit<SimperSVF>(ft, "SimperSVF", false);
 }

@@ -81,7 +81,7 @@ struct BuchlaCell {
 
 // ===== BUCHLA 259 WAVEFOLDER WITH ADAA =====
 
-struct BuchlaFoldADAA {
+struct BuchlaFold {
     
     // Circuit constants
     static constexpr double X_MIX = 5.0;
@@ -121,7 +121,7 @@ struct BuchlaFoldADAA {
         &nlFunc_AD1
     };
     
-    BuchlaFoldADAA() = default;
+    BuchlaFold() = default;
     
     // Main processing function
     inline float process(float input, float drive) noexcept {

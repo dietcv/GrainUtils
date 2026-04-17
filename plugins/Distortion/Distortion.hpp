@@ -5,10 +5,10 @@
 
 // ===== BUCHLA 259 WAVEFOLDER =====
 
-class BuchlaFoldADAA : public SCUnit {
+class BuchlaFold : public SCUnit {
 public:
-    BuchlaFoldADAA();
-    ~BuchlaFoldADAA();
+    BuchlaFold();
+    ~BuchlaFold();
     
 private:
     void next(int nSamples);
@@ -17,7 +17,7 @@ private:
     const float m_sampleRate;
     
     // Core processing
-    DistortionUtils::BuchlaFoldADAA m_folder;
+    DistortionUtils::BuchlaFold m_folder;
     
     // Oversampling objects
     OversamplingUtils::VariableOversampling<4> m_outputOversampling;
