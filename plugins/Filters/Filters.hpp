@@ -2,6 +2,8 @@
 #include "SC_PlugIn.hpp"
 #include "FilterUtils.hpp"
 
+// ===== DISPERSER =====
+
 class Disperser : public SCUnit {
 public:
     Disperser();
@@ -40,6 +42,43 @@ private:
         Feedback  
     };
    
+    enum Outputs {
+        Out
+    };
+
+};
+
+// ===== MORPHING STATE VARIABLE FILTER =====
+ 
+class MorphSVF : public SCUnit {
+public:
+    MorphSVF();
+    ~MorphSVF();
+ 
+private:
+    void next(int nSamples);
+ 
+    // Constants cached at construction
+    const float m_sampleRate;
+ 
+    // Core processing
+    FilterUtils::MorphingStateVariableFilter m_svf;
+ 
+    // Cache for SlopeSignal state
+    float freqPast, resonancePast, shapePast;
+ 
+    // Audio rate flags
+    bool isFreqAudioRate;
+    bool isResonanceAudioRate;
+    bool isShapeAudioRate;
+ 
+    enum InputParams {
+        Input,
+        Freq,
+        Resonance,
+        Shape
+    };
+ 
     enum Outputs {
         Out
     };

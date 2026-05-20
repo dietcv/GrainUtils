@@ -5,7 +5,7 @@ static InterfaceTable* ft;
 
 // ===== BUCHLA 259 WAVEFOLDER =====
 
-BuchlaFoldADAA::BuchlaFoldADAA() : m_sampleRate(static_cast<float>(sampleRate()))
+BuchlaFold::BuchlaFold() : m_sampleRate(static_cast<float>(sampleRate()))
 {
     // Initialize parameter cache
     drivePast = sc_clip(in0(Drive), 0.0f, 10.0f);
@@ -27,13 +27,13 @@ BuchlaFoldADAA::BuchlaFoldADAA() : m_sampleRate(static_cast<float>(sampleRate())
     m_outputOSBuffer = m_outputOversampling.getOSBuffer();
     m_osDriveBuffer = m_driveOversampling.getOSBuffer();
     
-    mCalcFunc = make_calc_function<BuchlaFoldADAA, &BuchlaFoldADAA::next>();
+    mCalcFunc = make_calc_function<BuchlaFold, &BuchlaFold::next>();
     next(1);
 }
 
-BuchlaFoldADAA::~BuchlaFoldADAA() = default;
+BuchlaFold::~BuchlaFold() = default;
 
-void BuchlaFoldADAA::next(int nSamples) {
+void BuchlaFold::next(int nSamples) {
     
     // Audio-rate input
     const float* input = in(Input);
@@ -90,5 +90,5 @@ void BuchlaFoldADAA::next(int nSamples) {
 
 PluginLoad(DistortionUGens) {
     ft = inTable;
-    registerUnit<BuchlaFoldADAA>(ft, "BuchlaFoldADAA", false);
+    registerUnit<BuchlaFold>(ft, "BuchlaFold", false);
 }

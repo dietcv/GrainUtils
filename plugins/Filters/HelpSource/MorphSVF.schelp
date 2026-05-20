@@ -1,0 +1,50 @@
+class:: MorphSVF
+
+summary:: State Variable Filter with continuous interpolation between shapes
+
+categories:: UGens>Filters
+
+DESCRIPTION::
+
+A State Variable Filter with continuous interpolation between Lowpass, Bandpass and Highpass shapes.
+
+CLASSMETHODS::
+
+METHOD:: ar
+
+ARGUMENT:: input
+Audio input signal
+
+ARGUMENT:: freq
+Filter cutoff frequency in Hz (20-20000)
+
+ARGUMENT:: resonance
+Filter resonance (0-1)
+
+ARGUMENT:: shape
+Filter shape (0-1): 0 = LPF, 0.5 = BPF, 1 = HPF
+
+returns:: Audio rate UGen.
+
+EXAMPLES::
+
+code::
+(
+{
+	var sig, fltFreqMod, fltFreq;
+
+	fltFreqMod = SinOsc.ar(\fltFreqMF.kr(2));
+	fltFreq = \fltFreq.kr(2000) * (2 ** (fltFreqMod * \fltFreqMD.kr(3)));
+
+	sig = Saw.ar(55);
+	sig = MorphSVF.ar(
+		input: sig,
+		freq: fltFreq,
+		resonance: 0.85,
+		shape: SinOsc.ar(0.3).linlin(-1, 1, 0, 1) // 0: lpf, 0.5: bpf, 1: hpf
+	);
+
+	sig!2 * 0.1;
+}.play;
+)
+::

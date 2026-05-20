@@ -183,7 +183,7 @@ struct SVFCoefficients {
     float gt0, gk0;
     float gt1, gk1, gt2;
     float m0, m1, m2;
-
+ 
     enum FilterType {
         LOW_PASS,
         HIGH_PASS,
@@ -191,21 +191,16 @@ struct SVFCoefficients {
         NOTCH,
         PEAK,
         ALL_PASS,
-        BELL,
-        LOW_SHELF,
-        HIGH_SHELF
+        MORPH
     };
-
-    static SVFCoefficients calculate(float cutoff, float q, FilterType type, float sampleRate, float gainDb = 0.0f) {
+ 
+    static SVFCoefficients calculate(float cutoff, float q, FilterType type, float sampleRate, float shape = 0.0f) {
         SVFCoefficients coeffs;
         
         // Calculate base g and k
         float w = (cutoff / sampleRate) * Utils::PI;
         float g0 = std::tan(w);
         float k0 = 1.0f / q;
-        
-        // For shelving and bell filters
-        float A = std::pow(10.0f, gainDb / 40.0f);
         
         // Set g, k, and m coefficients based on filter type
         switch (type) {
@@ -257,28 +252,12 @@ struct SVFCoefficients {
                 coeffs.m2 = 1.0f;
                 break;
                 
-            case BELL:
+            case MORPH:
                 coeffs.g = g0;
-                coeffs.k = k0 / A;
-                coeffs.m0 = 1.0f;
-                coeffs.m1 = k0 * A;
-                coeffs.m2 = 1.0f;
-                break;
-                
-            case LOW_SHELF:
-                coeffs.g = g0 / std::sqrt(A);
                 coeffs.k = k0;
-                coeffs.m0 = 1.0f;
-                coeffs.m1 = k0 * A;
-                coeffs.m2 = A * A;
-                break;
-                
-            case HIGH_SHELF:
-                coeffs.g = g0 * std::sqrt(A);
-                coeffs.k = k0;
-                coeffs.m0 = A * A;
-                coeffs.m1 = k0 * A;
-                coeffs.m2 = 1.0f;
+                coeffs.m0 = sc_max(0.0f, 2.0f * shape - 1.0f);
+                coeffs.m2 = sc_max(0.0f, 1.0f - 2.0f * shape);
+                coeffs.m1 = 1.0f - coeffs.m0 - coeffs.m2;
                 break;
         }
         
@@ -327,6 +306,31 @@ struct StateVariableFilter {
     void reset() {
         m_ic1eq = 0.0f;
         m_ic2eq = 0.0f;
+    }
+};
+
+// ===== MORPHING STATE VARIABLE FILTER =====
+
+struct MorphingStateVariableFilter {
+    StateVariableFilter svf;
+ 
+    // Process with continuous shape morph
+    inline float process(float input, float freq, float resonance, float shape, float sampleRate) {
+ 
+        // Convert resonance (0..1) to Q (0.707..25.0)
+        float q = 0.707f + sc_squared(resonance) * 24.293f;
+  
+        // Calculate coefficients
+        auto coeffs = SVFCoefficients::calculate(freq, q, SVFCoefficients::MORPH, sampleRate, shape);
+ 
+        // Process audio through SVF
+        float processed = svf.process(input, coeffs);
+ 
+        return processed;
+    }
+ 
+    void reset() {
+        svf.reset();
     }
 };
 

@@ -11,40 +11,54 @@ template<int NumBiquads>
 struct AAFilter {
     std::array<FilterUtils::BiquadFilter, NumBiquads> filters;
     std::array<FilterUtils::BiquadCoefficients, NumBiquads> coeffs;
-    
+
     AAFilter() = default;
-    
+
     // Calculate Q values for Butterworth filter of given order
-    static void calculateButterQs(std::array<float, NumBiquads>& Qs, int order) {
+    static std::array<float, NumBiquads> calculateButterQs(int order) {
+        std::array<float, NumBiquads> Qs{};
+
         const int lim = order / 2;
 
         for (int k = 1; k <= lim; ++k) {
-            float angle = (2.0f * static_cast<float>(k) + static_cast<float>(order) - 1.0f) * Utils::PI / (2.0f * static_cast<float>(order));
-            float b = -2.0f * std::cos(angle);
-            Qs[lim - k] = 1.0f / b;
+            float t = static_cast<float>(2 * k + order - 1);
+            float alpha = -2.0f * std::cos(Utils::PI * t / (2.0f * static_cast<float>(order)));
+            Qs[lim - k] = 1.0f / alpha;
         }
+
+        return Qs;
     }
-    
-    // Reset filter state and calculate coefficients for osRate
-    void reset(float sampleRate, int osRatio) {
-        std::array<float, NumBiquads> Qs;
-        calculateButterQs(Qs, 2 * NumBiquads);
-        
-        float nyquist = sampleRate * 0.49f;
-        float osRate = sampleRate * static_cast<float>(osRatio);
-        
+
+    // Update filter coefficients
+    void update(float sampleRate, int osRatio) {
+
+        // Calculate Q values
+        auto Qs = calculateButterQs(2 * NumBiquads);
+
+        const float nyquist = sampleRate * 0.49f;
+        const float osRate  = sampleRate * static_cast<float>(osRatio);
+
         for (int i = 0; i < NumBiquads; ++i) {
             coeffs[i] = FilterUtils::BiquadCoefficients::lowpass(nyquist, Qs[i], osRate);
         }
     }
-    
-    // Cascade Butterworth lowpass filters
+
+    // Process audio through high-order lowpass filter
     inline float process(float input) {
+
+        // Cascade lowpass filters
         float processed = input;
         for (int i = 0; i < NumBiquads; ++i) {
             processed = filters[i].process(processed, coeffs[i]);
         }
+
         return processed;
+    }
+
+    void reset() {
+        for (int i = 0; i < NumBiquads; ++i) {
+            filters[i].reset();
+        }
     }
 };
 
@@ -59,8 +73,8 @@ struct Oversampling {
     Oversampling() = default;
     
     void reset(float sampleRate) {
-        aaFilter.reset(sampleRate, Ratio);
-        aiFilter.reset(sampleRate, Ratio);
+        aaFilter.update(sampleRate, Ratio);
+        aiFilter.update(sampleRate, Ratio);
         std::fill(osBuffer.begin(), osBuffer.end(), 0.0f);
     }
     

@@ -61,6 +61,7 @@ LIST::
 SUBSECTION:: Filters
 LIST::
 ## LINK::Classes/Disperser::
+## LINK::Classes/MorphSVF::
 ::
 SUBSECTION:: Distortion
 LIST::

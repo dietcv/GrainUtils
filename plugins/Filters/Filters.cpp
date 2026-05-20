@@ -3,6 +3,8 @@
 
 static InterfaceTable* ft;
 
+// ===== DISPERSER =====
+
 Disperser::Disperser() : m_sampleRate(static_cast<float>(sampleRate()))
 {
     // Initialize parameter cache
@@ -100,7 +102,75 @@ void Disperser::next(int nSamples) {
         slopedFeedback.value;
 }
 
+// ===== MORPHING STATE VARIABLE FILTER =====
+ 
+MorphSVF::MorphSVF() : m_sampleRate(static_cast<float>(sampleRate()))
+{
+    // Initialize parameter cache
+    freqPast = sc_clip(in0(Freq), 20.0f, m_sampleRate * 0.49f);
+    resonancePast = sc_clip(in0(Resonance), 0.0f, 1.0f);
+    shapePast = sc_clip(in0(Shape), 0.0f, 1.0f);
+ 
+    // Check which continuous inputs are audio-rate
+    isFreqAudioRate = isAudioRateIn(Freq);
+    isResonanceAudioRate = isAudioRateIn(Resonance);
+    isShapeAudioRate = isAudioRateIn(Shape);
+ 
+    mCalcFunc = make_calc_function<MorphSVF, &MorphSVF::next>();
+    next(1);
+}
+ 
+MorphSVF::~MorphSVF() = default;
+ 
+void MorphSVF::next(int nSamples) {
+    
+    // Audio-rate input
+    const float* input = in(Input);
+ 
+    // Control-rate parameters with smooth interpolation
+    auto slopedFreq = makeSlope(sc_clip(in0(Freq), 20.0f, m_sampleRate * 0.49f), freqPast);
+    auto slopedResonance = makeSlope(sc_clip(in0(Resonance), 0.0f, 1.0f), resonancePast);
+    auto slopedShape = makeSlope(sc_clip(in0(Shape), 0.0f, 1.0f), shapePast);
+ 
+    // Output pointer
+    float* outbuf = out(Out);
+ 
+    // Process audio
+    for (int i = 0; i < nSamples; ++i) {
+ 
+        // Get current parameter values (audio-rate or interpolated control-rate)
+        float freq = isFreqAudioRate ?
+            sc_clip(in(Freq)[i], 20.0f, m_sampleRate * 0.49f) :
+            slopedFreq.consume();
+ 
+        float resonance = isResonanceAudioRate ?
+            sc_clip(in(Resonance)[i], 0.0f, 1.0f) :
+            slopedResonance.consume();
+ 
+        float shape = isShapeAudioRate ?
+            sc_clip(in(Shape)[i], 0.0f, 1.0f) :
+            slopedShape.consume();
+ 
+        // Process through morphing SVF
+        outbuf[i] = m_svf.process(input[i], freq, resonance, shape, m_sampleRate);
+    }
+ 
+    // Update parameter cache (use last value if audio-rate, otherwise slope value)
+    freqPast = isFreqAudioRate ?
+        sc_clip(in(Freq)[nSamples - 1], 20.0f, m_sampleRate * 0.49f) :
+        slopedFreq.value;
+ 
+    resonancePast = isResonanceAudioRate ?
+        sc_clip(in(Resonance)[nSamples - 1], 0.0f, 1.0f) :
+        slopedResonance.value;
+ 
+    shapePast = isShapeAudioRate ?
+        sc_clip(in(Shape)[nSamples - 1], 0.0f, 1.0f) :
+        slopedShape.value;
+}
+
 PluginLoad(FilterUGens) {
     ft = inTable;
     registerUnit<Disperser>(ft, "Disperser", false);
+    registerUnit<MorphSVF>(ft, "MorphSVF", false);
 }
