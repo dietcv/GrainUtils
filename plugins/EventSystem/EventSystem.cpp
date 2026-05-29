@@ -286,12 +286,17 @@ RampDivider::RampDivider()
     // Check which inputs are audio-rate
     isRatioAudioRate = isAudioRateIn(Ratio);
     isResetAudioRate = isAudioRateIn(Reset);
+
+    // Select divider mode
+    m_mode = sc_clip(static_cast<int>(in0(Mode)), 0, 2);
     
     mCalcFunc = make_calc_function<RampDivider, &RampDivider::next>();
     next(1);
     
     // Reset state after priming
-    m_divider.reset();
+    m_simpleDivider.reset();
+    m_gridDivider.reset();
+    m_offsetDivider.reset();
     m_resetTrigger.reset();
 }
 
@@ -305,17 +310,13 @@ void RampDivider::next(int nSamples) {
     // Control-rate parameters with smooth interpolation
     auto slopedRatio = makeSlope(in0(Ratio), ratioPast);
     
-    // Control-rate parameters (no interpolation)
-    bool autosync = in0(Autosync) > 0.5f;
-    float threshold = sc_clip(in0(Threshold), 0.0f, 1.0f);
-    
     // Output pointer
     float* phaseOut = out(PhaseOut);
     
     for (int i = 0; i < nSamples; ++i) {
-
+        
         // Wrap phase between 0 and 1
-        float phase = sc_frac(phaseIn[i]);
+        double phase = sc_frac(static_cast<double>(phaseIn[i]));
         
         // Get current parameter values (audio-rate or interpolated control-rate)
         float ratio = isRatioAudioRate ? 
@@ -327,14 +328,12 @@ void RampDivider::next(int nSamples) {
             m_resetTrigger.process(in(Reset)[i]) : 
             m_resetTrigger.process(in0(Reset));
         
-        // Process divider
-        phaseOut[i] = m_divider.process(
-            phase, 
-            ratio,
-            reset,
-            autosync,
-            threshold
-        );
+        // Process divider based on mode
+        switch (m_mode) {
+            case 0: phaseOut[i] = m_simpleDivider.process(phase, ratio, reset); break;
+            case 1: phaseOut[i] = m_gridDivider.process(phase, ratio, reset);   break;
+            case 2: phaseOut[i] = m_offsetDivider.process(phase, ratio, reset); break;
+        }
     }
     
     // Update parameter cache (use last value if audio-rate, otherwise slope value)

@@ -110,8 +110,8 @@ RampAccumulator : UGen {
 // ===== RAMP DIVIDER =====
 
 RampDivider : UGen {
-	*ar { |phase, ratio, reset = 0, autosync = 1, threshold = 0.01|
-		^this.multiNew('audio', phase, ratio, reset, autosync, threshold)
+	*ar { |phase, ratio = 1, reset = 0, mode = 1|
+		^this.multiNew('audio', phase, ratio, reset, mode)
 	}
 
 	checkInputs {

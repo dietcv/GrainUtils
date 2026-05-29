@@ -11,7 +11,7 @@ UnitWalk : UGen {
 }
 
 UnitRegisterUgen : MultiOutUGen {
-    *ar { |phase, chance, size, rotate, interp = 0, reset = 0|
+    *ar { |phase, chance = 0.5, size = 8, rotate = 1, interp = 0, reset = 0|
         ^this.multiNew('audio', phase, chance, size, rotate, interp, reset);
     }
 
@@ -26,7 +26,7 @@ UnitRegisterUgen : MultiOutUGen {
 }
 
 UnitRegister {
-	*ar { |phase, chance, size, rotate, interp = 0, reset = 0|
+	*ar { |phase, chance = 0.5, size = 8, rotate = 1, interp = 0, reset = 0|
 		var register = UnitRegisterUgen.ar(phase, chance, size, rotate, interp, reset);
 		^(
 			bit3: register[0],

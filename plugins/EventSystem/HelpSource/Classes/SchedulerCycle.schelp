@@ -39,58 +39,7 @@ code::
 )
 ::
 
-subsection::1.2) Sequence of Random Durations with Duty
-
-code::
-(
-var getSubDivs = { |rate, randomness|
-	var subDiv = Ddup(2, (2 ** (Dwhite(-1.0, 1.0) * randomness))) / rate;
-	Duty.ar(subDiv, DC.ar(0), 1 / subDiv);
-};
-
-{
-	var subDiv, events;
-
-	subDiv = getSubDivs.(\tFreq.kr(500), \randomness.kr(1));
-	events = SchedulerCycle.ar(subDiv);
-
-	[
-		events[\phase],
-		events[\trigger]
-	];
-
-}.plot(0.021);
-)
-::
-
-subsection::1.3) Sequence of Durations with Duty
-
-code::
-(
-var getSubDivs = { |rate, arrayOfDurations, numOfDurations|
-	var subDiv = Ddup(2, Dseq([Dser(arrayOfDurations, numOfDurations)], inf)) / rate;
-	Duty.ar(subDiv, DC.ar(0), 1 / subDiv);
-};
-
-{
-	var arrayOfDurations, numOfDurations, subDiv, events;
-
-	arrayOfDurations = [5, 1, 2, 4];
-	numOfDurations = 4;
-
-	subDiv = getSubDivs.(\tFreq.kr(500), arrayOfDurations, numOfDurations);
-	events = SchedulerCycle.ar(subDiv);
-
-	[
-		events[\phase],
-		events[\trigger]
-	];
-
-}.plot(0.021);
-)
-::
-
-subsection::1.4) Modulated Ramps with Voice Allocation
+subsection::1.2) Modulated Ramps with Voice Allocation
 
 code::
 (

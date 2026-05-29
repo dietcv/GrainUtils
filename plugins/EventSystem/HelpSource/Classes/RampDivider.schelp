@@ -5,12 +5,21 @@ categories:: UGens>Granular
 
 description::
 RampDivider tracks the slope of an input ramp signal between 0 and 1, 
-scales the derived slope by a ratio and integrates the scaled slope to output a subdivided ramp signal between 0 and 1.
-This is similiar to clock divison but ramps can be subdivided by non-integer ratios with perfect precision.
+scales the derived slope by a ratio and integrates the scaled slope to output a follower ramp signal between 0 and 1.
+This is similar to clock division but ramps can be subdivided by non-integer ratios with perfect precision.
 
-When autosync is enabled, the derived ramp will automatically sync to the main ramp whenever the ratio changes 
-significantly and the main ramp begins a new cycle. The sync operation snaps to the nearest valid grid point 
-to minimize phase discontinuity.
+For non-integer ratios, the follower ramp can become unsynchronized from the input ramp as the
+ratio changes. At any time the follower can be re-synchronized by sending a trigger to the reset input. 
+The mode argument selects how the divider handles ratio changes automatically:
+
+list::
+## emphasis::simple:: (mode 0) - No automatic sync.
+## emphasis::grid:: (mode 1) - On significant ratio change, the follower snaps to the nearest grid
+position at the next wrap of the input ramp. Causes a mid-cycle phase discontinuity.
+## emphasis::offset:: (mode 2) - On ratio change, the follower completes its current cycle at the
+previous slope and transitions at its own next wrap. No mid-cycle discontinuity; the follower
+may be temporarily offset from the grid during the transition.
+::
 
 classmethods::
 
@@ -25,11 +34,8 @@ clock division factor
 argument::reset
 Trigger to manually force synchronization
 
-argument::autosync
-Enable automatic sync on ratio changes
-
-argument::threshold
-Sensitivity for detecting ratio changes
+argument::mode
+Sync mode (0 = simple, 1 = grid, 2 = offset)
 
 returns:: A subdivided ramp signal between 0 and 1
 
@@ -48,21 +54,17 @@ code::
 )
 ::
 
-subsection::1.2) Ratio Change with Autosync
+subsection::1.2) Ratio Change with different modes
 
 code::
 (
 {
     var phase = Phasor.ar(DC.ar(0), 20 * SampleDur.ir);
 	var ratio = EnvGen.ar(Env([3, 3, 2], [0.2, 0]));
-	var rampDiv = RampDivider.ar(
-		phase: phase,
-		ratio: ratio,
-		reset: DC.ar(0),
-		autosync: 1,
-		threshold: 0.01
-	);
-    [phase, rampDiv, ratio * 0.1];
+    var modeA = RampDivider.ar(phase, ratio, mode: 0);
+    var modeB = RampDivider.ar(phase, ratio, mode: 1);
+    var modeC = RampDivider.ar(phase, ratio, mode: 2);
+    [phase, modeA, modeB, modeC, ratio * 0.1];
 }.plot(1);
 )
 ::

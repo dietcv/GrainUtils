@@ -111,7 +111,7 @@ MorphSVF::MorphSVF() : m_sampleRate(static_cast<float>(sampleRate()))
     resonancePast = sc_clip(in0(Resonance), 0.0f, 1.0f);
     shapePast = sc_clip(in0(Shape), 0.0f, 1.0f);
  
-    // Check which continuous inputs are audio-rate
+    // Check which inputs are audio-rate
     isFreqAudioRate = isAudioRateIn(Freq);
     isResonanceAudioRate = isAudioRateIn(Resonance);
     isShapeAudioRate = isAudioRateIn(Shape);

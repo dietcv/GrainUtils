@@ -65,7 +65,7 @@ LIST::
 ::
 SUBSECTION:: Distortion
 LIST::
-## LINK::Classes/BuchlaFoldADAA::
+## LINK::Classes/BuchlaFold::
 ::
 SUBSECTION:: Demand
 LIST::

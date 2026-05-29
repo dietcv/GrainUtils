@@ -92,7 +92,7 @@ void SingleOscOS::next(int nSamples) {
                 slopedCyclePos.consume();
             
             // Calculate slope
-            float slope = m_rampToSlope.process(phase);
+            float slope = static_cast<float>(m_rampToSlope.process(static_cast<double>(phase)));
             
             // Calculate mipmap parameters (use ceil for no oversampling)
             const float rangeSize = static_cast<float>(cycleSamples);
@@ -125,7 +125,7 @@ void SingleOscOS::next(int nSamples) {
                 slopedCyclePos.consume();
             
             // Calculate slope
-            float slope = m_rampToSlope.process(phase);
+            float slope = static_cast<float>(m_rampToSlope.process(static_cast<double>(phase)));
             
             // Calculate mipmap parameters (use floor for oversampling)
             const float rangeSize = static_cast<float>(cycleSamples);
@@ -306,8 +306,8 @@ void DualOscOS::next(int nSamples) {
                 slopedPMFilterRatioB.consume();
             
             // Calculate slopes
-            float slopeA = m_rampToSlopeA.process(phaseA);
-            float slopeB = m_rampToSlopeB.process(phaseB);
+            float slopeA = static_cast<float>(m_rampToSlopeA.process(static_cast<double>(phaseA)));
+            float slopeB = static_cast<float>(m_rampToSlopeB.process(static_cast<double>(phaseB)));
             
             // Calculate mipmap parameters for oscillator A (use ceil for no oversampling)
             const float rangeSizeA = static_cast<float>(cycleSamplesA);
@@ -379,8 +379,8 @@ void DualOscOS::next(int nSamples) {
                 slopedPMFilterRatioB.consume();
 
             // Calculate slopes
-            float slopeA = m_rampToSlopeA.process(phaseA);
-            float slopeB = m_rampToSlopeB.process(phaseB);
+            float slopeA = static_cast<float>(m_rampToSlopeA.process(static_cast<double>(phaseA)));
+            float slopeB = static_cast<float>(m_rampToSlopeB.process(static_cast<double>(phaseB)));
             
             // Calculate mipmap parameters for oscillator A (use floor for oversampling)
             const float rangeSizeA = static_cast<float>(cycleSamplesA);

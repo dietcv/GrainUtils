@@ -182,9 +182,14 @@ public:
     
 private:
     void next(int nSamples);
+
+    // Constants cached at construction
+    int m_mode; // 0=simple, 1=grid, 2=offset
     
     // Core processing
-    EventUtils::RampDivider m_divider;
+    EventUtils::RampDividerSimple m_simpleDivider;
+    EventUtils::RampDividerGrid   m_gridDivider;
+    EventUtils::RampDividerOffset m_offsetDivider;
     EventUtils::IsTrigger m_resetTrigger;
     
     // Cache for SlopeSignal state
@@ -198,8 +203,7 @@ private:
         Phase,
         Ratio,
         Reset,
-        Autosync,
-        Threshold
+        Mode
     };
     
     enum Outputs {

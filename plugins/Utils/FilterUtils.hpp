@@ -211,15 +211,7 @@ struct SVFCoefficients {
                 coeffs.m1 = 0.0f;
                 coeffs.m2 = 1.0f;
                 break;
-                
-            case HIGH_PASS:
-                coeffs.g = g0;
-                coeffs.k = k0;
-                coeffs.m0 = 1.0f;
-                coeffs.m1 = 0.0f;
-                coeffs.m2 = 0.0f;
-                break;
-                
+
             case BAND_PASS:
                 coeffs.g = g0;
                 coeffs.k = k0;
@@ -228,6 +220,14 @@ struct SVFCoefficients {
                 coeffs.m2 = 0.0f;
                 break;
                 
+            case HIGH_PASS:
+                coeffs.g = g0;
+                coeffs.k = k0;
+                coeffs.m0 = 1.0f;
+                coeffs.m1 = 0.0f;
+                coeffs.m2 = 0.0f;
+                break;
+            
             case NOTCH:
                 coeffs.g = g0;
                 coeffs.k = k0;

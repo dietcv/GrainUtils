@@ -27,6 +27,50 @@ struct IsTrigger {
     }
 };
 
+struct TrigLatch {
+    bool m_latchedTrigger{false};
+    
+    bool process(bool triggerIn, bool syncTrigger) {
+        // Latch incoming trigger
+        if (triggerIn) {
+            m_latchedTrigger = true;
+        }
+        
+        // Release trigger on request
+        bool trigger = false;
+        if (syncTrigger) {
+            trigger = m_latchedTrigger;
+            m_latchedTrigger = false;
+        }
+        
+        return trigger;
+    }
+    
+    void reset() {
+        m_latchedTrigger = false;
+    }
+};
+
+struct Change {
+    double m_lastValue{0.0};
+    
+    int process(double currentValue) {
+
+        // Detect direction of change as sign of delta
+        double delta = currentValue - m_lastValue;
+        int sign = static_cast<int>(sc_sign(delta));
+
+        // Update state for next sample
+        m_lastValue = currentValue;
+
+        return sign;
+    }
+    
+    void reset() {
+        m_lastValue = 0.0;
+    }
+};
+
 struct RampToTrig {
     double m_lastPhase{0.0};
     bool m_lastWrap{false};
@@ -82,18 +126,16 @@ struct StepToTrig {
 };
 
 struct RampToSlope {
-    float m_lastPhase{0.0f};
+    double m_lastPhase{0.0};
    
-    float process(float currentPhase) {
+    double process(double currentPhase) {
         // Calculate ramp slope
-        float delta = currentPhase - m_lastPhase;
+        double delta = currentPhase - m_lastPhase;
 
-        // Wrap delta to recenter between -0.5 and 0.5, for corrected slope during wrap
-        if (delta > 0.5f)
-            delta -= 1.0f;
-        else if (delta < -0.5f)
-            delta += 1.0f;    
-    
+        // Wrap between -0.5 and 0.5, for corrected slope during wrap
+        if (delta > 0.5) delta -= 1.0;
+        else if (delta < -0.5) delta += 1.0;  
+
         // Update state for next sample
         m_lastPhase = currentPhase;
 
@@ -101,18 +143,17 @@ struct RampToSlope {
     }
    
     void reset() {
-        m_lastPhase = 0.0f;
+        m_lastPhase = 0.0;
     }
 };
 
 // ===== SCHEDULER CYCLE =====
 
 struct SchedulerCycle {
-    RampToTrig trigDetect;
+    RampToTrig wrapDetect;
    
     double m_phase{0.0};        
-    double m_slope{0.0};       
-    bool m_wrapNext{false};
+    double m_slope{0.0};      
    
     struct Output {
         bool trigger = false;
@@ -128,57 +169,47 @@ struct SchedulerCycle {
         if (resetTrigger) {
             reset();
         }
-     
-        // Initialize slope
-        if (m_slope <= 0.0) {
-            m_slope = rate / sampleRate;
+
+        // 1. Wrap phase between 0 and 1
+        m_phase = sc_frac(m_phase);
+
+        // 2. Derive trigger from wrap
+        bool trigger = wrapDetect.process(m_phase);
+
+        // 3. Latch slope for new cycle
+        if (trigger) {
+            m_slope = static_cast<double>(rate) / sampleRate;
         }
-       
-        // 1. Handle wrap from previous sample
-        if (m_wrapNext) {
-            m_phase -= 1.0;                 // Wrap the phase
-            m_slope = rate / sampleRate;    // Latch new slope for next period
-            m_wrapNext = false;
-        }
-       
-        // 2. Detect trigger
-        bool trigger = trigDetect.process(m_phase);
-       
-        // 3. Calculate subsample offset when trigger occurs
+
+        // 4. Calculate subsample offset
         double subSampleOffset = 0.0;
         if (trigger && m_slope != 0.0) {
             subSampleOffset = m_phase / m_slope;
         }
-       
-        // 4. Prepare output
+
+        // 5. Prepare output
         output.trigger = trigger;
         output.phase = static_cast<float>(m_phase);
         output.rate = static_cast<float>(m_slope * sampleRate);
         output.subSampleOffset = static_cast<float>(subSampleOffset);
-       
-        // 5. Increment phase
-        m_phase += m_slope;        
-       
-        // 6. Check for wrap
-        if (m_phase >= 1.0) {
-            m_wrapNext = true;
-        }
-       
+
+        // 6. Increment phase
+        m_phase += m_slope;
+
         return output;
     }
    
     void reset() {
         m_phase = 0.0;
         m_slope = 0.0;
-        m_wrapNext = false;
-        trigDetect.reset();
+        wrapDetect.reset();
     }
 };
 
 // ===== SCHEDULER BURST =====
 
 struct SchedulerBurst {
-    StepToTrig trigDetect;
+    StepToTrig stepDetect;
 
     double m_phaseScaled{0.0};          
     double m_slope{0.0};          
@@ -199,42 +230,37 @@ struct SchedulerBurst {
             reset();
             m_hasTriggered = true;
         }
-    
-        // Calculate slope
-        if (duration > 0.0f) {
-            m_slope = 1.0 / (duration * sampleRate);
-        } else {
-            m_slope = 1.0 / sampleRate;
-        }
-    
+
+        // Calculate slope from duration
+        double safeDuration = sc_max(static_cast<double>(duration), 1.0 / sampleRate);
+        m_slope = 1.0 / (safeDuration * sampleRate);
+
         // Process only if we have been triggered
         if (m_hasTriggered) {
 
-            // 1. Detect trigger
-            bool trigger = trigDetect.process(m_phaseScaled);
+            // 1. Clip scaled phase between 0 and cycles
+            m_phaseScaled = sc_clip(m_phaseScaled, 0.0, static_cast<double>(cycles));
 
-            // 2. Wrap scaled phase between 0 and 1
+            // 2. Derive trigger from step
+            bool trigger = stepDetect.process(m_phaseScaled);
+
+            // 3. Wrap scaled phase between 0 and 1
             double phase = sc_frac(m_phaseScaled);
         
-            // 3. Calculate subsample offset
+            // 4. Calculate subsample offset
             double subSampleOffset = 0.0;
             if (trigger && m_slope != 0.0) {
                 subSampleOffset = phase / m_slope;
             }
         
-             // 4. Prepare output
+             // 5. Prepare output
             output.trigger = trigger;
             output.phase = static_cast<float>(phase);
-            output.subSampleOffset = static_cast<float>(subSampleOffset);
             output.rate = static_cast<float>(m_slope * sampleRate);
+            output.subSampleOffset = static_cast<float>(subSampleOffset);
             
-            // 5. Increment phase
+            // 6. Increment phase
             m_phaseScaled += m_slope;
-
-            // 6. Clip phase between 0 and cycles
-            if (m_phaseScaled > cycles) {
-                m_phaseScaled = cycles;
-            }
         }
     
         return output;
@@ -244,7 +270,7 @@ struct SchedulerBurst {
         m_phaseScaled = 0.0;
         m_slope = 0.0;
         m_hasTriggered = false;
-        trigDetect.reset();
+        stepDetect.reset();
     }
 };
 
@@ -279,7 +305,7 @@ struct VoiceAllocator {
         if (trigger) {
             for (int ch = 0; ch < NumChannels; ++ch) {
                 if (!isActive[ch]) {
-                    localSlopes[ch] = rate / sampleRate;
+                    localSlopes[ch] = static_cast<double>(rate) / sampleRate;
                     localPhases[ch] = localSlopes[ch] * subSampleOffset;
                     isActive[ch] = true;
                     triggers[ch] = true;
@@ -323,7 +349,7 @@ struct RampIntegrator {
     float process(bool trigger, float rate, float subSampleOffset, float sampleRate) {
 
         // 1. Calculate slope from rate
-        double slope = rate / sampleRate;
+        double slope = static_cast<double>(rate) / sampleRate;
         
         // 2. Handle trigger - reset phase with subsample offset
         if (trigger) {
@@ -334,7 +360,7 @@ struct RampIntegrator {
         // 3. Output current phase
         float output = 0.0f;
         if (m_hasTriggered) {
-            output = sc_frac(static_cast<float>(m_phase));
+            output = static_cast<float>(sc_frac(m_phase));
         }
     
         // 4. Increment phase
@@ -381,46 +407,69 @@ struct RampAccumulator {
     }
 };
 
-// ===== RAMP DIVIDER =====
+// ===== RAMP DIVIDER (SIMPLE) =====
 
-struct RampDivider {
-    RampToTrig m_wrapDetect;
+struct RampDividerSimple {
     RampToSlope m_slopeCalc;
     
     double m_phase{0.0};
-    double m_lastRatio{1.0};
-    bool m_syncRequest{false};
     
-    float process(float phase, float ratio, bool resetTrigger, bool autosync, float threshold) {
+    float process(double phase, float ratio, bool resetTrigger) {
         
-        // Calculate slope and scale by ratio
+        // 1. Derive slope from ramp and scale by ratio
         float safeRatio = sc_max(std::abs(ratio), Utils::SAFE_DENOM_EPSILON);
-        float slope = m_slopeCalc.process(phase);
-        float scaledSlope = slope / safeRatio;
+        double slope = m_slopeCalc.process(phase);
+        double scaledSlope = slope / safeRatio;
         
-        // Detect wrap trigger
+        // 2. Update phase: reset to zero or free-running increment
+        if (resetTrigger) {
+            m_phase = 0.0;
+        } else {
+            m_phase += scaledSlope;
+        }
+        
+        return static_cast<float>(sc_frac(m_phase));
+    }
+    
+    void reset() {
+        m_slopeCalc.reset();
+        m_phase = 0.0;
+    }
+};
+
+// ===== RAMP DIVIDER (GRID) =====
+
+struct RampDividerGrid {
+    RampToTrig m_wrapDetect;
+    RampToSlope m_slopeCalc;
+    TrigLatch m_syncLatch;
+    
+    double m_phase{0.0};
+    double m_lastRatio{1.0};
+
+    static constexpr double SYNC_THRESHOLD = 0.01;
+    
+    float process(double phase, float ratio, bool resetTrigger) {
+        
+        // 1. Derive slope from ramp and scale by ratio
+        float safeRatio = sc_max(std::abs(ratio), Utils::SAFE_DENOM_EPSILON);
+        double slope = m_slopeCalc.process(phase);
+        double scaledSlope = slope / safeRatio;
+        
+        // 2. Derive trigger from wrap
         bool wrapTrigger = m_wrapDetect.process(phase);
         
-        // Detect proportional change in ratio
+        // 3. Detect proportional change in ratio above threshold
         double delta = safeRatio - m_lastRatio;
         double sum = safeRatio + m_lastRatio;
-        bool ratioChanged = (sum != 0.0) && (std::abs(delta / sum) > threshold);
-        
-        // Latch sync request (only if autosync enabled)
-        if (ratioChanged && autosync) {
-            m_syncRequest = true;
-        }
-        
-        // Request sync on wrap trigger
-        bool syncTrigger = false;
-        if (wrapTrigger) {
-            syncTrigger = m_syncRequest;
-            m_syncRequest = false;
-        }
+        bool ratioChanged = (sum != 0.0) && (std::abs(delta / sum) > SYNC_THRESHOLD);
 
-        // Update phase: sync to grid on sync request or reset otherwise increment 
+        // 4. Latch sync request on ratio change, release on wrap
+        bool syncTrigger = m_syncLatch.process(ratioChanged, wrapTrigger);
+
+        // 5. Update phase: sync to grid on request or reset, otherwise free-running increment
         if (syncTrigger || resetTrigger) {
-            float scaledPhase = phase / safeRatio;
+            double scaledPhase = phase / safeRatio;
             double nextPhase = m_phase + scaledSlope;
             double offset = nextPhase - scaledPhase;
             double quantized = std::trunc(offset * safeRatio) / safeRatio;
@@ -429,21 +478,92 @@ struct RampDivider {
             m_phase += scaledSlope;
         }
         
-        // Wrap phase between 0 and 1
-        float output = sc_frac(static_cast<float>(m_phase));
+        // 6. Wrap phase between 0 and 1
+        float output = static_cast<float>(sc_frac(m_phase));
         
-        // Update state for next sample
+        // 7. Update state for next sample
         m_lastRatio = safeRatio;
         
         return output;
     }
     
     void reset() {
-        m_wrapDetect.reset();
-        m_slopeCalc.reset();
         m_phase = 0.0;
         m_lastRatio = 1.0;
-        m_syncRequest = false;
+        m_wrapDetect.reset();
+        m_slopeCalc.reset();
+        m_syncLatch.reset();
+    }
+};
+
+// ===== RAMP DIVIDER (OFFSET) =====
+
+struct RampDividerOffset {
+    RampToSlope m_slopeCalc;
+    Change m_ratioChange;
+    
+    double m_target{0.0};
+    double m_phase{0.0};
+    double m_latchedSlope{0.0};
+    bool m_lastSwitch{true};
+    
+    float process(double phase, float ratio, bool resetTrigger) {
+        
+        // 1. Derive slope from ramp and scale by ratio
+        float safeRatio = sc_max(std::abs(ratio), Utils::SAFE_DENOM_EPSILON);
+        double slope = m_slopeCalc.process(phase);
+        double scaledSlope = slope / safeRatio;
+        
+        // 2. Latch slope when previous sample switched (held until next switch)
+        if (m_lastSwitch) {
+            m_latchedSlope = scaledSlope;
+        }
+        
+        // 3. Detect any change in ratio
+        bool ratioChanged = (m_ratioChange.process(safeRatio) != 0);
+        
+        // 4. Calculate next phase (needed for target sync and switch decision)
+        double nextPhase = m_phase + m_latchedSlope;
+        
+        // 5. Update target: sync to grid on ratio change or reset, otherwise free-running increment
+        if (ratioChanged || resetTrigger) {
+            double scaledPhase = phase / safeRatio;
+            double offset = nextPhase - scaledPhase;
+            double quantized = std::trunc(offset * safeRatio) / safeRatio;
+            m_target = quantized + scaledPhase;
+        } else {
+            m_target += scaledSlope;
+        }
+        m_target = sc_frac(m_target);
+        
+        // 6. Detect switch condition: phases close enough AND slopes differ
+        double slopeDiff = std::abs(m_latchedSlope - scaledSlope);
+        double phaseDiff = sc_wrap(nextPhase - m_target, -0.5, 0.5);
+        bool phasesClose = std::abs(phaseDiff) < (slopeDiff * 2.0);
+        bool canSwitch = phasesClose && (slopeDiff != 0.0);
+        bool switchTrigger = canSwitch || resetTrigger;
+        
+        // 7. Update phase: switch to target on crossing, otherwise continue with latched slope
+        if (switchTrigger) {
+            m_phase = m_target;
+        } else {
+            m_phase = nextPhase;
+        }
+        m_phase = sc_frac(m_phase);
+        
+        // 8. Update state for next sample
+        m_lastSwitch = switchTrigger;
+        
+        return static_cast<float>(m_phase);
+    }
+    
+    void reset() {
+        m_target = 0.0;
+        m_phase = 0.0;
+        m_latchedSlope = 0.0;
+        m_lastSwitch = true;
+        m_slopeCalc.reset();
+        m_ratioChange.reset();
     }
 };
 
