@@ -26,10 +26,10 @@ classmethods::
 method::ar
 
 argument::phase
-ramp signal between 0 and 1
+Ramp signal between 0 and 1
 
 argument::ratio
-clock division factor
+Clock division factor
 
 argument::reset
 Trigger to manually force synchronization
@@ -37,7 +37,7 @@ Trigger to manually force synchronization
 argument::mode
 Sync mode (0 = simple, 1 = grid, 2 = offset)
 
-returns:: A subdivided ramp signal between 0 and 1
+returns:: A follower ramp signal between 0 and 1
 
 SECTION::1) Examples - Plots
 

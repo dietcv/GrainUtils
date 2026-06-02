@@ -38,10 +38,9 @@ SingleOscOS : UGen {
 
 // ===== PULSAR OSCILLATOR =====
 
-PulsarOS : MultiOutUGen {
-	*ar { |numChannels = 1,
-		  trig, triggerFreq, subSampleOffset = 0,
-		  grainFreq = 440, modFreq = 0, modIndex = 0, pan = 0, amp = 1,
+PulsarOS : UGen {
+	*ar { |trig, triggerFreq, subSampleOffset = 0,
+		  oscFreq = 440, modFreq = 0, modIndex = 0,
 		  oscBuffer, oscNumCycles = 1, oscCyclePos = 0,
 		  envBuffer, envNumCycles = 1, envCyclePos = 0,
 		  modBuffer, modNumCycles = 1, modCyclePos = 0,
@@ -52,18 +51,12 @@ PulsarOS : MultiOutUGen {
 		if(modBuffer.isNil) { Error("PulsarOS: Invalid mod buffer").throw };
 
 		^this.multiNew('audio',
-			numChannels,
 			trig, triggerFreq, subSampleOffset,
-			grainFreq, modFreq, modIndex, pan, amp,
+			oscFreq, modFreq, modIndex,
 			oscBuffer, oscNumCycles, oscCyclePos,
 			envBuffer, envNumCycles, envCyclePos,
 			modBuffer, modNumCycles, modCyclePos,
 			oversample)
-	}
-	
-	init { arg ... theInputs;
-		inputs = theInputs;
-		^this.initOutputs(inputs[0], rate);
 	}
 }
 

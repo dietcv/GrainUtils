@@ -482,11 +482,10 @@ void DualOscOS::next(int nSamples) {
 }
 
 // ===== PULSAR OSCILLATOR =====
-
+ 
 PulsarOS::PulsarOS() : 
     m_sampleRate(static_cast<float>(sampleRate())),
-    m_sampleDur(static_cast<float>(sampleDur())),
-    m_numChannels(sc_clip(static_cast<int>(in0(NumChannels)), 1, MAX_CHANNELS))
+    m_sampleDur(static_cast<float>(sampleDur()))
 {
     // Initialize parameter cache
     oscCyclePosPast = sc_clip(in0(OscCyclePos), 0.0f, 1.0f);
@@ -497,34 +496,29 @@ PulsarOS::PulsarOS() :
     isTriggerAudioRate = isAudioRateIn(Trigger);
     isTriggerFreqAudioRate = isAudioRateIn(TriggerFreq);
     isSubSampleOffsetAudioRate = isAudioRateIn(SubSampleOffset);
-    isGrainFreqAudioRate = isAudioRateIn(GrainFreq);
+    isOscFreqAudioRate = isAudioRateIn(OscFreq);
     isModFreqAudioRate = isAudioRateIn(ModFreq);
     isModIndexAudioRate = isAudioRateIn(ModIndex);
-    isPanAudioRate = isAudioRateIn(Pan);
-    isAmpAudioRate = isAudioRateIn(Amp);
     isOscCyclePosAudioRate = isAudioRateIn(OscCyclePos);
     isEnvCyclePosAudioRate = isAudioRateIn(EnvCyclePos);
     isModCyclePosAudioRate = isAudioRateIn(ModCyclePos);
     
     // Initialize oversampling
-    m_outputOversamplingL.reset(m_sampleRate);
-    m_outputOversamplingR.reset(m_sampleRate);
+    m_outputOversampling.reset(m_sampleRate);
     m_oscCyclePosOversampling.reset(m_sampleRate);
     m_envCyclePosOversampling.reset(m_sampleRate);
     m_modCyclePosOversampling.reset(m_sampleRate);
     
     // Setup oversampling index
     m_oversampleIndex = sc_clip(static_cast<int>(in0(Oversample)), 0, 4);
-    m_outputOversamplingL.setOversamplingIndex(m_oversampleIndex);
-    m_outputOversamplingR.setOversamplingIndex(m_oversampleIndex);
+    m_outputOversampling.setOversamplingIndex(m_oversampleIndex);
     m_oscCyclePosOversampling.setOversamplingIndex(m_oversampleIndex);
     m_envCyclePosOversampling.setOversamplingIndex(m_oversampleIndex);
     m_modCyclePosOversampling.setOversamplingIndex(m_oversampleIndex);
     
     // Store ratio and buffer pointers
-    m_osRatio = m_outputOversamplingL.getOversamplingRatio();
-    m_outputOSBufferL = m_outputOversamplingL.getOSBuffer();
-    m_outputOSBufferR = m_outputOversamplingR.getOSBuffer();
+    m_osRatio = m_outputOversampling.getOversamplingRatio();
+    m_outputOSBuffer = m_outputOversampling.getOSBuffer();
     m_osOscCyclePosBuffer = m_oscCyclePosOversampling.getOSBuffer();
     m_osEnvCyclePosBuffer = m_envCyclePosOversampling.getOSBuffer();
     m_osModCyclePosBuffer = m_modCyclePosOversampling.getOSBuffer();
@@ -536,9 +530,9 @@ PulsarOS::PulsarOS() :
     m_allocator.reset();
     m_trigger.reset();
 }
-
+ 
 PulsarOS::~PulsarOS() = default;
-
+ 
 void PulsarOS::next(int nSamples) {
     
     // Control-rate parameters with smooth interpolation
@@ -554,9 +548,8 @@ void PulsarOS::next(int nSamples) {
     const float envNumCycles = sc_max(in0(EnvNumCycles), 1.0f);
     const float modNumCycles = sc_max(in0(ModNumCycles), 1.0f);
     
-    // Output pointers
-    float* outputL = out(OutL);
-    float* outputR = (m_numChannels > 1) ? out(OutR) : nullptr;
+    // Output pointer
+    float* output = out(Out);
     
     // Get buffer data
     const float* oscBufData;
@@ -583,7 +576,7 @@ void PulsarOS::next(int nSamples) {
     const int modNumCyclesInt = static_cast<int>(modNumCycles);
     
     if (m_oversampleIndex == 0) {
-
+ 
         for (int i = 0; i < nSamples; ++i) {
             
             // Trigger input (audio-rate or control-rate)
@@ -599,26 +592,18 @@ void PulsarOS::next(int nSamples) {
             float offset = isSubSampleOffsetAudioRate ? 
                 in(SubSampleOffset)[i] : 
                 in0(SubSampleOffset);
-
-            float grainFreq = isGrainFreqAudioRate ? 
-                sc_clip(in(GrainFreq)[i], m_sampleRate * -0.49f, m_sampleRate * 0.49f) :
-                sc_clip(in0(GrainFreq), m_sampleRate * -0.49f, m_sampleRate * 0.49f); 
+ 
+            float oscFreq = isOscFreqAudioRate ? 
+                sc_clip(in(OscFreq)[i], m_sampleRate * -0.49f, m_sampleRate * 0.49f) :
+                sc_clip(in0(OscFreq), m_sampleRate * -0.49f, m_sampleRate * 0.49f); 
             
             float modFreq = isModFreqAudioRate ? 
                 sc_clip(in(ModFreq)[i], m_sampleRate * -0.49f, m_sampleRate * 0.49f) : 
                 sc_clip(in0(ModFreq), m_sampleRate * -0.49f, m_sampleRate * 0.49f);
-
+ 
             float modIndex = isModIndexAudioRate ? 
                 sc_clip(in(ModIndex)[i], 0.0f, 10.0f) : 
                 sc_clip(in0(ModIndex), 0.0f, 10.0f);
-
-            float pan = isPanAudioRate ? 
-                sc_clip(in(Pan)[i], -1.0f, 1.0f) : 
-                sc_clip(in0(Pan), -1.0f, 1.0f);
-
-            float amp = isAmpAudioRate ? 
-                sc_clip(in(Amp)[i], 0.0f, 1.0f) : 
-                sc_clip(in0(Amp), 0.0f, 1.0f);
             
             // Get current parameter values (audio-rate or interpolated control-rate)            
             float oscCyclePosVal = isOscCyclePosAudioRate ?
@@ -628,7 +613,7 @@ void PulsarOS::next(int nSamples) {
             float envCyclePosVal = isEnvCyclePosAudioRate ?
                 sc_clip(in(EnvCyclePos)[i], 0.0f, 1.0f) :
                 slopedEnvCyclePos.consume();
-
+ 
             float modCyclePosVal = isModCyclePosAudioRate ?
                 sc_clip(in(ModCyclePos)[i], 0.0f, 1.0f) :
                 slopedModCyclePos.consume();
@@ -642,17 +627,14 @@ void PulsarOS::next(int nSamples) {
             );
             
             // 2. Process all grains
-            float sumL = 0.0f;
-            float sumR = 0.0f;
+            float sum = 0.0f;
             for (int g = 0; g < NUM_VOICES; ++g) {
                 
                 // Trigger new grain if needed and store graindata
                 if (m_allocator.triggers[g]) {
-                    m_grainData[g].grainFreq = grainFreq;
+                    m_grainData[g].oscFreq = oscFreq;
                     m_grainData[g].modFreq = modFreq;
                     m_grainData[g].modIndex = modIndex;
-                    m_grainData[g].pan = pan;
-                    m_grainData[g].amp = amp;
                     m_grainData[g].sampleCount = offset;
                     m_pmFilters[g].reset();
                 }
@@ -661,14 +643,14 @@ void PulsarOS::next(int nSamples) {
                 if (m_allocator.isActive[g]) {
                     
                     // Calculate slopes
-                    const float oscSlope = m_grainData[g].grainFreq * m_sampleDur;
+                    const float oscSlope = m_grainData[g].oscFreq * m_sampleDur;
                     const float envSlope = static_cast<float>(m_allocator.localSlopes[g]);
                     const float modSlope = m_grainData[g].modFreq * m_sampleDur;
-
+ 
                     // Accumulate osc and mod phases
                     float oscPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * static_cast<double>(oscSlope)));
                     float modPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * static_cast<double>(modSlope)));
-
+ 
                     // Calculate mipmap parameters for mod (use ceil for no oversampling)
                     const float modRangeSize = static_cast<float>(modCycleSamples);
                     const float modSamplesPerFrame = std::abs(modSlope) * modRangeSize;
@@ -686,7 +668,7 @@ void PulsarOS::next(int nSamples) {
                         modCycleSamples, modNumCyclesInt, modCyclePosVal,
                         modSpacing1, modSpacing2, modCrossfade
                     );
-
+ 
                     // Calculate mipmap parameters for osc (use ceil for no oversampling)
                     const float oscRangeSize = static_cast<float>(oscCycleSamples);
                     const float oscSamplesPerFrame = std::abs(oscSlope) * oscRangeSize;
@@ -697,13 +679,13 @@ void PulsarOS::next(int nSamples) {
                     const int oscSpacing1 = 1 << oscLayer;
                     const int oscSpacing2 = oscSpacing1 << 1;
                     const float oscCrossfade = sc_frac(oscOctave);
-
+ 
                     // Calculate mod scale ratio for PM
                     float modScaleRatio = 0.0f;
                     if (sc_abs(modSlope) > Utils::SAFE_DENOM_EPSILON) {
                         modScaleRatio = sc_abs(oscSlope / modSlope);
                     }
-
+ 
                     // Apply Phase Modulation
                     float modFiltered = m_pmFilters[g].processLowpass(modOsc, modSlope);
                     float modScaled = modFiltered / Utils::TWO_PI * modScaleRatio;
@@ -734,29 +716,19 @@ void PulsarOS::next(int nSamples) {
                         envSpacing1, envSpacing2, envCrossfade
                     );
                     
-                    // Accumulate grain output with panning
-                    float grainOut = grainOsc * grainWindow * m_grainData[g].amp;
-                    if (m_numChannels > 1) {
-                        auto panGains = Utils::EqualPowerPan{}.process(m_grainData[g].pan);
-                        sumL += grainOut * panGains.left;
-                        sumR += grainOut * panGains.right;
-                    } else {
-                        sumL += grainOut;
-                    }
-
+                    // Accumulate grain output
+                    sum += grainOsc * grainWindow;
+ 
                     // Increment sample count
                     m_grainData[g].sampleCount++;
                 }
             }
             
             // 3. DC block output
-            outputL[i] = m_dcBlockerL.processHighpass(sumL, 3.0f, m_sampleRate);
-            if (m_numChannels > 1) {
-                outputR[i] = m_dcBlockerR.processHighpass(sumR, 3.0f, m_sampleRate);
-            }
+            output[i] = m_dcBlocker.processHighpass(sum, 3.0f, m_sampleRate);
         }
     } else {
-
+ 
         for (int i = 0; i < nSamples; ++i) {
             
             // Trigger input (audio-rate or control-rate)
@@ -772,26 +744,18 @@ void PulsarOS::next(int nSamples) {
             float offset = isSubSampleOffsetAudioRate ? 
                 in(SubSampleOffset)[i] : 
                 in0(SubSampleOffset);
-
-            float grainFreq = isGrainFreqAudioRate ? 
-                sc_clip(in(GrainFreq)[i], m_sampleRate * -0.49f, m_sampleRate * 0.49f) :
-                sc_clip(in0(GrainFreq), m_sampleRate * -0.49f, m_sampleRate * 0.49f); 
+ 
+            float oscFreq = isOscFreqAudioRate ? 
+                sc_clip(in(OscFreq)[i], m_sampleRate * -0.49f, m_sampleRate * 0.49f) :
+                sc_clip(in0(OscFreq), m_sampleRate * -0.49f, m_sampleRate * 0.49f); 
             
             float modFreq = isModFreqAudioRate ? 
                 sc_clip(in(ModFreq)[i], m_sampleRate * -0.49f, m_sampleRate * 0.49f) : 
                 sc_clip(in0(ModFreq), m_sampleRate * -0.49f, m_sampleRate * 0.49f);
-
+ 
             float modIndex = isModIndexAudioRate ? 
                 sc_clip(in(ModIndex)[i], 0.0f, 10.0f) : 
                 sc_clip(in0(ModIndex), 0.0f, 10.0f);
-
-            float pan = isPanAudioRate ? 
-                sc_clip(in(Pan)[i], -1.0f, 1.0f) : 
-                sc_clip(in0(Pan), -1.0f, 1.0f);
-
-            float amp = isAmpAudioRate ? 
-                sc_clip(in(Amp)[i], 0.0f, 1.0f) : 
-                sc_clip(in0(Amp), 0.0f, 1.0f);
             
             // Get current parameter values (audio-rate or interpolated control-rate)            
             float oscCyclePosVal = isOscCyclePosAudioRate ?
@@ -801,7 +765,7 @@ void PulsarOS::next(int nSamples) {
             float envCyclePosVal = isEnvCyclePosAudioRate ?
                 sc_clip(in(EnvCyclePos)[i], 0.0f, 1.0f) :
                 slopedEnvCyclePos.consume();
-
+ 
             float modCyclePosVal = isModCyclePosAudioRate ?
                 sc_clip(in(ModCyclePos)[i], 0.0f, 1.0f) :
                 slopedModCyclePos.consume();
@@ -819,14 +783,9 @@ void PulsarOS::next(int nSamples) {
             m_envCyclePosOversampling.upsample(envCyclePosVal);
             m_modCyclePosOversampling.upsample(modCyclePosVal);
             
-            // 3. Clear OS buffers
+            // 3. Clear OS buffer
             for (int k = 0; k < m_osRatio; k++) {
-                m_outputOSBufferL[k] = 0.0f;
-            }
-            if (m_numChannels > 1) {
-                for (int k = 0; k < m_osRatio; k++) {
-                    m_outputOSBufferR[k] = 0.0f;
-                }
+                m_outputOSBuffer[k] = 0.0f;
             }
             
             // 4. Process all grains
@@ -834,11 +793,9 @@ void PulsarOS::next(int nSamples) {
                 
                 // Trigger new grain if needed and store graindata
                 if (m_allocator.triggers[g]) {
-                    m_grainData[g].grainFreq = grainFreq;
+                    m_grainData[g].oscFreq = oscFreq;
                     m_grainData[g].modFreq = modFreq;
                     m_grainData[g].modIndex = modIndex;
-                    m_grainData[g].pan = pan;
-                    m_grainData[g].amp = amp;
                     m_grainData[g].sampleCount = offset;
                     m_pmFilters[g].reset();
                 }
@@ -847,14 +804,14 @@ void PulsarOS::next(int nSamples) {
                 if (m_allocator.isActive[g]) {
                     
                     // Calculate slopes
-                    const float oscSlope = m_grainData[g].grainFreq * m_sampleDur;
+                    const float oscSlope = m_grainData[g].oscFreq * m_sampleDur;
                     const float envSlope = static_cast<float>(m_allocator.localSlopes[g]);
                     const float modSlope = m_grainData[g].modFreq * m_sampleDur;
-
+ 
                     // Accumulate osc and mod phases
                     float oscPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * static_cast<double>(oscSlope)));
                     float modPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * static_cast<double>(modSlope)));
-
+ 
                     // Calculate mipmap parameters for mod (use floor for oversampling)
                     const float modRangeSize = static_cast<float>(modCycleSamples);
                     const float modSamplesPerFrame = std::abs(modSlope) * modRangeSize;
@@ -865,7 +822,7 @@ void PulsarOS::next(int nSamples) {
                     const int modSpacing1 = 1 << modLayer;
                     const int modSpacing2 = modSpacing1 << 1;
                     const float modCrossfade = sc_frac(modOctave);
-
+ 
                     // Calculate mipmap parameters for osc (use floor for oversampling)
                     const float oscRangeSize = static_cast<float>(oscCycleSamples);
                     const float oscSamplesPerFrame = std::abs(oscSlope) * oscRangeSize;
@@ -899,10 +856,7 @@ void PulsarOS::next(int nSamples) {
                     const int envSpacing1 = 1 << envLayer;
                     const int envSpacing2 = envSpacing1 << 1;
                     const float envCrossfade = sc_frac(envOctave);
-
-                    // Calculate pan gains
-                    auto panGains = Utils::EqualPowerPan{}.process(m_grainData[g].pan);
-
+ 
                     // Calculate mod scale ratio for PM
                     float modScaleRatio = 0.0f;
                     if (sc_abs(modSlope) > Utils::SAFE_DENOM_EPSILON) {
@@ -947,26 +901,17 @@ void PulsarOS::next(int nSamples) {
                             envSpacing1, envSpacing2, envCrossfade
                         );
                         
-                        // Accumulate grain output with panning
-                        float grainOut = grainOsc * grainWindow * m_grainData[g].amp;
-                        if (m_numChannels > 1) {
-                            m_outputOSBufferL[k] += grainOut * panGains.left;
-                            m_outputOSBufferR[k] += grainOut * panGains.right;
-                        } else {
-                            m_outputOSBufferL[k] += grainOut;
-                        }
+                        // Accumulate grain output
+                        m_outputOSBuffer[k] += grainOsc * grainWindow;
                     }
-
+ 
                     // Increment sample count
                     m_grainData[g].sampleCount++;
                 }
             }
             
             // 5. Downsample and DC block output
-            outputL[i] = m_dcBlockerL.processHighpass(m_outputOversamplingL.downsample(), 3.0f, m_sampleRate);
-            if (m_numChannels > 1) {
-                outputR[i] = m_dcBlockerR.processHighpass(m_outputOversamplingR.downsample(), 3.0f, m_sampleRate);
-            }
+            output[i] = m_dcBlocker.processHighpass(m_outputOversampling.downsample(), 3.0f, m_sampleRate);
         }
     }
     
@@ -976,7 +921,7 @@ void PulsarOS::next(int nSamples) {
         
     envCyclePosPast = isEnvCyclePosAudioRate ? 
         sc_clip(in(EnvCyclePos)[nSamples - 1], 0.0f, 1.0f) : slopedEnvCyclePos.value;
-
+ 
     modCyclePosPast = isModCyclePosAudioRate ? 
         sc_clip(in(ModCyclePos)[nSamples - 1], 0.0f, 1.0f) : slopedModCyclePos.value;
 }
@@ -1234,10 +1179,11 @@ void DualPulsarOS::next(int nSamples) {
                         modBufData, modCycleSamples, modNumCyclesInt
                     );
  
-                    // Apply gaussian window
+                    // Process gaussian window
                     float grainWindow = WindowFunctions::gaussianWindow(
                         m_allocator.phases[g], skewVal, indexVal);
  
+                    // Accumulate grain output
                     sum += result.oscA * grainWindow;
  
                     // Increment sample count
@@ -1438,10 +1384,11 @@ void DualPulsarOS::next(int nSamples) {
                             modBufData, modCycleSamples, modNumCyclesInt
                         );
  
-                        // Apply gaussian window with upsampled skew and index
+                        // Process gaussian window with upsampled skew and index
                         float grainWindow = WindowFunctions::gaussianWindow(
                             osEnvPhase, m_osSkewBuffer[k], m_osIndexBuffer[k]);
  
+                        // Accumulate grain output
                         m_outputOSBuffer[k] += result.oscA * grainWindow;
                     }
  

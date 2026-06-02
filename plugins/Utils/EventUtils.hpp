@@ -550,11 +550,14 @@ struct RampDividerOffset {
             m_phase = nextPhase;
         }
         m_phase = sc_frac(m_phase);
+
+        // 8. Prepare output
+        float output = static_cast<float>(m_phase);
         
-        // 8. Update state for next sample
+        // 9. Update state for next sample
         m_lastSwitch = switchTrigger;
         
-        return static_cast<float>(m_phase);
+        return output;
     }
     
     void reset() {

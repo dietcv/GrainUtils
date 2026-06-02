@@ -19,9 +19,6 @@ CLASSMETHODS::
 
 METHOD:: ar
 
-ARGUMENT:: numChannels
-Number of output channels. 1 = mono, 2 = stereo with equal-power panning.
-
 ARGUMENT:: trig
 Trigger signal, for example derived from SchedulerCycle or SchedulerBurst.
 
@@ -33,7 +30,7 @@ Typically the scheduler rate divided by the overlap amount.
 ARGUMENT:: subSampleOffset
 Subsample offset for accurate grain timing, for example derived from SchedulerCycle or SchedulerBurst.
 
-ARGUMENT:: grainFreq
+ARGUMENT:: oscFreq
 Carrier oscillator frequency in Hz. Latched per grain trigger.
 
 ARGUMENT:: modFreq
@@ -41,12 +38,6 @@ Modulator oscillator frequency in Hz. Latched per grain trigger.
 
 ARGUMENT:: modIndex
 Phase modulation depth. Latched per grain trigger.
-
-ARGUMENT:: pan
-Stereo pan position. Only used when numChannels = 2. Latched per grain trigger.
-
-ARGUMENT:: amp
-Grain amplitude. Latched per grain trigger.
 
 ARGUMENT:: oscBuffer
 Buffer containing carrier wavetable data (the size has to be a power-of-2).
@@ -119,16 +110,13 @@ e.loadCollection(Signal.hanningWindow(2048));
 
 	sig = PulsarOS.ar(
 
-		numChannels: 2,
 		trig: events[\trigger],
 		triggerFreq: windowRate,
 		subSampleOffset: events[\subSampleOffset],
 
-		grainFreq: grainFreq,
+		oscFreq: grainFreq,
 		modFreq: modFreq,
 		modIndex: fmIndex,
-		pan: 0,
-		amp: 1,
 
 		oscBuffer: b,
 		oscNumCycles: 4,
@@ -146,7 +134,7 @@ e.loadCollection(Signal.hanningWindow(2048));
 	);
 
 	sig = LeakDC.ar(sig);
-	sig * 0.1;
+	sig!2 * 0.1;
 }.play;
 )
 ::
