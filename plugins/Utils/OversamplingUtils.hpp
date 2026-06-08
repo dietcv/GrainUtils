@@ -29,8 +29,8 @@ struct AAFilter {
         return Qs;
     }
 
-    // Update filter coefficients
-    void update(float sampleRate, int osRatio) {
+    // Calculate filter coefficients
+    void calculate(float sampleRate, int osRatio) {
 
         // Calculate Q values
         auto Qs = calculateButterQs(2 * NumBiquads);
@@ -62,108 +62,42 @@ struct AAFilter {
     }
 };
 
-// ===== BASE OVERSAMPLING =====
-
-template<int Ratio, int NumBiquads = 4>
-struct Oversampling {
-    AAFilter<NumBiquads> aaFilter;
-    AAFilter<NumBiquads> aiFilter;
-    std::array<float, Ratio> osBuffer;
-    
-    Oversampling() = default;
-    
-    void reset(float sampleRate) {
-        aaFilter.update(sampleRate, Ratio);
-        aiFilter.update(sampleRate, Ratio);
-        std::fill(osBuffer.begin(), osBuffer.end(), 0.0f);
-    }
-    
-    inline void upsample(float x) {
-        osBuffer[0] = static_cast<float>(Ratio) * x;
-        std::fill(osBuffer.begin() + 1, osBuffer.end(), 0.0f);
-        
-        for (int k = 0; k < Ratio; ++k) {
-            osBuffer[k] = aiFilter.process(osBuffer[k]);
-        }
-    }
-    
-    inline float downsample() {
-        float y = 0.0f;
-        for (int k = 0; k < Ratio; ++k) {
-            y = aaFilter.process(osBuffer[k]);
-        }
-        return y;
-    }
-    
-    inline float* getOSBuffer() {
-        return osBuffer.data();
-    }
-};
-
 // ===== VARIABLE OVERSAMPLING =====
 
-template<int NumBiquads = 4>
 struct VariableOversampling {
-    Oversampling<1, NumBiquads> os0;
-    Oversampling<2, NumBiquads> os1;
-    Oversampling<4, NumBiquads> os2;
-    Oversampling<8, NumBiquads> os3; 
-    Oversampling<16, NumBiquads> os4;
+    AAFilter<4> aaFilter;
+    AAFilter<4> aiFilter;
     
-    int osIdx{0};
-    
+    float* m_osBuffer{nullptr};
+    int m_osRatio{1};
+ 
     VariableOversampling() = default;
-    
-    void reset(float sampleRate) {
-        os0.reset(sampleRate);
-        os1.reset(sampleRate);
-        os2.reset(sampleRate);
-        os3.reset(sampleRate);
-        os4.reset(sampleRate);
+ 
+    // Initialize oversampling filters
+    void init(int osRatio, float sampleRate, float* osBuffer) {
+        m_osRatio = osRatio;
+        m_osBuffer = osBuffer;
+        aaFilter.calculate(sampleRate, osRatio);
+        aiFilter.calculate(sampleRate, osRatio);
     }
-    
-    void setOversamplingIndex(int newIdx) { 
-        osIdx = sc_clip(newIdx, 0, 4);
-    }
-    
-    int getOversamplingIndex() const { 
-        return osIdx; 
-    }
-    
-    int getOversamplingRatio() const { 
-        return 1 << osIdx; 
-    }
-    
+ 
+    // Process anti-imaging filter
     inline void upsample(float x) {
-        switch (osIdx) {
-            case 0: os0.upsample(x); break;
-            case 1: os1.upsample(x); break;
-            case 2: os2.upsample(x); break;
-            case 3: os3.upsample(x); break;
-            case 4: os4.upsample(x); break;
+        m_osBuffer[0] = static_cast<float>(m_osRatio) * x;
+        memset(m_osBuffer + 1, 0, (m_osRatio - 1) * sizeof(float));
+ 
+        for (int k = 0; k < m_osRatio; ++k) {
+            m_osBuffer[k] = aiFilter.process(m_osBuffer[k]);
         }
     }
-    
+ 
+    // Process anti-aliasing filter
     inline float downsample() {
-        switch (osIdx) {
-            case 0: return os0.downsample();
-            case 1: return os1.downsample();
-            case 2: return os2.downsample();
-            case 3: return os3.downsample();
-            case 4: return os4.downsample();
-            default: return 0.0f;
+        float y = 0.0f;
+        for (int k = 0; k < m_osRatio; ++k) {
+            y = aaFilter.process(m_osBuffer[k]);
         }
-    }
-    
-    inline float* getOSBuffer() {
-        switch (osIdx) {
-            case 0: return os0.getOSBuffer();
-            case 1: return os1.getOSBuffer();
-            case 2: return os2.getOSBuffer();
-            case 3: return os3.getOSBuffer();
-            case 4: return os4.getOSBuffer();
-            default: return nullptr;
-        }
+        return y;
     }
 };
 

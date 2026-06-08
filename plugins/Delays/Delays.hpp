@@ -2,6 +2,7 @@
 #include "SC_PlugIn.hpp"
 #include "EventUtils.hpp"
 #include "FilterUtils.hpp"
+#include "PluginUtils.hpp"
 #include <array>
 
 class GrainDelay : public SCUnit {
@@ -29,7 +30,7 @@ private:
     EventUtils::IsTrigger m_resetTrigger;
     
     // Audio buffer and processing
-    float *m_buffer;
+    float *m_buffer{nullptr};
     int m_writePos = 0;
     
     // Grain data structure
@@ -63,7 +64,6 @@ private:
     bool isFreezeAudioRate;
     bool isResetAudioRate;
     
-    // Input parameters for audio processing
     enum InputParams {
         Input,
         TriggerRate,

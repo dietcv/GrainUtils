@@ -1,29 +1,14 @@
 #include "Oscs.hpp"
 #include "SC_PlugIn.hpp"
 
-static InterfaceTable *ft;
-
-// ===== HELPER FUNCTION =====
-
-static bool getBufferData(OscUtils::BufUnit& bufUnit, float bufNum, int nSamples,
-                         World* world, Graph* parent,
-                         const float*& bufData, int& tableSize, const char* oscName) {
-    const SndBuf* buf;
-    const auto verify_buf = bufUnit.GetTable(world, parent, bufNum, nSamples, buf, bufData, tableSize);
-    if (!verify_buf) {
-        if (!bufUnit.m_buf_failed) {
-            Print("%s: buffer not found\n", oscName);
-            bufUnit.m_buf_failed = true;
-        }
-        return false;
-    }
-    bufUnit.m_buf_failed = false;
-    return true;
-}
+InterfaceTable *ft;
 
 // ===== SINGLE WAVETABLE OSCILLATOR =====
 
-SingleOscOS::SingleOscOS() : m_sampleRate(static_cast<float>(sampleRate()))
+SingleOscOS::SingleOscOS() : 
+    m_sampleRate(static_cast<float>(sampleRate())),
+    m_oversampleIndex(sc_clip(static_cast<int>(in0(Oversample)), 0, 4)),
+    m_osRatio(1 << m_oversampleIndex)
 {
     // Initialize parameter cache
     cyclePosPast = sc_clip(in0(CyclePos), 0.0f, 1.0f);
@@ -32,24 +17,26 @@ SingleOscOS::SingleOscOS() : m_sampleRate(static_cast<float>(sampleRate()))
     isCyclePosAudioRate = isAudioRateIn(CyclePos);
     
     // Initialize oversampling
-    m_outputOversampling.reset(m_sampleRate);
-    m_cyclePosOversampling.reset(m_sampleRate);
-    
-    // Setup oversampling index
-    m_oversampleIndex = sc_clip(static_cast<int>(in0(Oversample)), 0, 4);
-    m_outputOversampling.setOversamplingIndex(m_oversampleIndex);
-    m_cyclePosOversampling.setOversamplingIndex(m_oversampleIndex);
-    
-    // Store ratio and buffer pointers
-    m_osRatio = m_outputOversampling.getOversamplingRatio();
-    m_outputOSBuffer = m_outputOversampling.getOSBuffer();
-    m_osCyclePosBuffer = m_cyclePosOversampling.getOSBuffer();
+    if (m_oversampleIndex > 0) {
+        auto unit = this;
+
+        // Allocate oversampling buffers
+        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_outputOSBuffer);
+        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_cyclePosOSBuffer);
+
+        // Setup oversampling filters
+        m_outputOversampling.init(m_osRatio, m_sampleRate, m_outputOSBuffer);
+        m_cyclePosOversampling.init(m_osRatio, m_sampleRate, m_cyclePosOSBuffer);
+    }
     
     mCalcFunc = make_calc_function<SingleOscOS, &SingleOscOS::next>();
     next(1);
 }
 
-SingleOscOS::~SingleOscOS() = default;
+SingleOscOS::~SingleOscOS() {
+    RTFree(mWorld, m_outputOSBuffer);
+    RTFree(mWorld, m_cyclePosOSBuffer);
+}
 
 void SingleOscOS::next(int nSamples) {
     
@@ -70,8 +57,7 @@ void SingleOscOS::next(int nSamples) {
     const float* bufData;
     int tableSize;
     
-    if (!getBufferData(m_bufUnit, bufNum, nSamples, mWorld, mParent, bufData, tableSize, "SingleOscOS")) {
-        ClearUnitOutputs(this, nSamples);
+    if (!m_bufUnit.GetTable(this, bufNum, nSamples, bufData, tableSize, "SingleOscOS")) {
         return;
     }
     
@@ -148,7 +134,7 @@ void SingleOscOS::next(int nSamples) {
             for (int k = 0; k < m_osRatio; k++) {
                 
                 // Clamp upsampled values
-                m_osCyclePosBuffer[k] = sc_clip(m_osCyclePosBuffer[k], 0.0f, 1.0f);
+                m_cyclePosOSBuffer[k] = sc_clip(m_cyclePosOSBuffer[k], 0.0f, 1.0f);
                 
                 // Increment oversampled phase
                 osPhase += osSlope;
@@ -156,7 +142,7 @@ void SingleOscOS::next(int nSamples) {
                 // Process wavetable oscillator with upsampled parameter values
                 m_outputOSBuffer[k] = OscUtils::wavetableOsc(
                     sc_frac(osPhase), bufData, 
-                    cycleSamples, numCyclesInt, m_osCyclePosBuffer[k], 
+                    cycleSamples, numCyclesInt, m_cyclePosOSBuffer[k], 
                     spacing1, spacing2, crossfade
                 );
             }
@@ -174,7 +160,10 @@ void SingleOscOS::next(int nSamples) {
 
 // ===== DUAL WAVETABLE OSCILLATOR =====
 
-DualOscOS::DualOscOS() : m_sampleRate(static_cast<float>(sampleRate()))
+DualOscOS::DualOscOS() : 
+    m_sampleRate(static_cast<float>(sampleRate())),
+    m_oversampleIndex(sc_clip(static_cast<int>(in0(Oversample)), 0, 4)),
+    m_osRatio(1 << m_oversampleIndex)
 {
     // Initialize parameter cache
     cyclePosAPast = sc_clip(in0(CyclePosA), 0.0f, 1.0f);
@@ -191,44 +180,46 @@ DualOscOS::DualOscOS() : m_sampleRate(static_cast<float>(sampleRate()))
     isPMIndexBAudioRate = isAudioRateIn(PMIndexB);
     isPMFilterRatioAAudioRate = isAudioRateIn(PMFilterRatioA);
     isPMFilterRatioBAudioRate = isAudioRateIn(PMFilterRatioB);
-    
+
     // Initialize oversampling
-    m_outputOversamplingA.reset(m_sampleRate);
-    m_outputOversamplingB.reset(m_sampleRate);
-    m_cyclePosAOversampling.reset(m_sampleRate);
-    m_cyclePosBOversampling.reset(m_sampleRate);
-    m_pmIndexAOversampling.reset(m_sampleRate);
-    m_pmIndexBOversampling.reset(m_sampleRate);
-    m_pmFilterRatioAOversampling.reset(m_sampleRate);
-    m_pmFilterRatioBOversampling.reset(m_sampleRate);
-    
-    // Setup oversampling index
-    m_oversampleIndex = sc_clip(static_cast<int>(in0(Oversample)), 0, 4);
-    m_outputOversamplingA.setOversamplingIndex(m_oversampleIndex);
-    m_outputOversamplingB.setOversamplingIndex(m_oversampleIndex);
-    m_cyclePosAOversampling.setOversamplingIndex(m_oversampleIndex);
-    m_cyclePosBOversampling.setOversamplingIndex(m_oversampleIndex);
-    m_pmIndexAOversampling.setOversamplingIndex(m_oversampleIndex);
-    m_pmIndexBOversampling.setOversamplingIndex(m_oversampleIndex);
-    m_pmFilterRatioAOversampling.setOversamplingIndex(m_oversampleIndex);
-    m_pmFilterRatioBOversampling.setOversamplingIndex(m_oversampleIndex);
-    
-    // Store ratio and buffer pointers
-    m_osRatio = m_outputOversamplingA.getOversamplingRatio();
-    m_outputOSBufferA = m_outputOversamplingA.getOSBuffer();
-    m_outputOSBufferB = m_outputOversamplingB.getOSBuffer();
-    m_osCyclePosABuffer = m_cyclePosAOversampling.getOSBuffer();
-    m_osCyclePosBBuffer = m_cyclePosBOversampling.getOSBuffer();
-    m_osPMIndexABuffer = m_pmIndexAOversampling.getOSBuffer();
-    m_osPMIndexBBuffer = m_pmIndexBOversampling.getOSBuffer();
-    m_osPMFilterRatioABuffer = m_pmFilterRatioAOversampling.getOSBuffer();
-    m_osPMFilterRatioBBuffer = m_pmFilterRatioBOversampling.getOSBuffer();
+    if (m_oversampleIndex > 0) {
+        auto unit = this;
+
+        // Allocate oversampling buffers
+        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_outputOSBufferA);
+        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_outputOSBufferB);
+        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_cyclePosAOSBuffer);
+        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_cyclePosBOSBuffer);
+        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_pmIndexAOSBuffer);
+        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_pmIndexBOSBuffer);
+        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_pmFilterRatioAOSBuffer);
+        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_pmFilterRatioBOSBuffer);
+
+        // Setup oversampling filters
+        m_outputOversamplingA.init(m_osRatio, m_sampleRate, m_outputOSBufferA);
+        m_outputOversamplingB.init(m_osRatio, m_sampleRate, m_outputOSBufferB);
+        m_cyclePosAOversampling.init(m_osRatio, m_sampleRate, m_cyclePosAOSBuffer);
+        m_cyclePosBOversampling.init(m_osRatio, m_sampleRate, m_cyclePosBOSBuffer);
+        m_pmIndexAOversampling.init(m_osRatio, m_sampleRate, m_pmIndexAOSBuffer);
+        m_pmIndexBOversampling.init(m_osRatio, m_sampleRate, m_pmIndexBOSBuffer);
+        m_pmFilterRatioAOversampling.init(m_osRatio, m_sampleRate, m_pmFilterRatioAOSBuffer);
+        m_pmFilterRatioBOversampling.init(m_osRatio, m_sampleRate, m_pmFilterRatioBOSBuffer);
+    }
     
     mCalcFunc = make_calc_function<DualOscOS, &DualOscOS::next>();
     next(1);
 }
 
-DualOscOS::~DualOscOS() = default;
+DualOscOS::~DualOscOS() {
+    RTFree(mWorld, m_outputOSBufferA);
+    RTFree(mWorld, m_outputOSBufferB);
+    RTFree(mWorld, m_cyclePosAOSBuffer);
+    RTFree(mWorld, m_cyclePosBOSBuffer);
+    RTFree(mWorld, m_pmIndexAOSBuffer);
+    RTFree(mWorld, m_pmIndexBOSBuffer);
+    RTFree(mWorld, m_pmFilterRatioAOSBuffer);
+    RTFree(mWorld, m_pmFilterRatioBOSBuffer);
+}
 
 void DualOscOS::next(int nSamples) {
 
@@ -260,9 +251,8 @@ void DualOscOS::next(int nSamples) {
     int tableSizeA;
     int tableSizeB;
     
-    if (!getBufferData(m_bufUnitA, bufNumA, nSamples, mWorld, mParent, bufDataA, tableSizeA, "DualOscOS OscA") ||
-        !getBufferData(m_bufUnitB, bufNumB, nSamples, mWorld, mParent, bufDataB, tableSizeB, "DualOscOS OscB")) {
-        ClearUnitOutputs(this, nSamples);
+    if (!m_bufUnitA.GetTable(this, bufNumA, nSamples, bufDataA, tableSizeA, "DualOscOS OscA") ||
+        !m_bufUnitB.GetTable(this, bufNumB, nSamples, bufDataB, tableSizeB, "DualOscOS OscB")) {
         return;
     }
     
@@ -421,12 +411,12 @@ void DualOscOS::next(int nSamples) {
             for (int k = 0; k < m_osRatio; k++) {
                 
                 // Clamp upsampled values
-                m_osCyclePosABuffer[k] = sc_clip(m_osCyclePosABuffer[k], 0.0f, 1.0f);
-                m_osCyclePosBBuffer[k] = sc_clip(m_osCyclePosBBuffer[k], 0.0f, 1.0f);
-                m_osPMIndexABuffer[k] = sc_clip(m_osPMIndexABuffer[k], 0.0f, 10.0f);
-                m_osPMIndexBBuffer[k] = sc_clip(m_osPMIndexBBuffer[k], 0.0f, 10.0f);
-                m_osPMFilterRatioABuffer[k] = sc_clip(m_osPMFilterRatioABuffer[k], 1.0f, 10.0f);
-                m_osPMFilterRatioBBuffer[k] = sc_clip(m_osPMFilterRatioBBuffer[k], 1.0f, 10.0f);
+                m_cyclePosAOSBuffer[k] = sc_clip(m_cyclePosAOSBuffer[k], 0.0f, 1.0f);
+                m_cyclePosBOSBuffer[k] = sc_clip(m_cyclePosBOSBuffer[k], 0.0f, 1.0f);
+                m_pmIndexAOSBuffer[k] = sc_clip(m_pmIndexAOSBuffer[k], 0.0f, 10.0f);
+                m_pmIndexBOSBuffer[k] = sc_clip(m_pmIndexBOSBuffer[k], 0.0f, 10.0f);
+                m_pmFilterRatioAOSBuffer[k] = sc_clip(m_pmFilterRatioAOSBuffer[k], 1.0f, 10.0f);
+                m_pmFilterRatioBOSBuffer[k] = sc_clip(m_pmFilterRatioBOSBuffer[k], 1.0f, 10.0f);
                 
                 // Increment oversampled phases
                 osPhaseA += osSlopeA;
@@ -435,10 +425,10 @@ void DualOscOS::next(int nSamples) {
                 // Process dual wavetable oscillator with upsampled parameter values
                 auto result = m_dualOsc.process(
                     sc_frac(osPhaseA), sc_frac(osPhaseB),
-                    m_osCyclePosABuffer[k], m_osCyclePosBBuffer[k],
+                    m_cyclePosAOSBuffer[k], m_cyclePosBOSBuffer[k],
                     osSlopeA, osSlopeB,
-                    m_osPMIndexABuffer[k], m_osPMIndexBBuffer[k],
-                    m_osPMFilterRatioABuffer[k], m_osPMFilterRatioBBuffer[k],
+                    m_pmIndexAOSBuffer[k], m_pmIndexBOSBuffer[k],
+                    m_pmFilterRatioAOSBuffer[k], m_pmFilterRatioBOSBuffer[k],
                     spacing1A, spacing2A, crossfadeA,
                     spacing1B, spacing2B, crossfadeB,
                     bufDataA, cycleSamplesA, numCyclesIntA,
@@ -485,7 +475,9 @@ void DualOscOS::next(int nSamples) {
  
 PulsarOS::PulsarOS() : 
     m_sampleRate(static_cast<float>(sampleRate())),
-    m_sampleDur(static_cast<float>(sampleDur()))
+    m_sampleDur(static_cast<float>(sampleDur())),
+    m_oversampleIndex(sc_clip(static_cast<int>(in0(Oversample)), 0, 4)),
+    m_osRatio(1 << m_oversampleIndex)
 {
     // Initialize parameter cache
     oscCyclePosPast = sc_clip(in0(OscCyclePos), 0.0f, 1.0f);
@@ -504,24 +496,21 @@ PulsarOS::PulsarOS() :
     isModCyclePosAudioRate = isAudioRateIn(ModCyclePos);
     
     // Initialize oversampling
-    m_outputOversampling.reset(m_sampleRate);
-    m_oscCyclePosOversampling.reset(m_sampleRate);
-    m_envCyclePosOversampling.reset(m_sampleRate);
-    m_modCyclePosOversampling.reset(m_sampleRate);
-    
-    // Setup oversampling index
-    m_oversampleIndex = sc_clip(static_cast<int>(in0(Oversample)), 0, 4);
-    m_outputOversampling.setOversamplingIndex(m_oversampleIndex);
-    m_oscCyclePosOversampling.setOversamplingIndex(m_oversampleIndex);
-    m_envCyclePosOversampling.setOversamplingIndex(m_oversampleIndex);
-    m_modCyclePosOversampling.setOversamplingIndex(m_oversampleIndex);
-    
-    // Store ratio and buffer pointers
-    m_osRatio = m_outputOversampling.getOversamplingRatio();
-    m_outputOSBuffer = m_outputOversampling.getOSBuffer();
-    m_osOscCyclePosBuffer = m_oscCyclePosOversampling.getOSBuffer();
-    m_osEnvCyclePosBuffer = m_envCyclePosOversampling.getOSBuffer();
-    m_osModCyclePosBuffer = m_modCyclePosOversampling.getOSBuffer();
+    if (m_oversampleIndex > 0) {
+        auto unit = this;
+
+        // Allocate oversampling buffers
+        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_outputOSBuffer);
+        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_oscCyclePosOSBuffer);
+        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_envCyclePosOSBuffer);
+        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_modCyclePosOSBuffer);
+
+        // Setup oversampling filters
+        m_outputOversampling.init(m_osRatio, m_sampleRate, m_outputOSBuffer);
+        m_oscCyclePosOversampling.init(m_osRatio, m_sampleRate, m_oscCyclePosOSBuffer);
+        m_envCyclePosOversampling.init(m_osRatio, m_sampleRate, m_envCyclePosOSBuffer);
+        m_modCyclePosOversampling.init(m_osRatio, m_sampleRate, m_modCyclePosOSBuffer);
+    }
     
     mCalcFunc = make_calc_function<PulsarOS, &PulsarOS::next>();
     next(1);
@@ -531,7 +520,12 @@ PulsarOS::PulsarOS() :
     m_trigger.reset();
 }
  
-PulsarOS::~PulsarOS() = default;
+PulsarOS::~PulsarOS() {
+    RTFree(mWorld, m_outputOSBuffer);
+    RTFree(mWorld, m_oscCyclePosOSBuffer);
+    RTFree(mWorld, m_envCyclePosOSBuffer);
+    RTFree(mWorld, m_modCyclePosOSBuffer);
+}
  
 void PulsarOS::next(int nSamples) {
     
@@ -557,13 +551,9 @@ void PulsarOS::next(int nSamples) {
     const float* modBufData;
     int oscTableSize, envTableSize, modTableSize;
     
-    if (!getBufferData(m_oscBufUnit, oscBufNum, nSamples, mWorld, mParent, 
-                       oscBufData, oscTableSize, "PulsarOS osc") ||
-        !getBufferData(m_envBufUnit, envBufNum, nSamples, mWorld, mParent, 
-                       envBufData, envTableSize, "PulsarOS env") ||
-        !getBufferData(m_modBufUnit, modBufNum, nSamples, mWorld, mParent, 
-                       modBufData, modTableSize, "PulsarOS mod")) {
-        ClearUnitOutputs(this, nSamples);
+    if (!m_oscBufUnit.GetTable(this, oscBufNum, nSamples, oscBufData, oscTableSize, "PulsarOS osc") ||
+        !m_envBufUnit.GetTable(this, envBufNum, nSamples, envBufData, envTableSize, "PulsarOS env") ||
+        !m_modBufUnit.GetTable(this, modBufNum, nSamples, modBufData, modTableSize, "PulsarOS mod")) {
         return;
     }
     
@@ -866,9 +856,9 @@ void PulsarOS::next(int nSamples) {
                     for (int k = 0; k < m_osRatio; k++) {
                         
                         // Clamp upsampled values
-                        m_osOscCyclePosBuffer[k] = sc_clip(m_osOscCyclePosBuffer[k], 0.0f, 1.0f);
-                        m_osEnvCyclePosBuffer[k] = sc_clip(m_osEnvCyclePosBuffer[k], 0.0f, 1.0f);
-                        m_osModCyclePosBuffer[k] = sc_clip(m_osModCyclePosBuffer[k], 0.0f, 1.0f);
+                        m_oscCyclePosOSBuffer[k] = sc_clip(m_oscCyclePosOSBuffer[k], 0.0f, 1.0f);
+                        m_envCyclePosOSBuffer[k] = sc_clip(m_envCyclePosOSBuffer[k], 0.0f, 1.0f);
+                        m_modCyclePosOSBuffer[k] = sc_clip(m_modCyclePosOSBuffer[k], 0.0f, 1.0f);
                         
                         // Increment oversampled phases
                         osModPhase += osModSlope;
@@ -878,7 +868,7 @@ void PulsarOS::next(int nSamples) {
                         // Process mod wavetable oscillator
                         float modOsc = OscUtils::wavetableOsc(
                             sc_frac(osModPhase), modBufData, 
-                            modCycleSamples, modNumCyclesInt, m_osModCyclePosBuffer[k],
+                            modCycleSamples, modNumCyclesInt, m_modCyclePosOSBuffer[k],
                             modSpacing1, modSpacing2, modCrossfade
                         );
                         
@@ -890,14 +880,14 @@ void PulsarOS::next(int nSamples) {
                         // Process osc wavetable oscillator
                         float grainOsc = OscUtils::wavetableOsc(
                             modulatedOscPhase, oscBufData, 
-                            oscCycleSamples, oscNumCyclesInt, m_osOscCyclePosBuffer[k],
+                            oscCycleSamples, oscNumCyclesInt, m_oscCyclePosOSBuffer[k],
                             oscSpacing1, oscSpacing2, oscCrossfade
                         );
                         
                         // Process env wavetable oscillator
                         float grainWindow = OscUtils::wavetableOsc(
                             osEnvPhase, envBufData, 
-                            envCycleSamples, envNumCyclesInt, m_osEnvCyclePosBuffer[k],
+                            envCycleSamples, envNumCyclesInt, m_envCyclePosOSBuffer[k],
                             envSpacing1, envSpacing2, envCrossfade
                         );
                         
@@ -930,7 +920,9 @@ void PulsarOS::next(int nSamples) {
  
 DualPulsarOS::DualPulsarOS() :
     m_sampleRate(static_cast<float>(sampleRate())),
-    m_sampleDur(static_cast<float>(sampleDur()))
+    m_sampleDur(static_cast<float>(sampleDur())),
+    m_oversampleIndex(sc_clip(static_cast<int>(in0(Oversample)), 0, 4)),
+    m_osRatio(1 << m_oversampleIndex)
 {
     // Initialize parameter cache (sloped params)
     oscCyclePosPast = sc_clip(in0(OscCyclePos), 0.0f, 1.0f);
@@ -956,27 +948,23 @@ DualPulsarOS::DualPulsarOS() :
     isIndexAudioRate = isAudioRateIn(Index);
  
     // Initialize oversampling
-    m_outputOversampling.reset(m_sampleRate);
-    m_oscCyclePosOversampling.reset(m_sampleRate);
-    m_modCyclePosOversampling.reset(m_sampleRate);
-    m_skewOversampling.reset(m_sampleRate);
-    m_indexOversampling.reset(m_sampleRate);
- 
-    // Setup oversampling index
-    m_oversampleIndex = sc_clip(static_cast<int>(in0(Oversample)), 0, 4);
-    m_outputOversampling.setOversamplingIndex(m_oversampleIndex);
-    m_oscCyclePosOversampling.setOversamplingIndex(m_oversampleIndex);
-    m_modCyclePosOversampling.setOversamplingIndex(m_oversampleIndex);
-    m_skewOversampling.setOversamplingIndex(m_oversampleIndex);
-    m_indexOversampling.setOversamplingIndex(m_oversampleIndex);
- 
-    // Store ratio and buffer pointers
-    m_osRatio = m_outputOversampling.getOversamplingRatio();
-    m_outputOSBuffer = m_outputOversampling.getOSBuffer();
-    m_osOscCyclePosBuffer = m_oscCyclePosOversampling.getOSBuffer();
-    m_osModCyclePosBuffer = m_modCyclePosOversampling.getOSBuffer();
-    m_osSkewBuffer = m_skewOversampling.getOSBuffer();
-    m_osIndexBuffer = m_indexOversampling.getOSBuffer();
+    if (m_oversampleIndex > 0) {
+        auto unit = this;
+
+        // Allocate oversampling buffers
+        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_outputOSBuffer);
+        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_oscCyclePosOSBuffer);
+        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_modCyclePosOSBuffer);
+        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_skewOSBuffer);
+        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_indexOSBuffer);
+
+        // Setup oversampling filters
+        m_outputOversampling.init(m_osRatio, m_sampleRate, m_outputOSBuffer);
+        m_oscCyclePosOversampling.init(m_osRatio, m_sampleRate, m_oscCyclePosOSBuffer);
+        m_modCyclePosOversampling.init(m_osRatio, m_sampleRate, m_modCyclePosOSBuffer);
+        m_skewOversampling.init(m_osRatio, m_sampleRate, m_skewOSBuffer);
+        m_indexOversampling.init(m_osRatio, m_sampleRate, m_indexOSBuffer);
+    }
  
     mCalcFunc = make_calc_function<DualPulsarOS, &DualPulsarOS::next>();
     next(1);
@@ -986,7 +974,13 @@ DualPulsarOS::DualPulsarOS() :
     m_trigger.reset();
 }
  
-DualPulsarOS::~DualPulsarOS() = default;
+DualPulsarOS::~DualPulsarOS() {
+    RTFree(mWorld, m_outputOSBuffer);
+    RTFree(mWorld, m_oscCyclePosOSBuffer);
+    RTFree(mWorld, m_modCyclePosOSBuffer);
+    RTFree(mWorld, m_skewOSBuffer);
+    RTFree(mWorld, m_indexOSBuffer);
+}
  
 void DualPulsarOS::next(int nSamples) {
  
@@ -1010,11 +1004,8 @@ void DualPulsarOS::next(int nSamples) {
     const float* modBufData;
     int oscTableSize, modTableSize;
  
-    if (!getBufferData(m_oscBufUnit, oscBufNum, nSamples, mWorld, mParent,
-                       oscBufData, oscTableSize, "DualPulsarOS osc") ||
-        !getBufferData(m_modBufUnit, modBufNum, nSamples, mWorld, mParent,
-                       modBufData, modTableSize, "DualPulsarOS mod")) {
-        ClearUnitOutputs(this, nSamples);
+    if (!m_oscBufUnit.GetTable(this, oscBufNum, nSamples, oscBufData, oscTableSize, "DualPulsarOS osc") ||
+        !m_modBufUnit.GetTable(this, modBufNum, nSamples, modBufData, modTableSize, "DualPulsarOS mod")) {
         return;
     }
  
@@ -1354,10 +1345,10 @@ void DualPulsarOS::next(int nSamples) {
                     for (int k = 0; k < m_osRatio; k++) {
  
                         // Clamp upsampled values
-                        m_osOscCyclePosBuffer[k] = sc_clip(m_osOscCyclePosBuffer[k], 0.0f, 1.0f);
-                        m_osModCyclePosBuffer[k] = sc_clip(m_osModCyclePosBuffer[k], 0.0f, 1.0f);
-                        m_osSkewBuffer[k] = sc_clip(m_osSkewBuffer[k], 0.0f, 1.0f);
-                        m_osIndexBuffer[k] = sc_clip(m_osIndexBuffer[k], 0.0f, 10.0f);
+                        m_oscCyclePosOSBuffer[k] = sc_clip(m_oscCyclePosOSBuffer[k], 0.0f, 1.0f);
+                        m_modCyclePosOSBuffer[k] = sc_clip(m_modCyclePosOSBuffer[k], 0.0f, 1.0f);
+                        m_skewOSBuffer[k] = sc_clip(m_skewOSBuffer[k], 0.0f, 1.0f);
+                        m_indexOSBuffer[k] = sc_clip(m_indexOSBuffer[k], 0.0f, 10.0f);
  
                         // Increment oversampled phases
                         osOscPhase += osOscSlope;
@@ -1374,7 +1365,7 @@ void DualPulsarOS::next(int nSamples) {
                         // Process cross-modulated dual oscillator at oversampled rate
                         auto result = m_dualOscs[g].process(
                             osOscPhaseDistorted, osModPhaseDistorted,
-                            m_osOscCyclePosBuffer[k], m_osModCyclePosBuffer[k],
+                            m_oscCyclePosOSBuffer[k], m_modCyclePosOSBuffer[k],
                             osOscSlope, osModSlope,
                             m_grainData[g].pmIndexOsc, m_grainData[g].pmIndexMod,
                             m_grainData[g].pmFilterRatioOsc, m_grainData[g].pmFilterRatioMod,
@@ -1386,7 +1377,7 @@ void DualPulsarOS::next(int nSamples) {
  
                         // Process gaussian window with upsampled skew and index
                         float grainWindow = WindowFunctions::gaussianWindow(
-                            osEnvPhase, m_osSkewBuffer[k], m_osIndexBuffer[k]);
+                            osEnvPhase, m_skewOSBuffer[k], m_indexOSBuffer[k]);
  
                         // Accumulate grain output
                         m_outputOSBuffer[k] += result.oscA * grainWindow;

@@ -2,6 +2,7 @@
 #include "SC_PlugIn.hpp"
 #include "DistortionUtils.hpp"
 #include "OversamplingUtils.hpp"
+#include "PluginUtils.hpp"
 
 // ===== BUCHLA 259 WAVEFOLDER =====
 
@@ -15,19 +16,19 @@ private:
     
     // Constants
     const float m_sampleRate;
+    const int m_oversampleIndex;
+    const int m_osRatio;
     
     // Core processing
     DistortionUtils::BuchlaFold m_folder;
     
     // Oversampling objects
-    OversamplingUtils::VariableOversampling<4> m_outputOversampling;
-    OversamplingUtils::VariableOversampling<4> m_driveOversampling;
+    OversamplingUtils::VariableOversampling m_outputOversampling;
+    OversamplingUtils::VariableOversampling m_driveOversampling;
     
     // Stored oversampling state
-    int m_oversampleIndex;
-    int m_osRatio;
-    float* m_outputOSBuffer;
-    float* m_osDriveBuffer;
+    float* m_outputOSBuffer{nullptr};
+    float* m_driveOSBuffer{nullptr};
     
     // Cache for SlopeSignal state
     float drivePast;

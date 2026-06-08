@@ -1,7 +1,7 @@
 #include "Delays.hpp"
 #include "SC_PlugIn.hpp"
 
-static InterfaceTable* ft;
+InterfaceTable* ft;
 
 GrainDelay::GrainDelay() : 
     m_sampleRate(static_cast<float>(sampleRate())),
@@ -28,14 +28,8 @@ GrainDelay::GrainDelay() :
     isResetAudioRate = isAudioRateIn(Reset);
 
     // Allocate audio buffer
-    m_buffer = (float*)RTAlloc(mWorld, m_bufSize * sizeof(float));
-
-    // Check the result of RTAlloc!
     auto unit = this;
-    ClearUnitIfMemFailed(m_buffer);   
-    
-    // Initialize the allocated buffer with zeros
-    memset(m_buffer, 0, m_bufSize * sizeof(float));
+    PluginUtils::allocBuffer(unit, mWorld, m_bufSize, m_buffer);
     
     mCalcFunc = make_calc_function<GrainDelay, &GrainDelay::next>();
     next(1);

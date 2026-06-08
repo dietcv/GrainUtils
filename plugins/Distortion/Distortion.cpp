@@ -1,37 +1,42 @@
 #include "Distortion.hpp"
 #include "SC_PlugIn.hpp"
 
-static InterfaceTable* ft;
+InterfaceTable* ft;
 
 // ===== BUCHLA 259 WAVEFOLDER =====
 
-BuchlaFold::BuchlaFold() : m_sampleRate(static_cast<float>(sampleRate()))
+BuchlaFold::BuchlaFold() : 
+    m_sampleRate(static_cast<float>(sampleRate())),
+    m_oversampleIndex(sc_clip(static_cast<int>(in0(Oversample)), 0, 4)),
+    m_osRatio(1 << m_oversampleIndex)
 {
     // Initialize parameter cache
     drivePast = sc_clip(in0(Drive), 0.0f, 10.0f);
     
     // Check which inputs are audio-rate
     isDriveAudioRate = isAudioRateIn(Drive);
-    
+
     // Initialize oversampling
-    m_outputOversampling.reset(m_sampleRate);
-    m_driveOversampling.reset(m_sampleRate);
-    
-    // Setup oversampling index
-    m_oversampleIndex = sc_clip(static_cast<int>(in0(Oversample)), 0, 4);
-    m_outputOversampling.setOversamplingIndex(m_oversampleIndex);
-    m_driveOversampling.setOversamplingIndex(m_oversampleIndex);
-    
-    // Store ratio and buffer pointers
-    m_osRatio = m_outputOversampling.getOversamplingRatio();
-    m_outputOSBuffer = m_outputOversampling.getOSBuffer();
-    m_osDriveBuffer = m_driveOversampling.getOSBuffer();
+    if (m_oversampleIndex > 0) {
+        auto unit = this;
+
+        // Allocate oversampling buffers
+        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_outputOSBuffer);
+        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_driveOSBuffer);
+
+        // Setup oversampling filters
+        m_outputOversampling.init(m_osRatio, m_sampleRate, m_outputOSBuffer);
+        m_driveOversampling.init(m_osRatio, m_sampleRate, m_driveOSBuffer);
+    }
     
     mCalcFunc = make_calc_function<BuchlaFold, &BuchlaFold::next>();
     next(1);
 }
 
-BuchlaFold::~BuchlaFold() = default;
+BuchlaFold::~BuchlaFold() {
+    RTFree(mWorld, m_outputOSBuffer);
+    RTFree(mWorld, m_driveOSBuffer);
+}
 
 void BuchlaFold::next(int nSamples) {
     
@@ -71,10 +76,10 @@ void BuchlaFold::next(int nSamples) {
             for (int k = 0; k < m_osRatio; ++k) {
                 
                 // Clamp upsampled values
-                m_osDriveBuffer[k] = sc_clip(m_osDriveBuffer[k], 0.0f, 10.0f);
+                m_driveOSBuffer[k] = sc_clip(m_driveOSBuffer[k], 0.0f, 10.0f);
                 
                 // Process wavefolder with upsampled parameter values
-                m_outputOSBuffer[k] = m_folder.process(m_outputOSBuffer[k], m_osDriveBuffer[k]);
+                m_outputOSBuffer[k] = m_folder.process(m_outputOSBuffer[k], m_driveOSBuffer[k]);
             }
             
             // Downsample output
