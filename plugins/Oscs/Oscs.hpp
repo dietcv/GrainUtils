@@ -17,7 +17,7 @@ public:
 private:
     void next(int nSamples);
     
-    // Constants
+    // Constants cached at construction
     const float m_sampleRate;
     const int m_oversampleIndex;
     const int m_osRatio;
@@ -26,7 +26,7 @@ private:
     EventUtils::RampToSlope m_rampToSlope;
 
     // Buffer units
-    PluginUtils::BufUnit m_bufUnit;
+    PluginUtils::BufUnit m_oscBufUnit;
     
     // Oversampling objects
     OversamplingUtils::VariableOversampling m_outputOversampling;
@@ -65,7 +65,7 @@ public:
 private:
     void next(int nSamples);
     
-    // Constants
+    // Constants cached at construction
     const float m_sampleRate;
     const int m_oversampleIndex;
     const int m_osRatio;
@@ -76,8 +76,8 @@ private:
     OscUtils::DualOsc m_dualOsc;
 
     // Buffer units
-    PluginUtils::BufUnit m_bufUnitA;
-    PluginUtils::BufUnit m_bufUnitB;
+    PluginUtils::BufUnit m_oscBufUnitA;
+    PluginUtils::BufUnit m_oscBufUnitB;
     
     // Oversampling objects
     OversamplingUtils::VariableOversampling m_outputOversamplingA;

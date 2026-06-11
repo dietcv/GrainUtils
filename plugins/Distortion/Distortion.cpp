@@ -1,7 +1,7 @@
 #include "Distortion.hpp"
 #include "SC_PlugIn.hpp"
 
-InterfaceTable* ft;
+extern InterfaceTable* ft;
 
 // ===== BUCHLA 259 WAVEFOLDER =====
 
@@ -29,8 +29,8 @@ BuchlaFold::BuchlaFold() :
         m_driveOversampling.init(m_osRatio, m_sampleRate, m_driveOSBuffer);
     }
     
-    mCalcFunc = make_calc_function<BuchlaFold, &BuchlaFold::next>();
-    next(1);
+    // Set calc function & compute initial sample
+    set_calc_function<BuchlaFold, &BuchlaFold::next>();
 }
 
 BuchlaFold::~BuchlaFold() {
@@ -93,7 +93,7 @@ void BuchlaFold::next(int nSamples) {
         slopedDrive.value;
 }
 
-PluginLoad(DistortionUGens) {
-    ft = inTable;
+void Distortion_setup() 
+{
     registerUnit<BuchlaFold>(ft, "BuchlaFold", false);
 }

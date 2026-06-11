@@ -27,17 +27,19 @@ struct BufUnit {
     SndBuf* m_buf{nullptr};
     bool m_buf_failed{false};
 
-    BufUnit() {
-        m_fbufnum = std::numeric_limits<float>::quiet_NaN();
-        m_buf = nullptr;
-        m_buf_failed = false;
-    }
+    struct Output {
+        bool valid;
+        const float* data;
+        int size;
+    };
 
-    bool GetTable(Unit* unit, float fbufnum, int inNumSamples,
-                  const float*& bufData, int& tableSize, const char* unitName) {
+    BufUnit() = default;
+
+    Output GetTable(Unit* unit, float fbufnum, const char* unitName) {
         if (fbufnum < 0.f) {
             fbufnum = 0.f;
         }
+        
         if (fbufnum != m_fbufnum) {
             uint32 bufnum = static_cast<uint32>(fbufnum);
             World* world = unit->mWorld;
@@ -55,18 +57,17 @@ struct BufUnit {
             }
             m_fbufnum = fbufnum;
         }
+
         if (!m_buf || !m_buf->data) {
             if (!m_buf_failed) {
                 Print("%s: buffer not found\n", unitName);
                 m_buf_failed = true;
             }
-            ClearUnitOutputs(unit, inNumSamples);
-            return false;
+            return {false, nullptr, 0};
         }
-        bufData = m_buf->data;
-        tableSize = m_buf->samples;
+
         m_buf_failed = false;
-        return true;
+        return {true, m_buf->data, m_buf->samples};
     }
 };
 

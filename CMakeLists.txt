@@ -53,221 +53,99 @@ if (NOVA_SIMD)
     include_directories(${SC_PATH}/external_libraries/nova-simd)
 endif()
 
-# Demand Plugins
-set(Demand_cpp_files
+set(GrainUtils_cpp_files
+    plugins/Main/Main.cpp
+    plugins/Delays/Delays.cpp
     plugins/Demand/Demand.cpp
-)
-set(Demand_sc_files
-    plugins/Demand/Classes/Demand.sc
-)
-set(Demand_schelp_files
-    plugins/Demand/HelpSource/Durn.schelp
-)
-sc_add_server_plugin(
-    "GrainUtils/Demand" # destination directory
-    "Demand" # target name
-    "${Demand_cpp_files}"
-    "${Demand_sc_files}"
-    "${Demand_schelp_files}"
-    ""
-)
-
-# Distortion Plugins
-set(Distortion_cpp_files
     plugins/Distortion/Distortion.cpp
-)
-set(Distortion_sc_files
-    plugins/Distortion/Classes/Distortion.sc
-)
-set(Distortion_schelp_files
-    plugins/Distortion/HelpSource/BuchlaFold.schelp
-)
-sc_add_server_plugin(
-    "GrainUtils/Distortion" # destination directory
-    "Distortion" # target name
-    "${Distortion_cpp_files}"
-    "${Distortion_sc_files}"
-    "${Distortion_schelp_files}"
-    ""
+    plugins/EventSystem/EventSystem.cpp
+    plugins/Filters/Filters.cpp
+    plugins/Oscs/Oscs.cpp
+    plugins/UnitEasing/UnitEasing.cpp
+    plugins/UnitShapers/UnitShapers.cpp
+    plugins/UnitSteps/UnitSteps.cpp
+    plugins/UnitWindows/UnitWindows.cpp
 )
 
-# Filter Plugins
-set(Filters_cpp_files
-    plugins/Filters/Filters.cpp
-)
-set(Filters_sc_files
+set(GrainUtils_sc_files
+    plugins/Delays/Classes/Delays.sc
+    plugins/Demand/Classes/Demand.sc
+    plugins/Distortion/Classes/Distortion.sc
+    plugins/EventSystem/Classes/EventSystem.sc
     plugins/Filters/Classes/Filters.sc
+    plugins/Oscs/Classes/Oscs.sc
+    plugins/UnitEasing/Classes/UnitEasing.sc
+    plugins/UnitShapers/Classes/UnitShapers.sc
+    plugins/UnitSteps/Classes/UnitSteps.sc
+    plugins/UnitWindows/Classes/UnitWindows.sc
 )
-set(Filters_schelp_files
+
+set(GrainUtils_schelp_files
+    # Delays
+    plugins/Delays/HelpSource/GrainDelay.schelp
+
+    # Demand
+    plugins/Demand/HelpSource/Durn.schelp
+
+    # Distortion
+    plugins/Distortion/HelpSource/BuchlaFold.schelp
+
+    # EventSystem
+    plugins/EventSystem/HelpSource/RampAccumulator.schelp
+    plugins/EventSystem/HelpSource/RampDivider.schelp
+    plugins/EventSystem/HelpSource/RampIntegrator.schelp
+    plugins/EventSystem/HelpSource/SchedulerBurst.schelp
+    plugins/EventSystem/HelpSource/SchedulerCycle.schelp
+    plugins/EventSystem/HelpSource/VoiceAllocator.schelp
+
+    # Filters
     plugins/Filters/HelpSource/Disperser.schelp
     plugins/Filters/HelpSource/MorphSVF.schelp
-)
-sc_add_server_plugin(
-    "GrainUtils/Filters" # destination directory
-    "Filters" # target name
-    "${Filters_cpp_files}"
-    "${Filters_sc_files}"
-    "${Filters_schelp_files}"
-    ""
-)
 
-# Delay Plugins
-set(Delays_cpp_files
-    plugins/Delays/Delays.cpp
-)
-set(Delays_sc_files
-    plugins/Delays/Classes/Delays.sc
-)
-set(Delays_schelp_files
-    plugins/Delays/HelpSource/GrainDelay.schelp
-)
-sc_add_server_plugin(
-    "GrainUtils/Delays" # destination directory
-    "Delays" # target name
-    "${Delays_cpp_files}"
-    "${Delays_sc_files}"
-    "${Delays_schelp_files}"
-    ""
-)
-
-# EventSystem Plugins
-set(EventSystem_cpp_files
-    plugins/EventSystem/EventSystem.cpp
-)
-set(EventSystem_sc_files
-    plugins/EventSystem/Classes/EventSystem.sc
-)
-set(EventSystem_schelp_files
-    plugins/EventSystem/HelpSource/Classes/SchedulerCycle.schelp
-    plugins/EventSystem/HelpSource/Classes/SchedulerBurst.schelp
-    plugins/EventSystem/HelpSource/Classes/VoiceAllocator.schelp
-    plugins/EventSystem/HelpSource/Classes/RampIntegrator.schelp
-    plugins/EventSystem/HelpSource/Classes/RampAccumulator.schelp
-    plugins/EventSystem/HelpSource/Classes/RampDivider.schelp
-)
-sc_add_server_plugin(
-    "GrainUtils/EventSystem" # destination directory
-    "EventSystem" # target name
-    "${EventSystem_cpp_files}"
-    "${EventSystem_sc_files}"
-    "${EventSystem_schelp_files}"
-    ""
-)
-
-# Install GrainUtils Overview
-install(FILES HelpSource/Overviews/GrainUtils.schelp
-	DESTINATION GrainUtils/HelpSource/Overviews)
-
-# Install guides to the HelpSource/Guides directory 
-install(DIRECTORY plugins/EventSystem/HelpSource/Guides/
-        DESTINATION GrainUtils/EventSystem/HelpSource/Guides
-        FILES_MATCHING PATTERN "*.schelp")
-
-# Osc Plugins
-set(Oscs_cpp_files
-    plugins/Oscs/Oscs.cpp
-)
-set(Oscs_sc_files
-    plugins/Oscs/Classes/Oscs.sc
-)
-set(Oscs_schelp_files
+    # Oscs
     plugins/Oscs/HelpSource/SingleOscOS.schelp
     plugins/Oscs/HelpSource/DualOscOS.schelp
     plugins/Oscs/HelpSource/PulsarOS.schelp
     plugins/Oscs/HelpSource/DualPulsarOS.schelp
-)
-sc_add_server_plugin(
-    "GrainUtils/Oscs" # destination directory
-    "Oscs" # target name
-    "${Oscs_cpp_files}"
-    "${Oscs_sc_files}"
-    "${Oscs_schelp_files}"
-    ""
-)
 
-# UnitEasing Plugins
-set(UnitEasing_cpp_files
-    plugins/UnitEasing/UnitEasing.cpp
-)
-set(UnitEasing_sc_files
-    plugins/UnitEasing/Classes/UnitEasing.sc
-)
-set(UnitEasing_schelp_files
+    # UnitEasing
     plugins/UnitEasing/HelpSource/JCurve.schelp
     plugins/UnitEasing/HelpSource/SCurve.schelp
-)
-sc_add_server_plugin(
-    "GrainUtils/UnitEasing" # destination directory
-    "UnitEasing" # target name
-    "${UnitEasing_cpp_files}"
-    "${UnitEasing_sc_files}"
-    "${UnitEasing_schelp_files}"
-    ""
-)        
 
-# UnitShaper Plugins
-set(UnitShapers_cpp_files
-    plugins/UnitShapers/UnitShapers.cpp
-)
-set(UnitShapers_sc_files
-    plugins/UnitShapers/Classes/UnitShapers.sc
-)
-set(UnitShapers_schelp_files
+    # UnitShapers
+    plugins/UnitShapers/HelpSource/UnitCubic.schelp
     plugins/UnitShapers/HelpSource/UnitKink.schelp
     plugins/UnitShapers/HelpSource/UnitTriangle.schelp
-    plugins/UnitShapers/HelpSource/UnitCubic.schelp
-)
-sc_add_server_plugin(
-    "GrainUtils/UnitShapers" # destination directory
-    "UnitShapers" # target name
-    "${UnitShapers_cpp_files}"
-    "${UnitShapers_sc_files}"
-    "${UnitShapers_schelp_files}"
-    ""
-)
 
-# UnitStep Plugins
-set(UnitSteps_cpp_files
-    plugins/UnitSteps/UnitSteps.cpp
-)
-set(UnitSteps_sc_files
-    plugins/UnitSteps/Classes/UnitSteps.sc
-)
-set(UnitSteps_schelp_files
+    # UnitSteps
+    plugins/UnitSteps/HelpSource/UnitRegister.schelp
     plugins/UnitSteps/HelpSource/UnitStep.schelp
     plugins/UnitSteps/HelpSource/UnitWalk.schelp
-    plugins/UnitSteps/HelpSource/UnitRegister.schelp
+
+    # UnitWindows
+    plugins/UnitWindows/HelpSource/ExponentialWindow.schelp
+    plugins/UnitWindows/HelpSource/GaussianWindow.schelp
+    plugins/UnitWindows/HelpSource/HanningWindow.schelp
+    plugins/UnitWindows/HelpSource/TrapezoidalWindow.schelp
+    plugins/UnitWindows/HelpSource/TukeyWindow.schelp
 )
+
 sc_add_server_plugin(
-    "GrainUtils/UnitSteps" # destination directory
-    "UnitSteps" # target name
-    "${UnitSteps_cpp_files}"
-    "${UnitSteps_sc_files}"
-    "${UnitSteps_schelp_files}"
+    "GrainUtils"
+    "GrainUtils"
+    "${GrainUtils_cpp_files}"
+    "${GrainUtils_sc_files}"
+    "${GrainUtils_schelp_files}"
     ""
 )
 
-# UnitWindow Plugins
-set(UnitWindows_cpp_files
-    plugins/UnitWindows/UnitWindows.cpp
-)
-set(UnitWindows_sc_files
-    plugins/UnitWindows/Classes/UnitWindows.sc
-)
-set(UnitWindows_schelp_files
-    plugins/UnitWindows/HelpSource/HanningWindow.schelp
-    plugins/UnitWindows/HelpSource/GaussianWindow.schelp
-    plugins/UnitWindows/HelpSource/TrapezoidalWindow.schelp
-    plugins/UnitWindows/HelpSource/TukeyWindow.schelp
-    plugins/UnitWindows/HelpSource/ExponentialWindow.schelp
-)
-sc_add_server_plugin(
-    "GrainUtils/UnitWindows" # destination directory
-    "UnitWindows" # target name
-    "${UnitWindows_cpp_files}"
-    "${UnitWindows_sc_files}"
-    "${UnitWindows_schelp_files}"
-    ""
-)
+# Install Overviews
+install(FILES plugins/Main/HelpSource/Overviews/GrainUtils.schelp
+    DESTINATION GrainUtils/HelpSource/Overviews)
+
+# Install Guides
+install(DIRECTORY plugins/Main/HelpSource/Guides/
+    DESTINATION GrainUtils/HelpSource/Guides
+    FILES_MATCHING PATTERN "*.schelp")
 
 message(STATUS "Generating plugin targets done")

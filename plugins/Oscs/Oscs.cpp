@@ -1,7 +1,7 @@
 #include "Oscs.hpp"
 #include "SC_PlugIn.hpp"
 
-InterfaceTable *ft;
+extern InterfaceTable* ft;
 
 // ===== SINGLE WAVETABLE OSCILLATOR =====
 
@@ -29,8 +29,8 @@ SingleOscOS::SingleOscOS() :
         m_cyclePosOversampling.init(m_osRatio, m_sampleRate, m_cyclePosOSBuffer);
     }
     
-    mCalcFunc = make_calc_function<SingleOscOS, &SingleOscOS::next>();
-    next(1);
+    // Set calc function & compute initial sample
+    set_calc_function<SingleOscOS, &SingleOscOS::next>();
 }
 
 SingleOscOS::~SingleOscOS() {
@@ -46,24 +46,22 @@ void SingleOscOS::next(int nSamples) {
     // Control-rate parameters with smooth interpolation
     auto slopedCyclePos = makeSlope(sc_clip(in0(CyclePos), 0.0f, 1.0f), cyclePosPast);
 
-    // Control-rate parameters (settings)
-    const float numCycles = sc_max(in0(NumCycles), 1.0f);
-    const float bufNum = in0(BufNum);
+    // Control-rate parameters (settings, no interpolation)
+    float bufNum = in0(BufNum);
+    int numCycles = sc_max(static_cast<int>(in0(NumCycles)), 1);
 
     // Output pointer
     float* output = out(Out);
     
-    // Get buffer data
-    const float* bufData;
-    int tableSize;
-    
-    if (!m_bufUnit.GetTable(this, bufNum, nSamples, bufData, tableSize, "SingleOscOS")) {
-        return;
+    // Get wavetable data
+    auto oscTable = m_oscBufUnit.GetTable(this, bufNum, "SingleOscOS");
+    if (!oscTable.valid) { 
+        ClearUnitOutputs(this, nSamples); 
+        return; 
     }
     
-    // Pre-calculate constants
-    const int cycleSamples = tableSize / static_cast<int>(numCycles);
-    const int numCyclesInt = static_cast<int>(numCycles);
+    // Calculate samples per cycle
+    int cycleSamples = oscTable.size / numCycles;
     
     if (m_oversampleIndex == 0) {
 
@@ -81,20 +79,20 @@ void SingleOscOS::next(int nSamples) {
             float slope = static_cast<float>(m_rampToSlope.process(static_cast<double>(phase)));
             
             // Calculate mipmap parameters (use ceil for no oversampling)
-            const float rangeSize = static_cast<float>(cycleSamples);
-            const float samplesPerFrame = std::abs(slope) * rangeSize;
-            const float octave = sc_max(0.0f, sc_log2(samplesPerFrame));
-            const int layer = static_cast<int>(sc_ceil(octave));
+            float rangeSize = static_cast<float>(cycleSamples);
+            float samplesPerFrame = std::abs(slope) * rangeSize;
+            float octave = sc_max(0.0f, sc_log2(samplesPerFrame));
+            int layer = static_cast<int>(sc_ceil(octave));
 
             // Calculate spacings for adjacent mipmap levels
-            const int spacing1 = 1 << layer;
-            const int spacing2 = spacing1 << 1;
-            const float crossfade = sc_frac(octave);
+            int spacing1 = 1 << layer;
+            int spacing2 = spacing1 << 1;
+            float crossfade = sc_frac(octave);
             
             // Process wavetable oscillator
             output[i] = OscUtils::wavetableOsc(
-                phase, bufData, 
-                cycleSamples, numCyclesInt, cyclePosVal, 
+                phase, oscTable.data, 
+                cycleSamples, numCycles, cyclePosVal, 
                 spacing1, spacing2, crossfade
             );
         }
@@ -114,15 +112,15 @@ void SingleOscOS::next(int nSamples) {
             float slope = static_cast<float>(m_rampToSlope.process(static_cast<double>(phase)));
             
             // Calculate mipmap parameters (use floor for oversampling)
-            const float rangeSize = static_cast<float>(cycleSamples);
-            const float samplesPerFrame = std::abs(slope) * rangeSize;
-            const float octave = sc_max(0.0f, sc_log2(samplesPerFrame));
-            const int layer = static_cast<int>(sc_floor(octave));
+            float rangeSize = static_cast<float>(cycleSamples);
+            float samplesPerFrame = std::abs(slope) * rangeSize;
+            float octave = sc_max(0.0f, sc_log2(samplesPerFrame));
+            int layer = static_cast<int>(sc_floor(octave));
             
             // Calculate spacings for adjacent mipmap levels
-            const int spacing1 = 1 << layer;
-            const int spacing2 = spacing1 << 1;
-            const float crossfade = sc_frac(octave);
+            int spacing1 = 1 << layer;
+            int spacing2 = spacing1 << 1;
+            float crossfade = sc_frac(octave);
             
             // Upsample parameter values
             m_cyclePosOversampling.upsample(cyclePosVal);
@@ -141,8 +139,8 @@ void SingleOscOS::next(int nSamples) {
                 
                 // Process wavetable oscillator with upsampled parameter values
                 m_outputOSBuffer[k] = OscUtils::wavetableOsc(
-                    sc_frac(osPhase), bufData, 
-                    cycleSamples, numCyclesInt, m_cyclePosOSBuffer[k], 
+                    sc_frac(osPhase), oscTable.data, 
+                    cycleSamples, numCycles, m_cyclePosOSBuffer[k], 
                     spacing1, spacing2, crossfade
                 );
             }
@@ -206,8 +204,8 @@ DualOscOS::DualOscOS() :
         m_pmFilterRatioBOversampling.init(m_osRatio, m_sampleRate, m_pmFilterRatioBOSBuffer);
     }
     
-    mCalcFunc = make_calc_function<DualOscOS, &DualOscOS::next>();
-    next(1);
+    // Set calc function & compute initial sample
+    set_calc_function<DualOscOS, &DualOscOS::next>();
 }
 
 DualOscOS::~DualOscOS() {
@@ -235,32 +233,27 @@ void DualOscOS::next(int nSamples) {
     auto slopedPMFilterRatioA = makeSlope(sc_clip(in0(PMFilterRatioA), 1.0f, 10.0f), pmFilterRatioAPast);
     auto slopedPMFilterRatioB = makeSlope(sc_clip(in0(PMFilterRatioB), 1.0f, 10.0f), pmFilterRatioBPast);
     
-    // Control-rate parameters (settings)
-    const float numCyclesA = sc_max(in0(NumCyclesA), 1.0f);
-    const float numCyclesB = sc_max(in0(NumCyclesB), 1.0f);
-    const float bufNumA = in0(BufNumA);
-    const float bufNumB = in0(BufNumB);
+    // Control-rate parameters (settings, no interpolation)
+    float bufNumA = in0(BufNumA);
+    float bufNumB = in0(BufNumB);
+    int numCyclesA = sc_max(static_cast<int>(in0(NumCyclesA)), 1);
+    int numCyclesB = sc_max(static_cast<int>(in0(NumCyclesB)), 1);
 
     // Output pointers
     float* outputA = out(OutA);
     float* outputB = out(OutB);
-    
-    // Get buffer data
-    const float* bufDataA;
-    const float* bufDataB;
-    int tableSizeA;
-    int tableSizeB;
-    
-    if (!m_bufUnitA.GetTable(this, bufNumA, nSamples, bufDataA, tableSizeA, "DualOscOS OscA") ||
-        !m_bufUnitB.GetTable(this, bufNumB, nSamples, bufDataB, tableSizeB, "DualOscOS OscB")) {
+
+    // Get wavetable data
+    auto oscTableA = m_oscBufUnitA.GetTable(this, bufNumA, "DualOscOS OscA");
+    auto oscTableB = m_oscBufUnitB.GetTable(this, bufNumB, "DualOscOS OscB");
+    if (!oscTableA.valid || !oscTableB.valid) {
+        ClearUnitOutputs(this, nSamples);
         return;
     }
     
-    // Pre-calculate constants
-    const int cycleSamplesA = tableSizeA / static_cast<int>(numCyclesA);
-    const int cycleSamplesB = tableSizeB / static_cast<int>(numCyclesB);
-    const int numCyclesIntA = static_cast<int>(numCyclesA);
-    const int numCyclesIntB = static_cast<int>(numCyclesB);
+    // Calculate samples per cycle
+    int cycleSamplesA = oscTableA.size / numCyclesA;
+    int cycleSamplesB = oscTableB.size / numCyclesB;
     
     if (m_oversampleIndex == 0) {
 
@@ -300,26 +293,26 @@ void DualOscOS::next(int nSamples) {
             float slopeB = static_cast<float>(m_rampToSlopeB.process(static_cast<double>(phaseB)));
             
             // Calculate mipmap parameters for oscillator A (use ceil for no oversampling)
-            const float rangeSizeA = static_cast<float>(cycleSamplesA);
-            const float samplesPerFrameA = std::abs(slopeA) * rangeSizeA;
-            const float octaveA = sc_max(0.0f, sc_log2(samplesPerFrameA));
-            const int layerA = static_cast<int>(sc_ceil(octaveA));
+            float rangeSizeA = static_cast<float>(cycleSamplesA);
+            float samplesPerFrameA = std::abs(slopeA) * rangeSizeA;
+            float octaveA = sc_max(0.0f, sc_log2(samplesPerFrameA));
+            int layerA = static_cast<int>(sc_ceil(octaveA));
 
             // Calculate spacings for adjacent mipmap levels for oscillator A
-            const int spacing1A = 1 << layerA;
-            const int spacing2A = spacing1A << 1;
-            const float crossfadeA = sc_frac(octaveA);
+            int spacing1A = 1 << layerA;
+            int spacing2A = spacing1A << 1;
+            float crossfadeA = sc_frac(octaveA);
             
             // Calculate mipmap parameters for oscillator B (use ceil for no oversampling)
-            const float rangeSizeB = static_cast<float>(cycleSamplesB);
-            const float samplesPerFrameB = std::abs(slopeB) * rangeSizeB;
-            const float octaveB = sc_max(0.0f, sc_log2(samplesPerFrameB));
-            const int layerB = static_cast<int>(sc_ceil(octaveB));
+            float rangeSizeB = static_cast<float>(cycleSamplesB);
+            float samplesPerFrameB = std::abs(slopeB) * rangeSizeB;
+            float octaveB = sc_max(0.0f, sc_log2(samplesPerFrameB));
+            int layerB = static_cast<int>(sc_ceil(octaveB));
 
             // Calculate spacings for adjacent mipmap levels for oscillator B
-            const int spacing1B = 1 << layerB;
-            const int spacing2B = spacing1B << 1;
-            const float crossfadeB = sc_frac(octaveB);
+            int spacing1B = 1 << layerB;
+            int spacing2B = spacing1B << 1;
+            float crossfadeB = sc_frac(octaveB);
             
             // Process dual wavetable oscillator
             auto result = m_dualOsc.process(
@@ -328,8 +321,8 @@ void DualOscOS::next(int nSamples) {
                 pmFilterRatioAVal, pmFilterRatioBVal,
                 spacing1A, spacing2A, crossfadeA,
                 spacing1B, spacing2B, crossfadeB,
-                bufDataA, cycleSamplesA, numCyclesIntA,
-                bufDataB, cycleSamplesB, numCyclesIntB
+                oscTableA.data, cycleSamplesA, numCyclesA,
+                oscTableB.data, cycleSamplesB, numCyclesB
             );
             
             outputA[i] = result.oscA;
@@ -373,26 +366,26 @@ void DualOscOS::next(int nSamples) {
             float slopeB = static_cast<float>(m_rampToSlopeB.process(static_cast<double>(phaseB)));
             
             // Calculate mipmap parameters for oscillator A (use floor for oversampling)
-            const float rangeSizeA = static_cast<float>(cycleSamplesA);
-            const float samplesPerFrameA = std::abs(slopeA) * rangeSizeA;
-            const float octaveA = sc_max(0.0f, sc_log2(samplesPerFrameA));
-            const int layerA = static_cast<int>(sc_floor(octaveA));
+            float rangeSizeA = static_cast<float>(cycleSamplesA);
+            float samplesPerFrameA = std::abs(slopeA) * rangeSizeA;
+            float octaveA = sc_max(0.0f, sc_log2(samplesPerFrameA));
+            int layerA = static_cast<int>(sc_floor(octaveA));
 
             // Calculate spacings for adjacent mipmap levels for oscillator A
-            const int spacing1A = 1 << layerA;
-            const int spacing2A = spacing1A << 1;
-            const float crossfadeA = sc_frac(octaveA);
+            int spacing1A = 1 << layerA;
+            int spacing2A = spacing1A << 1;
+            float crossfadeA = sc_frac(octaveA);
             
             // Calculate mipmap parameters for oscillator B (use floor for oversampling)
-            const float rangeSizeB = static_cast<float>(cycleSamplesB);
-            const float samplesPerFrameB = std::abs(slopeB) * rangeSizeB;
-            const float octaveB = sc_max(0.0f, sc_log2(samplesPerFrameB));
-            const int layerB = static_cast<int>(sc_floor(octaveB));
+            float rangeSizeB = static_cast<float>(cycleSamplesB);
+            float samplesPerFrameB = std::abs(slopeB) * rangeSizeB;
+            float octaveB = sc_max(0.0f, sc_log2(samplesPerFrameB));
+            int layerB = static_cast<int>(sc_floor(octaveB));
 
             // Calculate spacings for adjacent mipmap levels for oscillator B
-            const int spacing1B = 1 << layerB;
-            const int spacing2B = spacing1B << 1;
-            const float crossfadeB = sc_frac(octaveB);
+            int spacing1B = 1 << layerB;
+            int spacing2B = spacing1B << 1;
+            float crossfadeB = sc_frac(octaveB);
             
             // Upsample parameter values
             m_cyclePosAOversampling.upsample(cyclePosAVal);
@@ -431,8 +424,8 @@ void DualOscOS::next(int nSamples) {
                     m_pmFilterRatioAOSBuffer[k], m_pmFilterRatioBOSBuffer[k],
                     spacing1A, spacing2A, crossfadeA,
                     spacing1B, spacing2B, crossfadeB,
-                    bufDataA, cycleSamplesA, numCyclesIntA,
-                    bufDataB, cycleSamplesB, numCyclesIntB
+                    oscTableA.data, cycleSamplesA, numCyclesA,
+                    oscTableB.data, cycleSamplesB, numCyclesB
                 );
                 
                 m_outputOSBufferA[k] = result.oscA;
@@ -512,8 +505,8 @@ PulsarOS::PulsarOS() :
         m_modCyclePosOversampling.init(m_osRatio, m_sampleRate, m_modCyclePosOSBuffer);
     }
     
-    mCalcFunc = make_calc_function<PulsarOS, &PulsarOS::next>();
-    next(1);
+    // Set calc function & compute initial sample
+    set_calc_function<PulsarOS, &PulsarOS::next>();
     
     // Reset state after priming
     m_allocator.reset();
@@ -538,32 +531,26 @@ void PulsarOS::next(int nSamples) {
     float oscBufNum = in0(OscBuffer);
     float envBufNum = in0(EnvBuffer);
     float modBufNum = in0(ModBuffer);
-    const float oscNumCycles = sc_max(in0(OscNumCycles), 1.0f);
-    const float envNumCycles = sc_max(in0(EnvNumCycles), 1.0f);
-    const float modNumCycles = sc_max(in0(ModNumCycles), 1.0f);
+    int oscNumCycles = sc_max(static_cast<int>(in0(OscNumCycles)), 1);
+    int envNumCycles = sc_max(static_cast<int>(in0(EnvNumCycles)), 1);
+    int modNumCycles = sc_max(static_cast<int>(in0(ModNumCycles)), 1);
     
     // Output pointer
     float* output = out(Out);
-    
-    // Get buffer data
-    const float* oscBufData;
-    const float* envBufData;
-    const float* modBufData;
-    int oscTableSize, envTableSize, modTableSize;
-    
-    if (!m_oscBufUnit.GetTable(this, oscBufNum, nSamples, oscBufData, oscTableSize, "PulsarOS osc") ||
-        !m_envBufUnit.GetTable(this, envBufNum, nSamples, envBufData, envTableSize, "PulsarOS env") ||
-        !m_modBufUnit.GetTable(this, modBufNum, nSamples, modBufData, modTableSize, "PulsarOS mod")) {
+
+    // Get wavetable data
+    auto oscTable = m_oscBufUnit.GetTable(this, oscBufNum, "PulsarOS osc");
+    auto envTable = m_envBufUnit.GetTable(this, envBufNum, "PulsarOS env");
+    auto modTable = m_modBufUnit.GetTable(this, modBufNum, "PulsarOS mod");
+    if (!oscTable.valid || !envTable.valid || !modTable.valid) {
+        ClearUnitOutputs(this, nSamples);
         return;
     }
-    
-    // Pre-calculate constants
-    const int oscCycleSamples = oscTableSize / static_cast<int>(oscNumCycles);
-    const int oscNumCyclesInt = static_cast<int>(oscNumCycles);
-    const int envCycleSamples = envTableSize / static_cast<int>(envNumCycles);
-    const int envNumCyclesInt = static_cast<int>(envNumCycles);
-    const int modCycleSamples = modTableSize / static_cast<int>(modNumCycles);
-    const int modNumCyclesInt = static_cast<int>(modNumCycles);
+
+    // Calculate samples per cycle
+    int oscCycleSamples = oscTable.size / oscNumCycles;
+    int envCycleSamples = envTable.size / envNumCycles;
+    int modCycleSamples = modTable.size / modNumCycles;
     
     if (m_oversampleIndex == 0) {
  
@@ -633,42 +620,42 @@ void PulsarOS::next(int nSamples) {
                 if (m_allocator.isActive[g]) {
                     
                     // Calculate slopes
-                    const float oscSlope = m_grainData[g].oscFreq * m_sampleDur;
-                    const float envSlope = static_cast<float>(m_allocator.localSlopes[g]);
-                    const float modSlope = m_grainData[g].modFreq * m_sampleDur;
+                    float oscSlope = m_grainData[g].oscFreq * m_sampleDur;
+                    float envSlope = static_cast<float>(m_allocator.localSlopes[g]);
+                    float modSlope = m_grainData[g].modFreq * m_sampleDur;
  
                     // Accumulate osc and mod phases
                     float oscPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * static_cast<double>(oscSlope)));
                     float modPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * static_cast<double>(modSlope)));
  
                     // Calculate mipmap parameters for mod (use ceil for no oversampling)
-                    const float modRangeSize = static_cast<float>(modCycleSamples);
-                    const float modSamplesPerFrame = std::abs(modSlope) * modRangeSize;
-                    const float modOctave = sc_max(0.0f, sc_log2(modSamplesPerFrame));
-                    const int modLayer = static_cast<int>(sc_ceil(modOctave));
+                    float modRangeSize = static_cast<float>(modCycleSamples);
+                    float modSamplesPerFrame = std::abs(modSlope) * modRangeSize;
+                    float modOctave = sc_max(0.0f, sc_log2(modSamplesPerFrame));
+                    int modLayer = static_cast<int>(sc_ceil(modOctave));
                     
                     // Calculate spacings for adjacent mipmap levels for mod
-                    const int modSpacing1 = 1 << modLayer;
-                    const int modSpacing2 = modSpacing1 << 1;
-                    const float modCrossfade = sc_frac(modOctave);
+                    int modSpacing1 = 1 << modLayer;
+                    int modSpacing2 = modSpacing1 << 1;
+                    float modCrossfade = sc_frac(modOctave);
                     
                     // Process mod wavetable oscillator
                     float modOsc = OscUtils::wavetableOsc(
-                        modPhase, modBufData, 
-                        modCycleSamples, modNumCyclesInt, modCyclePosVal,
+                        modPhase, modTable.data, 
+                        modCycleSamples, modNumCycles, modCyclePosVal,
                         modSpacing1, modSpacing2, modCrossfade
                     );
  
                     // Calculate mipmap parameters for osc (use ceil for no oversampling)
-                    const float oscRangeSize = static_cast<float>(oscCycleSamples);
-                    const float oscSamplesPerFrame = std::abs(oscSlope) * oscRangeSize;
-                    const float oscOctave = sc_max(0.0f, sc_log2(oscSamplesPerFrame));
-                    const int oscLayer = static_cast<int>(sc_ceil(oscOctave));
+                    float oscRangeSize = static_cast<float>(oscCycleSamples);
+                    float oscSamplesPerFrame = std::abs(oscSlope) * oscRangeSize;
+                    float oscOctave = sc_max(0.0f, sc_log2(oscSamplesPerFrame));
+                    int oscLayer = static_cast<int>(sc_ceil(oscOctave));
                     
                     // Calculate spacings for adjacent mipmap levels for osc
-                    const int oscSpacing1 = 1 << oscLayer;
-                    const int oscSpacing2 = oscSpacing1 << 1;
-                    const float oscCrossfade = sc_frac(oscOctave);
+                    int oscSpacing1 = 1 << oscLayer;
+                    int oscSpacing2 = oscSpacing1 << 1;
+                    float oscCrossfade = sc_frac(oscOctave);
  
                     // Calculate mod scale ratio for PM
                     float modScaleRatio = 0.0f;
@@ -683,26 +670,26 @@ void PulsarOS::next(int nSamples) {
                     
                     // Process osc wavetable oscillator
                     float grainOsc = OscUtils::wavetableOsc(
-                        modulatedOscPhase, oscBufData, 
-                        oscCycleSamples, oscNumCyclesInt, oscCyclePosVal,
+                        modulatedOscPhase, oscTable.data, 
+                        oscCycleSamples, oscNumCycles, oscCyclePosVal,
                         oscSpacing1, oscSpacing2, oscCrossfade
                     );
                     
                     // Calculate mipmap parameters for env (use ceil for no oversampling)
-                    const float envRangeSize = static_cast<float>(envCycleSamples);
-                    const float envSamplesPerFrame = std::abs(envSlope) * envRangeSize;
-                    const float envOctave = sc_max(0.0f, sc_log2(envSamplesPerFrame));
-                    const int envLayer = static_cast<int>(sc_ceil(envOctave));
+                    float envRangeSize = static_cast<float>(envCycleSamples);
+                    float envSamplesPerFrame = std::abs(envSlope) * envRangeSize;
+                    float envOctave = sc_max(0.0f, sc_log2(envSamplesPerFrame));
+                    int envLayer = static_cast<int>(sc_ceil(envOctave));
                     
                     // Calculate spacings for adjacent mipmap levels for env
-                    const int envSpacing1 = 1 << envLayer;
-                    const int envSpacing2 = envSpacing1 << 1;
-                    const float envCrossfade = sc_frac(envOctave);
+                    int envSpacing1 = 1 << envLayer;
+                    int envSpacing2 = envSpacing1 << 1;
+                    float envCrossfade = sc_frac(envOctave);
                     
                     // Process env wavetable oscillator
                     float grainWindow = OscUtils::wavetableOsc(
-                        m_allocator.phases[g], envBufData, 
-                        envCycleSamples, envNumCyclesInt, envCyclePosVal,
+                        m_allocator.phases[g], envTable.data, 
+                        envCycleSamples, envNumCycles, envCyclePosVal,
                         envSpacing1, envSpacing2, envCrossfade
                     );
                     
@@ -774,9 +761,7 @@ void PulsarOS::next(int nSamples) {
             m_modCyclePosOversampling.upsample(modCyclePosVal);
             
             // 3. Clear OS buffer
-            for (int k = 0; k < m_osRatio; k++) {
-                m_outputOSBuffer[k] = 0.0f;
-            }
+            memset(m_outputOSBuffer, 0, m_osRatio * sizeof(float));
             
             // 4. Process all grains
             for (int g = 0; g < NUM_VOICES; ++g) {
@@ -794,35 +779,35 @@ void PulsarOS::next(int nSamples) {
                 if (m_allocator.isActive[g]) {
                     
                     // Calculate slopes
-                    const float oscSlope = m_grainData[g].oscFreq * m_sampleDur;
-                    const float envSlope = static_cast<float>(m_allocator.localSlopes[g]);
-                    const float modSlope = m_grainData[g].modFreq * m_sampleDur;
+                    float oscSlope = m_grainData[g].oscFreq * m_sampleDur;
+                    float envSlope = static_cast<float>(m_allocator.localSlopes[g]);
+                    float modSlope = m_grainData[g].modFreq * m_sampleDur;
  
                     // Accumulate osc and mod phases
                     float oscPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * static_cast<double>(oscSlope)));
                     float modPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * static_cast<double>(modSlope)));
  
                     // Calculate mipmap parameters for mod (use floor for oversampling)
-                    const float modRangeSize = static_cast<float>(modCycleSamples);
-                    const float modSamplesPerFrame = std::abs(modSlope) * modRangeSize;
-                    const float modOctave = sc_max(0.0f, sc_log2(modSamplesPerFrame));
-                    const int modLayer = static_cast<int>(sc_floor(modOctave));
+                    float modRangeSize = static_cast<float>(modCycleSamples);
+                    float modSamplesPerFrame = std::abs(modSlope) * modRangeSize;
+                    float modOctave = sc_max(0.0f, sc_log2(modSamplesPerFrame));
+                    int modLayer = static_cast<int>(sc_floor(modOctave));
                     
                     // Calculate spacings for adjacent mipmap levels for mod
-                    const int modSpacing1 = 1 << modLayer;
-                    const int modSpacing2 = modSpacing1 << 1;
-                    const float modCrossfade = sc_frac(modOctave);
+                    int modSpacing1 = 1 << modLayer;
+                    int modSpacing2 = modSpacing1 << 1;
+                    float modCrossfade = sc_frac(modOctave);
  
                     // Calculate mipmap parameters for osc (use floor for oversampling)
-                    const float oscRangeSize = static_cast<float>(oscCycleSamples);
-                    const float oscSamplesPerFrame = std::abs(oscSlope) * oscRangeSize;
-                    const float oscOctave = sc_max(0.0f, sc_log2(oscSamplesPerFrame));
-                    const int oscLayer = static_cast<int>(sc_floor(oscOctave));
+                    float oscRangeSize = static_cast<float>(oscCycleSamples);
+                    float oscSamplesPerFrame = std::abs(oscSlope) * oscRangeSize;
+                    float oscOctave = sc_max(0.0f, sc_log2(oscSamplesPerFrame));
+                    int oscLayer = static_cast<int>(sc_floor(oscOctave));
                     
                     // Calculate spacings for adjacent mipmap levels for osc
-                    const int oscSpacing1 = 1 << oscLayer;
-                    const int oscSpacing2 = oscSpacing1 << 1;
-                    const float oscCrossfade = sc_frac(oscOctave);
+                    int oscSpacing1 = 1 << oscLayer;
+                    int oscSpacing2 = oscSpacing1 << 1;
+                    float oscCrossfade = sc_frac(oscOctave);
                     
                     // Initialize mod phase and slope for oversampling
                     float osModSlope = modSlope / static_cast<float>(m_osRatio);
@@ -837,15 +822,15 @@ void PulsarOS::next(int nSamples) {
                     float osEnvPhase = m_allocator.phases[g] - envSlope;
                     
                     // Calculate mipmap parameters for env (use floor for oversampling)
-                    const float envRangeSize = static_cast<float>(envCycleSamples);
-                    const float envSamplesPerFrame = std::abs(envSlope) * envRangeSize;
-                    const float envOctave = sc_max(0.0f, sc_log2(envSamplesPerFrame));
-                    const int envLayer = static_cast<int>(sc_floor(envOctave));
+                    float envRangeSize = static_cast<float>(envCycleSamples);
+                    float envSamplesPerFrame = std::abs(envSlope) * envRangeSize;
+                    float envOctave = sc_max(0.0f, sc_log2(envSamplesPerFrame));
+                    int envLayer = static_cast<int>(sc_floor(envOctave));
                     
                     // Calculate spacings for adjacent mipmap levels for env
-                    const int envSpacing1 = 1 << envLayer;
-                    const int envSpacing2 = envSpacing1 << 1;
-                    const float envCrossfade = sc_frac(envOctave);
+                    int envSpacing1 = 1 << envLayer;
+                    int envSpacing2 = envSpacing1 << 1;
+                    float envCrossfade = sc_frac(envOctave);
  
                     // Calculate mod scale ratio for PM
                     float modScaleRatio = 0.0f;
@@ -867,8 +852,8 @@ void PulsarOS::next(int nSamples) {
                         
                         // Process mod wavetable oscillator
                         float modOsc = OscUtils::wavetableOsc(
-                            sc_frac(osModPhase), modBufData, 
-                            modCycleSamples, modNumCyclesInt, m_modCyclePosOSBuffer[k],
+                            sc_frac(osModPhase), modTable.data, 
+                            modCycleSamples, modNumCycles, m_modCyclePosOSBuffer[k],
                             modSpacing1, modSpacing2, modCrossfade
                         );
                         
@@ -879,15 +864,15 @@ void PulsarOS::next(int nSamples) {
                         
                         // Process osc wavetable oscillator
                         float grainOsc = OscUtils::wavetableOsc(
-                            modulatedOscPhase, oscBufData, 
-                            oscCycleSamples, oscNumCyclesInt, m_oscCyclePosOSBuffer[k],
+                            modulatedOscPhase, oscTable.data, 
+                            oscCycleSamples, oscNumCycles, m_oscCyclePosOSBuffer[k],
                             oscSpacing1, oscSpacing2, oscCrossfade
                         );
                         
                         // Process env wavetable oscillator
                         float grainWindow = OscUtils::wavetableOsc(
-                            osEnvPhase, envBufData, 
-                            envCycleSamples, envNumCyclesInt, m_envCyclePosOSBuffer[k],
+                            osEnvPhase, envTable.data, 
+                            envCycleSamples, envNumCycles, m_envCyclePosOSBuffer[k],
                             envSpacing1, envSpacing2, envCrossfade
                         );
                         
@@ -966,8 +951,8 @@ DualPulsarOS::DualPulsarOS() :
         m_indexOversampling.init(m_osRatio, m_sampleRate, m_indexOSBuffer);
     }
  
-    mCalcFunc = make_calc_function<DualPulsarOS, &DualPulsarOS::next>();
-    next(1);
+    // Set calc function & compute initial sample
+    set_calc_function<DualPulsarOS, &DualPulsarOS::next>();
  
     // Reset state after priming
     m_allocator.reset();
@@ -993,27 +978,23 @@ void DualPulsarOS::next(int nSamples) {
     // Control-rate parameters (settings, no interpolation)
     float oscBufNum = in0(OscBuffer);
     float modBufNum = in0(ModBuffer);
-    const float oscNumCycles = sc_max(in0(OscNumCycles), 1.0f);
-    const float modNumCycles = sc_max(in0(ModNumCycles), 1.0f);
+    int oscNumCycles = sc_max(static_cast<int>(in0(OscNumCycles)), 1);
+    int modNumCycles = sc_max(static_cast<int>(in0(ModNumCycles)), 1);
  
     // Output pointer
     float* output = out(Out);
- 
-    // Get buffer data
-    const float* oscBufData;
-    const float* modBufData;
-    int oscTableSize, modTableSize;
- 
-    if (!m_oscBufUnit.GetTable(this, oscBufNum, nSamples, oscBufData, oscTableSize, "DualPulsarOS osc") ||
-        !m_modBufUnit.GetTable(this, modBufNum, nSamples, modBufData, modTableSize, "DualPulsarOS mod")) {
+
+    // Get wavetable data
+    auto oscTable = m_oscBufUnit.GetTable(this, oscBufNum, "DualPulsarOS osc");
+    auto modTable = m_modBufUnit.GetTable(this, modBufNum, "DualPulsarOS mod");
+    if (!oscTable.valid || !modTable.valid) {
+        ClearUnitOutputs(this, nSamples);
         return;
     }
  
-    // Pre-calculate constants
-    const int oscCycleSamples = oscTableSize / static_cast<int>(oscNumCycles);
-    const int oscNumCyclesInt = static_cast<int>(oscNumCycles);
-    const int modCycleSamples = modTableSize / static_cast<int>(modNumCycles);
-    const int modNumCyclesInt = static_cast<int>(modNumCycles);
+    // Calculate samples per cycle
+    int oscCycleSamples = oscTable.size / oscNumCycles;
+    int modCycleSamples = modTable.size / modNumCycles;
  
     if (m_oversampleIndex == 0) {
  
@@ -1112,9 +1093,9 @@ void DualPulsarOS::next(int nSamples) {
                 if (m_allocator.isActive[g]) {
  
                     // Calculate slopes
-                    const float oscSlope = m_grainData[g].oscFreq * m_sampleDur;
-                    const float modSlope = m_grainData[g].modFreq * m_sampleDur;
-                    const float envSlope = static_cast<float>(m_allocator.localSlopes[g]);
+                    float oscSlope = m_grainData[g].oscFreq * m_sampleDur;
+                    float modSlope = m_grainData[g].modFreq * m_sampleDur;
+                    float envSlope = static_cast<float>(m_allocator.localSlopes[g]);
  
                     // Derive osc and mod phases from sample count
                     float oscPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * static_cast<double>(oscSlope)));
@@ -1136,26 +1117,26 @@ void DualPulsarOS::next(int nSamples) {
                     float modPhaseDistorted = sc_frac(modPhase + (phsIncDistMod * phsIncRatioMod));
  
                     // Calculate mipmap parameters for osc (use ceil for no oversampling)
-                    const float oscRangeSize = static_cast<float>(oscCycleSamples);
-                    const float oscSamplesPerFrame = std::abs(oscSlope) * oscRangeSize;
-                    const float oscOctave = sc_max(0.0f, sc_log2(oscSamplesPerFrame));
-                    const int oscLayer = static_cast<int>(sc_ceil(oscOctave));
+                    float oscRangeSize = static_cast<float>(oscCycleSamples);
+                    float oscSamplesPerFrame = std::abs(oscSlope) * oscRangeSize;
+                    float oscOctave = sc_max(0.0f, sc_log2(oscSamplesPerFrame));
+                    int oscLayer = static_cast<int>(sc_ceil(oscOctave));
  
                     // Calculate spacings for adjacent mipmap levels for osc
-                    const int oscSpacing1 = 1 << oscLayer;
-                    const int oscSpacing2 = oscSpacing1 << 1;
-                    const float oscCrossfade = sc_frac(oscOctave);
+                    int oscSpacing1 = 1 << oscLayer;
+                    int oscSpacing2 = oscSpacing1 << 1;
+                    float oscCrossfade = sc_frac(oscOctave);
  
                     // Calculate mipmap parameters for mod (use ceil for no oversampling)
-                    const float modRangeSize = static_cast<float>(modCycleSamples);
-                    const float modSamplesPerFrame = std::abs(modSlope) * modRangeSize;
-                    const float modOctave = sc_max(0.0f, sc_log2(modSamplesPerFrame));
-                    const int modLayer = static_cast<int>(sc_ceil(modOctave));
+                    float modRangeSize = static_cast<float>(modCycleSamples);
+                    float modSamplesPerFrame = std::abs(modSlope) * modRangeSize;
+                    float modOctave = sc_max(0.0f, sc_log2(modSamplesPerFrame));
+                    int modLayer = static_cast<int>(sc_ceil(modOctave));
  
                     // Calculate spacings for adjacent mipmap levels for mod
-                    const int modSpacing1 = 1 << modLayer;
-                    const int modSpacing2 = modSpacing1 << 1;
-                    const float modCrossfade = sc_frac(modOctave);
+                    int modSpacing1 = 1 << modLayer;
+                    int modSpacing2 = modSpacing1 << 1;
+                    float modCrossfade = sc_frac(modOctave);
  
                     // Process cross-modulated dual oscillator
                     auto result = m_dualOscs[g].process(
@@ -1166,8 +1147,8 @@ void DualPulsarOS::next(int nSamples) {
                         m_grainData[g].pmFilterRatioOsc, m_grainData[g].pmFilterRatioMod,
                         oscSpacing1, oscSpacing2, oscCrossfade,
                         modSpacing1, modSpacing2, modCrossfade,
-                        oscBufData, oscCycleSamples, oscNumCyclesInt,
-                        modBufData, modCycleSamples, modNumCyclesInt
+                        oscTable.data, oscCycleSamples, oscNumCycles,
+                        modTable.data, modCycleSamples, modNumCycles
                     );
  
                     // Process gaussian window
@@ -1267,9 +1248,7 @@ void DualPulsarOS::next(int nSamples) {
             m_indexOversampling.upsample(indexVal);
  
             // 3. Clear OS buffer
-            for (int k = 0; k < m_osRatio; k++) {
-                m_outputOSBuffer[k] = 0.0f;
-            }
+            memset(m_outputOSBuffer, 0, m_osRatio * sizeof(float));
  
             // 4. Process all grains
             for (int g = 0; g < NUM_VOICES; ++g) {
@@ -1292,35 +1271,35 @@ void DualPulsarOS::next(int nSamples) {
                 if (m_allocator.isActive[g]) {
  
                     // Calculate slopes
-                    const float oscSlope = m_grainData[g].oscFreq * m_sampleDur;
-                    const float modSlope = m_grainData[g].modFreq * m_sampleDur;
-                    const float envSlope = static_cast<float>(m_allocator.localSlopes[g]);
+                    float oscSlope = m_grainData[g].oscFreq * m_sampleDur;
+                    float modSlope = m_grainData[g].modFreq * m_sampleDur;
+                    float envSlope = static_cast<float>(m_allocator.localSlopes[g]);
  
                     // Derive osc and mod phases from sample count
                     float oscPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * static_cast<double>(oscSlope)));
                     float modPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * static_cast<double>(modSlope)));
  
                     // Calculate mipmap parameters for osc (use floor for oversampling)
-                    const float oscRangeSize = static_cast<float>(oscCycleSamples);
-                    const float oscSamplesPerFrame = std::abs(oscSlope) * oscRangeSize;
-                    const float oscOctave = sc_max(0.0f, sc_log2(oscSamplesPerFrame));
-                    const int oscLayer = static_cast<int>(sc_floor(oscOctave));
+                    float oscRangeSize = static_cast<float>(oscCycleSamples);
+                    float oscSamplesPerFrame = std::abs(oscSlope) * oscRangeSize;
+                    float oscOctave = sc_max(0.0f, sc_log2(oscSamplesPerFrame));
+                    int oscLayer = static_cast<int>(sc_floor(oscOctave));
  
                     // Calculate spacings for adjacent mipmap levels for osc
-                    const int oscSpacing1 = 1 << oscLayer;
-                    const int oscSpacing2 = oscSpacing1 << 1;
-                    const float oscCrossfade = sc_frac(oscOctave);
+                    int oscSpacing1 = 1 << oscLayer;
+                    int oscSpacing2 = oscSpacing1 << 1;
+                    float oscCrossfade = sc_frac(oscOctave);
  
                     // Calculate mipmap parameters for mod (use floor for oversampling)
-                    const float modRangeSize = static_cast<float>(modCycleSamples);
-                    const float modSamplesPerFrame = std::abs(modSlope) * modRangeSize;
-                    const float modOctave = sc_max(0.0f, sc_log2(modSamplesPerFrame));
-                    const int modLayer = static_cast<int>(sc_floor(modOctave));
+                    float modRangeSize = static_cast<float>(modCycleSamples);
+                    float modSamplesPerFrame = std::abs(modSlope) * modRangeSize;
+                    float modOctave = sc_max(0.0f, sc_log2(modSamplesPerFrame));
+                    int modLayer = static_cast<int>(sc_floor(modOctave));
  
                     // Calculate spacings for adjacent mipmap levels for mod
-                    const int modSpacing1 = 1 << modLayer;
-                    const int modSpacing2 = modSpacing1 << 1;
-                    const float modCrossfade = sc_frac(modOctave);
+                    int modSpacing1 = 1 << modLayer;
+                    int modSpacing2 = modSpacing1 << 1;
+                    float modCrossfade = sc_frac(modOctave);
  
                     // Initialize osc phase and slope for oversampling
                     float osOscSlope = oscSlope / static_cast<float>(m_osRatio);
@@ -1371,8 +1350,8 @@ void DualPulsarOS::next(int nSamples) {
                             m_grainData[g].pmFilterRatioOsc, m_grainData[g].pmFilterRatioMod,
                             oscSpacing1, oscSpacing2, oscCrossfade,
                             modSpacing1, modSpacing2, modCrossfade,
-                            oscBufData, oscCycleSamples, oscNumCyclesInt,
-                            modBufData, modCycleSamples, modNumCyclesInt
+                            oscTable.data, oscCycleSamples, oscNumCycles,
+                            modTable.data, modCycleSamples, modNumCycles
                         );
  
                         // Process gaussian window with upsampled skew and index
@@ -1407,9 +1386,8 @@ void DualPulsarOS::next(int nSamples) {
         sc_clip(in(Index)[nSamples - 1], 0.0f, 10.0f) : slopedIndex.value;
 }
 
-PluginLoad(OscUGens)
+void Oscs_setup()
 {
-    ft = inTable;
     registerUnit<DualOscOS>(ft, "DualOscOS", false);
     registerUnit<SingleOscOS>(ft, "SingleOscOS", false);
     registerUnit<PulsarOS>(ft, "PulsarOS", false);

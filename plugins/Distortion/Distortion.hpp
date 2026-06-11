@@ -14,7 +14,7 @@ public:
 private:
     void next(int nSamples);
     
-    // Constants
+    // Constants cached at construction
     const float m_sampleRate;
     const int m_oversampleIndex;
     const int m_osRatio;

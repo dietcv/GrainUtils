@@ -1,18 +1,19 @@
 #include "EventSystem.hpp"
 #include "SC_PlugIn.hpp"
 
-static InterfaceTable* ft;
+extern InterfaceTable* ft;
 
 // ===== SCHEDULER CYCLE =====
 
-SchedulerCycle::SchedulerCycle() : m_sampleRate(static_cast<float>(sampleRate()))
+SchedulerCycle::SchedulerCycle() : 
+    m_sampleRate(static_cast<float>(sampleRate()))
 {
     // Check which inputs are audio-rate
     isRateAudioRate = isAudioRateIn(Rate);
     isResetAudioRate = isAudioRateIn(Reset);
     
-    mCalcFunc = make_calc_function<SchedulerCycle, &SchedulerCycle::next>();
-    next(1);
+    // Set calc function & compute initial sample
+    set_calc_function<SchedulerCycle, &SchedulerCycle::next>();
 
     // Reset state after priming
     m_scheduler.reset();
@@ -67,8 +68,8 @@ SchedulerBurst::SchedulerBurst() :
     isDurationAudioRate = isAudioRateIn(Duration);
     isCyclesAudioRate = isAudioRateIn(Cycles);
     
-    mCalcFunc = make_calc_function<SchedulerBurst, &SchedulerBurst::next>();
-    next(1);
+    // Set calc function & compute initial sample
+    set_calc_function<SchedulerBurst, &SchedulerBurst::next>();
 
     // Reset state after priming
     m_scheduler.reset();
@@ -127,9 +128,9 @@ VoiceAllocator::VoiceAllocator() :
     isTriggerAudioRate = isAudioRateIn(Trigger);
     isRateAudioRate = isAudioRateIn(Rate);
     isSubSampleOffsetAudioRate = isAudioRateIn(SubSampleOffset);
-       
-    mCalcFunc = make_calc_function<VoiceAllocator, &VoiceAllocator::next>();
-    next(1);
+    
+    // Set calc function & compute initial sample
+    set_calc_function<VoiceAllocator, &VoiceAllocator::next>();
 
     // Reset state after priming
     m_allocator.reset();
@@ -173,7 +174,8 @@ void VoiceAllocator::next(int nSamples) {
 
 // ===== RAMP INTEGRATOR =====
 
-RampIntegrator::RampIntegrator() : m_sampleRate(static_cast<float>(sampleRate()))
+RampIntegrator::RampIntegrator() : 
+    m_sampleRate(static_cast<float>(sampleRate()))
 {
     // Initialize parameter cache
     ratePast = sc_clip(in0(Rate), m_sampleRate * -0.49f, m_sampleRate * 0.49f);
@@ -183,8 +185,8 @@ RampIntegrator::RampIntegrator() : m_sampleRate(static_cast<float>(sampleRate())
     isRateAudioRate = isAudioRateIn(Rate);
     isSubSampleOffsetAudioRate = isAudioRateIn(SubSampleOffset);
     
-    mCalcFunc = make_calc_function<RampIntegrator, &RampIntegrator::next>();
-    next(1);
+    // Set calc function & compute initial sample
+    set_calc_function<RampIntegrator, &RampIntegrator::next>();
 
     // Reset state after priming
     m_integrator.reset();
@@ -241,8 +243,8 @@ RampAccumulator::RampAccumulator()
     isTriggerAudioRate = isAudioRateIn(Trigger);
     isSubSampleOffsetAudioRate = isAudioRateIn(SubSampleOffset);
     
-    mCalcFunc = make_calc_function<RampAccumulator, &RampAccumulator::next>();
-    next(1);
+    // Set calc function & compute initial sample
+    set_calc_function<RampAccumulator, &RampAccumulator::next>();
     
     // Reset state after priming
     m_accumulator.reset();
@@ -278,7 +280,8 @@ void RampAccumulator::next(int nSamples) {
 
 // ===== RAMP DIVIDER =====
 
-RampDivider::RampDivider()
+RampDivider::RampDivider() :
+    m_mode(sc_clip(static_cast<int>(in0(Mode)), 0, 2))
 {
     // Initialize parameter cache
     ratioPast = in0(Ratio);
@@ -286,12 +289,9 @@ RampDivider::RampDivider()
     // Check which inputs are audio-rate
     isRatioAudioRate = isAudioRateIn(Ratio);
     isResetAudioRate = isAudioRateIn(Reset);
-
-    // Select divider mode
-    m_mode = sc_clip(static_cast<int>(in0(Mode)), 0, 2);
     
-    mCalcFunc = make_calc_function<RampDivider, &RampDivider::next>();
-    next(1);
+    // Set calc function & compute initial sample
+    set_calc_function<RampDivider, &RampDivider::next>();
     
     // Reset state after priming
     m_simpleDivider.reset();
@@ -342,8 +342,8 @@ void RampDivider::next(int nSamples) {
         slopedRatio.value;
 }
 
-PluginLoad(EventSytemUGens) {
-    ft = inTable;
+void EventSystem_setup() 
+{
     registerUnit<SchedulerCycle>(ft, "SchedulerCycleUGen", false);
     registerUnit<SchedulerBurst>(ft, "SchedulerBurstUGen", false);
     registerUnit<VoiceAllocator>(ft, "VoiceAllocatorUGen", false);

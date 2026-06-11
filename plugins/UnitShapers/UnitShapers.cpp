@@ -1,7 +1,7 @@
 #include "UnitShapers.hpp"
 #include "SC_PlugIn.hpp"
 
-static InterfaceTable* ft;
+extern InterfaceTable* ft;
 
 // ===== UNIT TRIANGLE =====
 
@@ -13,8 +13,8 @@ UnitTriangle::UnitTriangle() {
     // Check which inputs are audio-rate
     isSkewAudioRate = isAudioRateIn(Skew);
     
-    mCalcFunc = make_calc_function<UnitTriangle, &UnitTriangle::next>();
-    next(1);
+    // Set calc function & compute initial sample
+    set_calc_function<UnitTriangle, &UnitTriangle::next>();
 }
 
 void UnitTriangle::next(int nSamples) {
@@ -57,8 +57,8 @@ UnitKink::UnitKink() {
     // Check which inputs are audio-rate
     isSkewAudioRate = isAudioRateIn(Skew);
     
-    mCalcFunc = make_calc_function<UnitKink, &UnitKink::next>();
-    next(1);
+    // Set calc function & compute initial sample
+    set_calc_function<UnitKink, &UnitKink::next>();
 }
 
 void UnitKink::next(int nSamples) {
@@ -101,8 +101,8 @@ UnitCubic::UnitCubic() {
     // Check which inputs are audio-rate
     isIndexAudioRate = isAudioRateIn(Index);
     
-    mCalcFunc = make_calc_function<UnitCubic, &UnitCubic::next>();
-    next(1);
+    // Set calc function & compute initial sample
+    set_calc_function<UnitCubic, &UnitCubic::next>();
 }
 
 void UnitCubic::next(int nSamples) {
@@ -135,8 +135,8 @@ void UnitCubic::next(int nSamples) {
         slopedIndex.value;
 }
 
-PluginLoad(GrainUtilsUGens) {
-    ft = inTable;
+void UnitShapers_setup()
+{
     registerUnit<UnitTriangle>(ft, "UnitTriangle", false);
     registerUnit<UnitKink>(ft, "UnitKink", false);
     registerUnit<UnitCubic>(ft, "UnitCubic", false);

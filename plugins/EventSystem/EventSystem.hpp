@@ -13,7 +13,7 @@ public:
 private:
     void next(int nSamples);
     
-    // Constants
+    // Constants cached at construction
     const float m_sampleRate;
     
     // Core processing
@@ -47,7 +47,7 @@ public:
 private:
     void next(int nSamples);
     
-    // Constants
+    // Constants cached at construction
     const float m_sampleRate;
     const float m_sampleDur;
     
@@ -86,6 +86,8 @@ private:
    
     // Constants
     static constexpr int MAX_CHANNELS = 64;
+
+    // Constants cached at construction
     const float m_sampleRate;
     const int m_numChannels;
     
@@ -119,7 +121,7 @@ public:
 private:
     void next(int nSamples);
    
-    // Constants
+    // Constants cached at construction
     const float m_sampleRate;
    
     // Core processing
@@ -184,8 +186,8 @@ private:
     void next(int nSamples);
 
     // Constants cached at construction
-    int m_mode; // 0=simple, 1=grid, 2=offset
-    
+    const int m_mode;
+
     // Core processing
     EventUtils::RampDividerSimple m_simpleDivider;
     EventUtils::RampDividerGrid   m_gridDivider;

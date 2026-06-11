@@ -1,7 +1,7 @@
 #include "UnitEasing.hpp"
 #include "SC_PlugIn.hpp"
 
-static InterfaceTable* ft;
+extern InterfaceTable* ft;
 
 // ===== JCURVE =====
 
@@ -13,8 +13,8 @@ JCurve::JCurve() {
     // Check which inputs are audio-rate
     isShapeAudioRate = isAudioRateIn(Shape);
     
-    mCalcFunc = make_calc_function<JCurve, &JCurve::next>();
-    next(1);
+    // Set calc function & compute initial sample
+    set_calc_function<JCurve, &JCurve::next>();
 }
 
 void JCurve::next(int nSamples) {
@@ -59,8 +59,8 @@ SCurve::SCurve() {
     isShapeAudioRate = isAudioRateIn(Shape);
     isInflectionAudioRate = isAudioRateIn(Inflection);
     
-    mCalcFunc = make_calc_function<SCurve, &SCurve::next>();
-    next(1);
+    // Set calc function & compute initial sample
+    set_calc_function<SCurve, &SCurve::next>();
 }
 
 void SCurve::next(int nSamples) {
@@ -102,8 +102,8 @@ void SCurve::next(int nSamples) {
         slopedInflection.value;
 }
 
-PluginLoad(GrainUtilsUGens) {
-    ft = inTable;
+void UnitEasing_setup()
+{
     registerUnit<JCurve>(ft, "JCurve", false);
     registerUnit<SCurve>(ft, "SCurve", false);
 }

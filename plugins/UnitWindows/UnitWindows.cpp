@@ -1,7 +1,7 @@
 #include "UnitWindows.hpp"
 #include "SC_PlugIn.hpp"
 
-static InterfaceTable* ft;
+extern InterfaceTable* ft;
 
 // ===== HANNING WINDOW =====
 
@@ -13,8 +13,8 @@ HanningWindow::HanningWindow() {
     // Check which inputs are audio-rate
     isSkewAudioRate = isAudioRateIn(Skew);
     
-    mCalcFunc = make_calc_function<HanningWindow, &HanningWindow::next>();
-    next(1);
+    // Set calc function & compute initial sample
+    set_calc_function<HanningWindow, &HanningWindow::next>();
 }
 
 void HanningWindow::next(int nSamples) {
@@ -59,8 +59,8 @@ GaussianWindow::GaussianWindow() {
     isSkewAudioRate = isAudioRateIn(Skew);
     isIndexAudioRate = isAudioRateIn(Index);
     
-    mCalcFunc = make_calc_function<GaussianWindow, &GaussianWindow::next>();
-    next(1);
+    // Set calc function & compute initial sample
+    set_calc_function<GaussianWindow, &GaussianWindow::next>();
 }
 
 void GaussianWindow::next(int nSamples) {
@@ -116,8 +116,8 @@ TrapezoidalWindow::TrapezoidalWindow() {
     isWidthAudioRate = isAudioRateIn(Width);
     isDutyAudioRate = isAudioRateIn(Duty);
     
-    mCalcFunc = make_calc_function<TrapezoidalWindow, &TrapezoidalWindow::next>();
-    next(1);
+    // Set calc function & compute initial sample
+    set_calc_function<TrapezoidalWindow, &TrapezoidalWindow::next>();
 }
 
 void TrapezoidalWindow::next(int nSamples) {
@@ -180,8 +180,8 @@ TukeyWindow::TukeyWindow() {
     isSkewAudioRate = isAudioRateIn(Skew);
     isWidthAudioRate = isAudioRateIn(Width);
     
-    mCalcFunc = make_calc_function<TukeyWindow, &TukeyWindow::next>();
-    next(1);
+    // Set calc function & compute initial sample
+    set_calc_function<TukeyWindow, &TukeyWindow::next>();
 }
 
 void TukeyWindow::next(int nSamples) {
@@ -235,8 +235,8 @@ ExponentialWindow::ExponentialWindow() {
     isSkewAudioRate = isAudioRateIn(Skew);
     isShapeAudioRate = isAudioRateIn(Shape);
     
-    mCalcFunc = make_calc_function<ExponentialWindow, &ExponentialWindow::next>();
-    next(1);
+    // Set calc function & compute initial sample
+    set_calc_function<ExponentialWindow, &ExponentialWindow::next>();
 }
 
 void ExponentialWindow::next(int nSamples) {
@@ -278,8 +278,8 @@ void ExponentialWindow::next(int nSamples) {
         slopedShape.value;
 }
 
-PluginLoad(GrainUtilsUGens) {
-    ft = inTable;
+void UnitWindows_setup()
+{
     registerUnit<HanningWindow>(ft, "HanningWindow", false);
     registerUnit<GaussianWindow>(ft, "GaussianWindow", false);
     registerUnit<TrapezoidalWindow>(ft, "TrapezoidalWindow", false);

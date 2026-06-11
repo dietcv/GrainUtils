@@ -11,8 +11,10 @@ public:
 private:
     void next(int nSamples);
     
+    // Constants
     static constexpr int MAX_DECK_SIZE = 32;
     
+    // Core processing
     DemandUtils::Durn<MAX_DECK_SIZE> m_urn;
     
     double m_repeats{-1.0};

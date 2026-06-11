@@ -1,11 +1,12 @@
 #include "Filters.hpp"
 #include "SC_PlugIn.hpp"
 
-static InterfaceTable* ft;
+extern InterfaceTable* ft;
 
 // ===== DISPERSER =====
 
-Disperser::Disperser() : m_sampleRate(static_cast<float>(sampleRate()))
+Disperser::Disperser() : 
+    m_sampleRate(static_cast<float>(sampleRate()))
 {
     // Initialize parameter cache
     freqPast = sc_clip(in0(Freq), 20.0f, m_sampleRate * 0.49f);
@@ -19,8 +20,8 @@ Disperser::Disperser() : m_sampleRate(static_cast<float>(sampleRate()))
     isMixAudioRate = isAudioRateIn(Mix);
     isFeedbackAudioRate = isAudioRateIn(Feedback);
    
-    mCalcFunc = make_calc_function<Disperser, &Disperser::next>();
-    next(1);
+    // Set calc function & compute initial sample
+    set_calc_function<Disperser, &Disperser::next>();
 }
 
 Disperser::~Disperser() = default;
@@ -104,7 +105,8 @@ void Disperser::next(int nSamples) {
 
 // ===== MORPHING STATE VARIABLE FILTER =====
  
-MorphSVF::MorphSVF() : m_sampleRate(static_cast<float>(sampleRate()))
+MorphSVF::MorphSVF() : 
+    m_sampleRate(static_cast<float>(sampleRate()))
 {
     // Initialize parameter cache
     freqPast = sc_clip(in0(Freq), 20.0f, m_sampleRate * 0.49f);
@@ -116,8 +118,8 @@ MorphSVF::MorphSVF() : m_sampleRate(static_cast<float>(sampleRate()))
     isResonanceAudioRate = isAudioRateIn(Resonance);
     isShapeAudioRate = isAudioRateIn(Shape);
  
-    mCalcFunc = make_calc_function<MorphSVF, &MorphSVF::next>();
-    next(1);
+    // Set calc function & compute initial sample
+    set_calc_function<MorphSVF, &MorphSVF::next>();
 }
  
 MorphSVF::~MorphSVF() = default;
@@ -169,8 +171,8 @@ void MorphSVF::next(int nSamples) {
         slopedShape.value;
 }
 
-PluginLoad(FilterUGens) {
-    ft = inTable;
+void Filters_setup()
+{
     registerUnit<Disperser>(ft, "Disperser", false);
     registerUnit<MorphSVF>(ft, "MorphSVF", false);
 }

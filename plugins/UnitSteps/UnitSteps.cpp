@@ -1,13 +1,14 @@
 #include "UnitSteps.hpp"
 #include "SC_PlugIn.hpp"
 
-static InterfaceTable* ft;
+extern InterfaceTable* ft;
 
 // ===== UNIT STEP =====
 
 UnitStep::UnitStep() {
-    mCalcFunc = make_calc_function<UnitStep, &UnitStep::next>();
-    next(1);
+
+    // Set calc function & compute initial sample
+    set_calc_function<UnitStep, &UnitStep::next>();
     
     // Reset state after priming
     m_state.reset();
@@ -41,8 +42,8 @@ UnitWalk::UnitWalk() {
     // Check which inputs are audio-rate
     isStepAudioRate = isAudioRateIn(Step);
     
-    mCalcFunc = make_calc_function<UnitWalk, &UnitWalk::next>();
-    next(1);
+    // Set calc function & compute initial sample
+    set_calc_function<UnitWalk, &UnitWalk::next>();
     
     // Reset state after priming
     m_state.reset();
@@ -83,8 +84,8 @@ UnitRegister::UnitRegister() {
     isSizeAudioRate = isAudioRateIn(Size);
     isRotateAudioRate = isAudioRateIn(Rotate);
     
-    mCalcFunc = make_calc_function<UnitRegister, &UnitRegister::next>();
-    next(1);
+    // Set calc function & compute initial sample
+    set_calc_function<UnitRegister, &UnitRegister::next>();
     
     // Reset state after priming
     m_register.reset();
@@ -140,8 +141,8 @@ void UnitRegister::next(int nSamples) {
     }
 }
 
-PluginLoad(GrainUtilsUGens) {
-    ft = inTable;
+void UnitSteps_setup() 
+{
     registerUnit<UnitStep>(ft, "UnitStep", false);
     registerUnit<UnitWalk>(ft, "UnitWalk", false);
     registerUnit<UnitRegister>(ft, "UnitRegisterUgen", false);

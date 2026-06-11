@@ -1,7 +1,7 @@
 #include "Delays.hpp"
 #include "SC_PlugIn.hpp"
 
-InterfaceTable* ft;
+extern InterfaceTable* ft;
 
 GrainDelay::GrainDelay() : 
     m_sampleRate(static_cast<float>(sampleRate())),
@@ -31,8 +31,8 @@ GrainDelay::GrainDelay() :
     auto unit = this;
     PluginUtils::allocBuffer(unit, mWorld, m_bufSize, m_buffer);
     
-    mCalcFunc = make_calc_function<GrainDelay, &GrainDelay::next>();
-    next(1);
+    // Set calc function & compute initial sample
+    set_calc_function<GrainDelay, &GrainDelay::next>();
 
     // Reset state after priming
     m_scheduler.reset();
@@ -191,7 +191,7 @@ void GrainDelay::next(int nSamples) {
         slopedDamping.value;
 }
 
-PluginLoad(DelayUGens) {
-    ft = inTable;
+void Delays_setup()
+{
     registerUnit<GrainDelay>(ft, "GrainDelay", false);
 }

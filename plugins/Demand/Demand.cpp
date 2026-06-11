@@ -1,7 +1,7 @@
-#include "SC_PlugIn.hpp"
 #include "Demand.hpp"
+#include "SC_PlugIn.hpp"
 
-static InterfaceTable* ft;
+extern InterfaceTable* ft;
 
 // ===== DEMAND URN =====
 
@@ -54,7 +54,7 @@ void Durn::next(int nSamples) {
     }
 }
 
-PluginLoad(DemandUGens) {
-    ft = inTable;
+void Demand_setup() 
+{
     registerUnit<Durn>(ft, "Durn", false);
 }
