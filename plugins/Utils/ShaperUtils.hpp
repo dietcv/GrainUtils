@@ -124,6 +124,12 @@ namespace Easing {
             float coef = 13.0f;
             return (std::pow(2.0f, coef * x) - 1.0f) / (std::pow(2.0f, coef) - 1.0f);
         }
+
+        // Pseudo-logarithmic core
+        inline float pseudoLog2(float x) {
+            float coef = 13.0f;
+            return 1.0f - (std::log2((1.0f - x) * (std::pow(2.0f, coef) - 1.0f) + 1.0f) / coef);
+        }
              
     } // namespace Cores
     

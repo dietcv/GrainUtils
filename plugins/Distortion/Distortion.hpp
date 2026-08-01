@@ -46,3 +46,46 @@ private:
         Out 
     };
 };
+
+// ===== SERGE WAVEFOLDER =====
+ 
+class SergeFold : public SCUnit {
+public:
+    SergeFold();
+    ~SergeFold();
+ 
+private:
+    void next(int nSamples);
+ 
+    // Constants cached at construction
+    const float m_sampleRate;
+    const int m_oversampleIndex;
+    const int m_osRatio;
+ 
+    // Core processing
+    DistortionUtils::SergeFold m_folder;
+ 
+    // Oversampling objects
+    OversamplingUtils::VariableOversampling m_outputOversampling;
+    OversamplingUtils::VariableOversampling m_driveOversampling;
+ 
+    // Stored oversampling state
+    float* m_outputOSBuffer{nullptr};
+    float* m_driveOSBuffer{nullptr};
+ 
+    // Cache for SlopeSignal state
+    float drivePast;
+ 
+    // Audio rate flags
+    bool isDriveAudioRate;
+ 
+    enum InputParams {
+        Input,
+        Drive,
+        Oversample
+    };
+ 
+    enum Outputs {
+        Out
+    };
+};

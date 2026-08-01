@@ -142,7 +142,7 @@ void GrainDelay::next(int nSamples) {
                     m_bufMask
                 );
                 
-                // Apply Hanning window using voice allocator's sub-sample accurate phase
+                // Apply Hanning window
                 grainSample *= sc_hanwindow(m_allocator.phases[g]);
                 delayed += grainSample;
 

@@ -79,8 +79,7 @@ void SingleOscOS::next(int nSamples) {
             float slope = static_cast<float>(m_rampToSlope.process(static_cast<double>(phase)));
             
             // Calculate mipmap parameters (use ceil for no oversampling)
-            float rangeSize = static_cast<float>(cycleSamples);
-            float samplesPerFrame = std::abs(slope) * rangeSize;
+            float samplesPerFrame = sc_abs(slope) * static_cast<float>(cycleSamples);
             float octave = sc_max(0.0f, sc_log2(samplesPerFrame));
             int layer = static_cast<int>(sc_ceil(octave));
 
@@ -112,8 +111,7 @@ void SingleOscOS::next(int nSamples) {
             float slope = static_cast<float>(m_rampToSlope.process(static_cast<double>(phase)));
             
             // Calculate mipmap parameters (use floor for oversampling)
-            float rangeSize = static_cast<float>(cycleSamples);
-            float samplesPerFrame = std::abs(slope) * rangeSize;
+            float samplesPerFrame = sc_abs(slope) * static_cast<float>(cycleSamples);
             float octave = sc_max(0.0f, sc_log2(samplesPerFrame));
             int layer = static_cast<int>(sc_floor(octave));
             
@@ -293,8 +291,7 @@ void DualOscOS::next(int nSamples) {
             float slopeB = static_cast<float>(m_rampToSlopeB.process(static_cast<double>(phaseB)));
             
             // Calculate mipmap parameters for oscillator A (use ceil for no oversampling)
-            float rangeSizeA = static_cast<float>(cycleSamplesA);
-            float samplesPerFrameA = std::abs(slopeA) * rangeSizeA;
+            float samplesPerFrameA = sc_abs(slopeA) * static_cast<float>(cycleSamplesA);
             float octaveA = sc_max(0.0f, sc_log2(samplesPerFrameA));
             int layerA = static_cast<int>(sc_ceil(octaveA));
 
@@ -304,8 +301,7 @@ void DualOscOS::next(int nSamples) {
             float crossfadeA = sc_frac(octaveA);
             
             // Calculate mipmap parameters for oscillator B (use ceil for no oversampling)
-            float rangeSizeB = static_cast<float>(cycleSamplesB);
-            float samplesPerFrameB = std::abs(slopeB) * rangeSizeB;
+            float samplesPerFrameB = sc_abs(slopeB) * static_cast<float>(cycleSamplesB);
             float octaveB = sc_max(0.0f, sc_log2(samplesPerFrameB));
             int layerB = static_cast<int>(sc_ceil(octaveB));
 
@@ -366,8 +362,7 @@ void DualOscOS::next(int nSamples) {
             float slopeB = static_cast<float>(m_rampToSlopeB.process(static_cast<double>(phaseB)));
             
             // Calculate mipmap parameters for oscillator A (use floor for oversampling)
-            float rangeSizeA = static_cast<float>(cycleSamplesA);
-            float samplesPerFrameA = std::abs(slopeA) * rangeSizeA;
+            float samplesPerFrameA = sc_abs(slopeA) * static_cast<float>(cycleSamplesA);
             float octaveA = sc_max(0.0f, sc_log2(samplesPerFrameA));
             int layerA = static_cast<int>(sc_floor(octaveA));
 
@@ -377,8 +372,7 @@ void DualOscOS::next(int nSamples) {
             float crossfadeA = sc_frac(octaveA);
             
             // Calculate mipmap parameters for oscillator B (use floor for oversampling)
-            float rangeSizeB = static_cast<float>(cycleSamplesB);
-            float samplesPerFrameB = std::abs(slopeB) * rangeSizeB;
+            float samplesPerFrameB = sc_abs(slopeB) * static_cast<float>(cycleSamplesB);
             float octaveB = sc_max(0.0f, sc_log2(samplesPerFrameB));
             int layerB = static_cast<int>(sc_floor(octaveB));
 
@@ -629,8 +623,7 @@ void PulsarOS::next(int nSamples) {
                     float modPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * static_cast<double>(modSlope)));
  
                     // Calculate mipmap parameters for mod (use ceil for no oversampling)
-                    float modRangeSize = static_cast<float>(modCycleSamples);
-                    float modSamplesPerFrame = std::abs(modSlope) * modRangeSize;
+                    float modSamplesPerFrame = sc_abs(modSlope) * static_cast<float>(modCycleSamples);
                     float modOctave = sc_max(0.0f, sc_log2(modSamplesPerFrame));
                     int modLayer = static_cast<int>(sc_ceil(modOctave));
                     
@@ -647,8 +640,7 @@ void PulsarOS::next(int nSamples) {
                     );
  
                     // Calculate mipmap parameters for osc (use ceil for no oversampling)
-                    float oscRangeSize = static_cast<float>(oscCycleSamples);
-                    float oscSamplesPerFrame = std::abs(oscSlope) * oscRangeSize;
+                    float oscSamplesPerFrame = sc_abs(oscSlope) * static_cast<float>(oscCycleSamples);
                     float oscOctave = sc_max(0.0f, sc_log2(oscSamplesPerFrame));
                     int oscLayer = static_cast<int>(sc_ceil(oscOctave));
                     
@@ -676,8 +668,7 @@ void PulsarOS::next(int nSamples) {
                     );
                     
                     // Calculate mipmap parameters for env (use ceil for no oversampling)
-                    float envRangeSize = static_cast<float>(envCycleSamples);
-                    float envSamplesPerFrame = std::abs(envSlope) * envRangeSize;
+                    float envSamplesPerFrame = sc_abs(envSlope) * static_cast<float>(envCycleSamples);
                     float envOctave = sc_max(0.0f, sc_log2(envSamplesPerFrame));
                     int envLayer = static_cast<int>(sc_ceil(envOctave));
                     
@@ -788,8 +779,7 @@ void PulsarOS::next(int nSamples) {
                     float modPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * static_cast<double>(modSlope)));
  
                     // Calculate mipmap parameters for mod (use floor for oversampling)
-                    float modRangeSize = static_cast<float>(modCycleSamples);
-                    float modSamplesPerFrame = std::abs(modSlope) * modRangeSize;
+                    float modSamplesPerFrame = sc_abs(modSlope) * static_cast<float>(modCycleSamples);
                     float modOctave = sc_max(0.0f, sc_log2(modSamplesPerFrame));
                     int modLayer = static_cast<int>(sc_floor(modOctave));
                     
@@ -799,8 +789,7 @@ void PulsarOS::next(int nSamples) {
                     float modCrossfade = sc_frac(modOctave);
  
                     // Calculate mipmap parameters for osc (use floor for oversampling)
-                    float oscRangeSize = static_cast<float>(oscCycleSamples);
-                    float oscSamplesPerFrame = std::abs(oscSlope) * oscRangeSize;
+                    float oscSamplesPerFrame = sc_abs(oscSlope) * static_cast<float>(oscCycleSamples);
                     float oscOctave = sc_max(0.0f, sc_log2(oscSamplesPerFrame));
                     int oscLayer = static_cast<int>(sc_floor(oscOctave));
                     
@@ -822,8 +811,7 @@ void PulsarOS::next(int nSamples) {
                     float osEnvPhase = m_allocator.phases[g] - envSlope;
                     
                     // Calculate mipmap parameters for env (use floor for oversampling)
-                    float envRangeSize = static_cast<float>(envCycleSamples);
-                    float envSamplesPerFrame = std::abs(envSlope) * envRangeSize;
+                    float envSamplesPerFrame = sc_abs(envSlope) * static_cast<float>(envCycleSamples);
                     float envOctave = sc_max(0.0f, sc_log2(envSamplesPerFrame));
                     int envLayer = static_cast<int>(sc_floor(envOctave));
                     
@@ -1117,8 +1105,7 @@ void DualPulsarOS::next(int nSamples) {
                     float modPhaseDistorted = sc_frac(modPhase + (phsIncDistMod * phsIncRatioMod));
  
                     // Calculate mipmap parameters for osc (use ceil for no oversampling)
-                    float oscRangeSize = static_cast<float>(oscCycleSamples);
-                    float oscSamplesPerFrame = std::abs(oscSlope) * oscRangeSize;
+                    float oscSamplesPerFrame = sc_abs(oscSlope) * static_cast<float>(oscCycleSamples);
                     float oscOctave = sc_max(0.0f, sc_log2(oscSamplesPerFrame));
                     int oscLayer = static_cast<int>(sc_ceil(oscOctave));
  
@@ -1128,8 +1115,7 @@ void DualPulsarOS::next(int nSamples) {
                     float oscCrossfade = sc_frac(oscOctave);
  
                     // Calculate mipmap parameters for mod (use ceil for no oversampling)
-                    float modRangeSize = static_cast<float>(modCycleSamples);
-                    float modSamplesPerFrame = std::abs(modSlope) * modRangeSize;
+                    float modSamplesPerFrame = sc_abs(modSlope) * static_cast<float>(modCycleSamples);
                     float modOctave = sc_max(0.0f, sc_log2(modSamplesPerFrame));
                     int modLayer = static_cast<int>(sc_ceil(modOctave));
  
@@ -1280,8 +1266,7 @@ void DualPulsarOS::next(int nSamples) {
                     float modPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * static_cast<double>(modSlope)));
  
                     // Calculate mipmap parameters for osc (use floor for oversampling)
-                    float oscRangeSize = static_cast<float>(oscCycleSamples);
-                    float oscSamplesPerFrame = std::abs(oscSlope) * oscRangeSize;
+                    float oscSamplesPerFrame = sc_abs(oscSlope) * static_cast<float>(oscCycleSamples);
                     float oscOctave = sc_max(0.0f, sc_log2(oscSamplesPerFrame));
                     int oscLayer = static_cast<int>(sc_floor(oscOctave));
  
@@ -1291,8 +1276,7 @@ void DualPulsarOS::next(int nSamples) {
                     float oscCrossfade = sc_frac(oscOctave);
  
                     // Calculate mipmap parameters for mod (use floor for oversampling)
-                    float modRangeSize = static_cast<float>(modCycleSamples);
-                    float modSamplesPerFrame = std::abs(modSlope) * modRangeSize;
+                    float modSamplesPerFrame = sc_abs(modSlope) * static_cast<float>(modCycleSamples);
                     float modOctave = sc_max(0.0f, sc_log2(modSamplesPerFrame));
                     int modLayer = static_cast<int>(sc_floor(modOctave));
  

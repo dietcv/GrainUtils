@@ -89,6 +89,7 @@ set(GrainUtils_schelp_files
 
     # Distortion
     plugins/Distortion/HelpSource/BuchlaFold.schelp
+    plugins/Distortion/HelpSource/SergeFold.schelp
 
     # EventSystem
     plugins/EventSystem/HelpSource/RampAccumulator.schelp

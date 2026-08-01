@@ -1,9 +1,9 @@
-class:: BuchlaFold
-summary:: Buchla 259 Wavefolder with Anti-Aliasing and Oversampling
+class:: SergeFold
+summary:: Serge Wavefolder with Anti-Aliasing and Oversampling
 categories:: UGens>Distortion
 
 description::
-Buchla 259 Wavefolder with anti-aliasing using first-order ADAA and optional oversampling.
+Serge Wavefolder with anti-aliasing using first-order ADAA and optional oversampling.
 
 CLASSMETHODS::
 
@@ -34,7 +34,7 @@ code::
 	var freq = MouseY.kr(100, 1000);
 	var drive = MouseX.kr(0, 1);
 	var sig = SinOsc.ar(freq);
-	sig = BuchlaFold.ar(sig, drive, 1);
+	sig = SergeFold.ar(sig, drive, 1);
 	sig!2 * 0.1;
 }.play;
 )

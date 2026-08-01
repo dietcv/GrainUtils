@@ -66,6 +66,7 @@ LIST::
 SUBSECTION:: Distortion
 LIST::
 ## LINK::Classes/BuchlaFold::
+## LINK::Classes/SergeFold::
 ::
 SUBSECTION:: Demand
 LIST::
