@@ -34,8 +34,8 @@ void SchedulerCycle::next(int nSamples) {
 
         // Get current parameter values (no interpolation - latched per trigger)
         float rate = isRateAudioRate ? 
-            sc_clip(in(Rate)[i], m_sampleRate * -0.49f, m_sampleRate * 0.49f) : 
-            sc_clip(in0(Rate), m_sampleRate * -0.49f, m_sampleRate * 0.49f);
+            sc_clip(in(Rate)[i], 0.0f, m_sampleRate * 0.49f) : 
+            sc_clip(in0(Rate), 0.0f, m_sampleRate * 0.49f);
         
         // Trigger input (audio-rate or control-rate)
         bool reset = isResetAudioRate ? 
@@ -60,8 +60,7 @@ void SchedulerCycle::next(int nSamples) {
 // ===== SCHEDULER BURST =====
 
 SchedulerBurst::SchedulerBurst() : 
-    m_sampleRate(static_cast<float>(sampleRate())),
-    m_sampleDur(static_cast<float>(sampleDur()))
+    m_sampleRate(static_cast<float>(sampleRate()))
 {
     // Check which inputs are audio-rate
     isInitTriggerAudioRate = isAudioRateIn(InitTrigger);
@@ -95,8 +94,8 @@ void SchedulerBurst::next(int nSamples) {
         
         // Get current parameter values (no interpolation - latched per trigger)
         float duration = isDurationAudioRate ? 
-            sc_max(in(Duration)[i], m_sampleDur) : 
-            sc_max(in0(Duration), m_sampleDur);
+            sc_max(in(Duration)[i], 0.0f) : 
+            sc_max(in0(Duration), 0.0f);
         
         int cycles = isCyclesAudioRate ? 
             sc_max(static_cast<int>(in(Cycles)[i]), 1) : 
@@ -115,6 +114,76 @@ void SchedulerBurst::next(int nSamples) {
         phaseOut[i] = event.phase;
         rateOut[i] = event.rate;
         offsetOut[i] = event.subSampleOffset;
+    }
+}
+
+// ===== SCHEDULER BANK =====
+
+SchedulerBank::SchedulerBank() :
+    m_sampleRate(static_cast<float>(sampleRate())),
+    m_numChannels(sc_clip(static_cast<int>(in0(NumChannels)), 2, MAX_CHANNELS))
+{
+    // Check which inputs are audio-rate
+    isRateAudioRate = isAudioRateIn(Rate);
+    isSpreadAudioRate = isAudioRateIn(Spread);
+    isCoupleAudioRate = isAudioRateIn(Couple);
+    isBiasAudioRate = isAudioRateIn(Bias);
+    isResetAudioRate = isAudioRateIn(Reset);
+
+    // Set calc function & compute initial sample
+    set_calc_function<SchedulerBank, &SchedulerBank::next>();
+
+    // Reset state after priming
+    m_bank.reset();
+    m_resetTrigger.reset();
+}
+
+SchedulerBank::~SchedulerBank() = default;
+
+void SchedulerBank::next(int nSamples) {
+ 
+    for (int i = 0; i < nSamples; ++i) {
+ 
+        // Get current parameter values (no interpolation - latched per trigger)
+        float rate = isRateAudioRate ?
+            sc_clip(in(Rate)[i], 0.0f, m_sampleRate * 0.49f) :
+            sc_clip(in0(Rate), 0.0f, m_sampleRate * 0.49f);
+ 
+        float spread = isSpreadAudioRate ?
+            sc_clip(in(Spread)[i], 0.0f, 1.0f) :
+            sc_clip(in0(Spread), 0.0f, 1.0f);
+ 
+        float couple = isCoupleAudioRate ?
+            sc_clip(in(Couple)[i], 0.0f, 1.0f) :
+            sc_clip(in0(Couple), 0.0f, 1.0f);
+ 
+        float bias = isBiasAudioRate ?
+            sc_clip(in(Bias)[i], -1.0f, 1.0f) :
+            sc_clip(in0(Bias), -1.0f, 1.0f);
+ 
+        // Trigger input (audio-rate or control-rate)
+        bool reset = isResetAudioRate ?
+            m_resetTrigger.process(in(Reset)[i]) :
+            m_resetTrigger.process(in0(Reset));
+ 
+        // Process scheduler bank
+        auto events = m_bank.process(
+            m_numChannels,
+            rate,
+            spread,
+            couple,
+            bias,
+            reset,
+            m_sampleRate
+        );
+ 
+        // Output triggers, rates, offsets and phases
+        for (int ch = 0; ch < m_numChannels; ++ch) {
+            out(ch)[i] = events.triggers[ch];
+            out(m_numChannels + ch)[i] = events.rates[ch];
+            out(2 * m_numChannels + ch)[i] = events.subSampleOffsets[ch];
+            out(3 * m_numChannels + ch)[i] = events.phases[ch];
+        }
     }
 }
 
@@ -149,25 +218,26 @@ void VoiceAllocator::next(int nSamples) {
         
         // Get current parameter values (no interpolation - latched per trigger)
         float rate = isRateAudioRate ? 
-            sc_clip(in(Rate)[i], m_sampleRate * -0.49f, m_sampleRate * 0.49f) : 
-            sc_clip(in0(Rate), m_sampleRate * -0.49f, m_sampleRate * 0.49f);
+            sc_clip(in(Rate)[i], 0.0f, m_sampleRate * 0.49f) : 
+            sc_clip(in0(Rate), 0.0f, m_sampleRate * 0.49f);
         
         float offset = isSubSampleOffsetAudioRate ? 
             in(SubSampleOffset)[i] : 
             in0(SubSampleOffset);
 
         // Process voice allocator
-        m_allocator.process(
+        auto voices = m_allocator.process(
+            m_numChannels,
             trigger, 
             rate, 
             offset, 
             m_sampleRate
         );
-       
+
         // Output phases and triggers
         for (int ch = 0; ch < m_numChannels; ++ch) {
-            out(ch)[i] = m_allocator.phases[ch];
-            out(m_numChannels + ch)[i] = m_allocator.triggers[ch];
+            out(ch)[i] = voices.phases[ch];
+            out(m_numChannels + ch)[i] = voices.triggers[ch];
         }
     }
 }
@@ -346,6 +416,7 @@ void EventSystem_setup()
 {
     registerUnit<SchedulerCycle>(ft, "SchedulerCycleUGen", false);
     registerUnit<SchedulerBurst>(ft, "SchedulerBurstUGen", false);
+    registerUnit<SchedulerBank>(ft, "SchedulerBankUGen", false);
     registerUnit<VoiceAllocator>(ft, "VoiceAllocatorUGen", false);
     registerUnit<RampIntegrator>(ft, "RampIntegrator", false);
     registerUnit<RampAccumulator>(ft, "RampAccumulator", false);

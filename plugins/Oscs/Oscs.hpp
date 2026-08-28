@@ -155,7 +155,6 @@ private:
     
     // Constants cached at construction
     const float m_sampleRate;
-    const float m_sampleDur;
     const int m_oversampleIndex;
     const int m_osRatio;
  
@@ -255,7 +254,6 @@ private:
  
     // Constants cached at construction
     const float m_sampleRate;
-    const float m_sampleDur;
     const int m_oversampleIndex;
     const int m_osRatio;
  
@@ -264,7 +262,7 @@ private:
     EventUtils::IsTrigger m_trigger;
  
     // Per-voice cross-modulation state
-    std::array<OscUtils::DualOscScaled, NUM_VOICES> m_dualOscs;
+    std::array<OscUtils::DualOsc, NUM_VOICES> m_dualOscs;
  
     // Buffer units
     PluginUtils::BufUnit m_oscBufUnit;
@@ -274,8 +272,8 @@ private:
     OversamplingUtils::VariableOversampling m_outputOversampling;
     OversamplingUtils::VariableOversampling m_oscCyclePosOversampling;
     OversamplingUtils::VariableOversampling m_modCyclePosOversampling;
-    OversamplingUtils::VariableOversampling m_skewOversampling;
-    OversamplingUtils::VariableOversampling m_indexOversampling;
+    OversamplingUtils::VariableOversampling m_envSkewOversampling;
+    OversamplingUtils::VariableOversampling m_envIndexOversampling;
 
     // Stored oversampling state
     float* m_outputOSBuffer{nullptr};
@@ -304,8 +302,8 @@ private:
     // Cache for SlopeSignal state
     float oscCyclePosPast;
     float modCyclePosPast;
-    float skewPast;
-    float indexPast;
+    float envSkewPast;
+    float envIndexPast;
  
     // Audio rate flags
     bool isTriggerAudioRate;
@@ -321,8 +319,8 @@ private:
     bool isWarpModAudioRate;
     bool isOscCyclePosAudioRate;
     bool isModCyclePosAudioRate;
-    bool isSkewAudioRate;
-    bool isIndexAudioRate;
+    bool isEnvSkewAudioRate;
+    bool isEnvIndexAudioRate;
  
     enum InputParams {
         Trigger,
@@ -331,10 +329,12 @@ private:
  
         OscFreq,
         ModFreq,
+
         PmIndexOsc,
         PmIndexMod,
         PmFilterRatioOsc,
         PmFilterRatioMod,
+        
         WarpOsc,
         WarpMod,
  
@@ -346,8 +346,8 @@ private:
         ModNumCycles,
         ModCyclePos,
  
-        Skew,
-        Index,
+        EnvSkew,
+        EnvIndex,
  
         Oversample
     };

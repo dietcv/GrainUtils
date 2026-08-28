@@ -87,10 +87,10 @@ Number of cycles in the modulator wavetable buffer.
 ARGUMENT:: modCyclePos
 Position within the modulator multi-cycle wavetable (0.0 to 1.0).
 
-ARGUMENT:: skew
+ARGUMENT:: envSkew
 Skew of the gaussian window (0.0 to 1.0). At 0.5 the window is symmetric. Lower values shift the peak toward the grain start, higher values toward the grain end.
 
-ARGUMENT:: index
+ARGUMENT:: envIndex
 Shape index of the gaussian window (0.0 to 10.0). At 0 the window is a hanning window. Higher values narrow the gaussian peak.
 
 ARGUMENT:: oversample
@@ -140,8 +140,8 @@ v = t.addAll(u).addAll(w).addAll(x);
 		modBuffer: ~modBuf,
 		modNumCycles: 4,
 		modCyclePos: 0,
-		skew: 0.5,
-		index: 0,
+		envSkew: 0.5,
+		envIndex: 0,
 		oversample: 0,
 	);
 
@@ -176,8 +176,8 @@ v = t.addAll(u).addAll(w).addAll(x);
 		modBuffer: ~modBuf,
 		modNumCycles: 4,
 		modCyclePos: 0,
-		skew: 0.5,
-		index: 0,
+		envSkew: 0.5,
+		envIndex: 0,
 		oversample: 0,
 	);
 

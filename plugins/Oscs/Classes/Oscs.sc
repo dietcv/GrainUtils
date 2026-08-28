@@ -70,7 +70,7 @@ DualPulsarOS : UGen {
 		  warpOsc = 0.5, warpMod = 0.5,
 		  oscBuffer, oscNumCycles = 1, oscCyclePos = 0,
 		  modBuffer, modNumCycles = 1, modCyclePos = 0,
-		  skew = 0.5, index = 0,
+		  envSkew = 0.5, envIndex = 0,
 		  oversample = 0|
 
 		if(oscBuffer.isNil) { Error("DualPulsarOS: Invalid osc buffer").throw };
@@ -84,7 +84,7 @@ DualPulsarOS : UGen {
 			warpOsc, warpMod,
 			oscBuffer, oscNumCycles, oscCyclePos,
 			modBuffer, modNumCycles, modCyclePos,
-			skew, index,
+			envSkew, envIndex,
 			oversample)
 	}
 }

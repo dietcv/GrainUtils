@@ -317,7 +317,7 @@ struct MorphingStateVariableFilter {
     // Process with continuous shape morph
     inline float process(float input, float freq, float resonance, float shape, float sampleRate) {
  
-        // Convert resonance (0..1) to Q (0.707..25.0)
+        // Convert resonance (0 - 1) to Q (0.707 - 25.0)
         float q = 0.707f + sc_squared(resonance) * 24.293f;
   
         // Calculate coefficients

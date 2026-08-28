@@ -133,8 +133,7 @@ struct RampToSlope {
         double delta = currentPhase - m_lastPhase;
 
         // Wrap between -0.5 and 0.5, for corrected slope during wrap
-        if (delta > 0.5) delta -= 1.0;
-        else if (delta < -0.5) delta += 1.0;  
+        delta = sc_wrap(delta, -0.5, 0.5); 
 
         // Update state for next sample
         m_lastPhase = currentPhase;
@@ -146,6 +145,36 @@ struct RampToSlope {
         m_lastPhase = 0.0;
     }
 };
+
+// ===== PHASE UTILITIES =====
+
+struct MeanField {
+    double coherence = 0.0;
+    double meanPhase = 0.0;
+};
+ 
+inline MeanField meanField(const double* phases, int numChannels) {
+    MeanField output;
+ 
+    // 1. Sum phases as unit vectors on the circle
+    double meanCos = 0.0;
+    double meanSin = 0.0;
+    for (int ch = 0; ch < numChannels; ++ch) {
+        double theta = Utils::TWO_PI * phases[ch];
+        meanCos += std::cos(theta);
+        meanSin += std::sin(theta);
+    }
+ 
+    // 2. Average to the centre of mass
+    meanCos /= static_cast<double>(numChannels);
+    meanSin /= static_cast<double>(numChannels);
+ 
+    // 3. Convert to polar form
+    output.coherence = std::sqrt(meanCos * meanCos + meanSin * meanSin);
+    output.meanPhase = std::atan2(meanSin, meanCos);
+ 
+    return output;
+}
 
 // ===== SCHEDULER CYCLE =====
 
@@ -174,7 +203,10 @@ struct SchedulerCycle {
         m_phase = sc_frac(m_phase);
 
         // 2. Derive trigger from wrap
-        bool trigger = wrapDetect.process(m_phase);
+        bool trigger = false;
+        if (rate > 0.0f) {
+            trigger = wrapDetect.process(m_phase);
+        }
 
         // 3. Latch slope for new cycle
         if (trigger) {
@@ -183,7 +215,7 @@ struct SchedulerCycle {
 
         // 4. Calculate subsample offset
         double subSampleOffset = 0.0;
-        if (trigger && m_slope != 0.0) {
+        if (trigger && m_slope > Utils::SAFE_DENOM_EPSILON) {
             subSampleOffset = m_phase / m_slope;
         }
 
@@ -226,7 +258,7 @@ struct SchedulerBurst {
         Output output;
     
         // Reset on new trigger
-        if (trigger) {
+        if (trigger && duration > 0.0f) {
             reset();
             m_hasTriggered = true;
         }
@@ -249,11 +281,11 @@ struct SchedulerBurst {
         
             // 4. Calculate subsample offset
             double subSampleOffset = 0.0;
-            if (trigger && m_slope != 0.0) {
+            if (trigger && m_slope > Utils::SAFE_DENOM_EPSILON) {
                 subSampleOffset = phase / m_slope;
             }
         
-             // 5. Prepare output
+            // 5. Prepare output
             output.trigger = trigger;
             output.phase = static_cast<float>(phase);
             output.rate = static_cast<float>(m_slope * sampleRate);
@@ -274,69 +306,140 @@ struct SchedulerBurst {
     }
 };
 
+// ===== SCHEDULER BANK =====
+
+template<int MaxChannels>
+struct SchedulerBank {
+    std::array<SchedulerCycle, MaxChannels> m_schedulers{};
+ 
+    struct Output {
+        std::array<bool,  MaxChannels> triggers{};
+        std::array<float, MaxChannels> phases{};
+        std::array<float, MaxChannels> rates{};
+        std::array<float, MaxChannels> subSampleOffsets{};
+    };
+ 
+    Output process(int numChannels, float rate, float spread, float couple, float bias,
+                   bool resetTrigger, float sampleRate) {
+        Output output;
+ 
+        // 1. Handle reset
+        if (resetTrigger) {
+            reset();
+        }
+ 
+        // 2. Collect current scheduler phases
+        std::array<double, MaxChannels> phases;
+        for (int ch = 0; ch < numChannels; ++ch) {
+            phases[ch] = m_schedulers[ch].m_phase;
+        }
+ 
+        // 3. Derive mean field from phases
+        auto field = meanField(phases.data(), numChannels);
+
+        // 4. Calculate reference critical coupling
+        double criticalCoupling = static_cast<double>(spread) * 2.0 / Utils::PI;
+ 
+        // 5. Calculate coupling strength
+        double k = (static_cast<double>(couple) * 2.0) * criticalCoupling;
+
+        // 6. Calculate Sakaguchi phase lag
+        double alpha = static_cast<double>(bias) * Utils::HALF_PI;
+
+        for (int ch = 0; ch < numChannels; ++ch) {
+ 
+            // 7. Spread natural rates uniformly in log2 space
+            double position = static_cast<double>(ch) / static_cast<double>(numChannels - 1) - 0.5;
+            double rateNatural = static_cast<double>(rate) * std::exp2(static_cast<double>(spread) * position);
+ 
+            // 8. Calculate mean-field interaction with phase lag
+            double theta = Utils::TWO_PI * phases[ch];
+            double pull = field.coherence * std::sin(field.meanPhase - theta + alpha);
+
+            // 9. Apply coupling in log2 rate space
+            double rateCoupled = rateNatural * std::exp2(k * pull);
+            float rateClipped = sc_clip(static_cast<float>(rateCoupled), 0.0f, sampleRate * 0.49f);
+ 
+            // 10. Process scheduler
+            auto event = m_schedulers[ch].process(rateClipped, false, sampleRate);
+ 
+            // 11. Prepare outputs
+            output.triggers[ch] = event.trigger;
+            output.phases[ch] = event.phase;
+            output.rates[ch] = event.rate;
+            output.subSampleOffsets[ch] = event.subSampleOffset;
+        }
+ 
+        return output;
+    }
+ 
+    void reset() {
+        for (int ch = 0; ch < MaxChannels; ++ch) {
+            m_schedulers[ch].reset();
+        }
+    }
+};
+
 // ===== VOICE ALLOCATOR =====
 
-template<int NumChannels>
+template<int MaxChannels>
 struct VoiceAllocator {
-    // Internal processing state
-    std::array<double, NumChannels> localPhases{};      
-    std::array<double, NumChannels> localSlopes{};      
-    std::array<bool, NumChannels> isActive{};           
-    
-    // Output interface
-    std::array<float, NumChannels> phases{};            
-    std::array<bool, NumChannels> triggers{};           
-    
-    VoiceAllocator() = default;
-    
-    void process(bool trigger, float rate, float subSampleOffset, float sampleRate) {
-        // Clear output triggers
-        std::fill(triggers.begin(), triggers.end(), false);
-        
+    std::array<double, MaxChannels> m_phases{};
+    std::array<double, MaxChannels> m_slopes{};
+    std::array<bool, MaxChannels> m_active{};
+
+    struct Output {
+        std::array<bool,  MaxChannels> gates{};
+        std::array<float, MaxChannels> phases{};
+        std::array<float, MaxChannels> slopes{};
+        std::array<bool,  MaxChannels> triggers{};
+    };
+
+    Output process(int numChannels, bool trigger, float rate, float subSampleOffset, float sampleRate) {
+        Output output;
+
         // 1. Free completed voices
-        for (int ch = 0; ch < NumChannels; ++ch) {
-            if (isActive[ch] && localPhases[ch] >= 1.0) {
-                isActive[ch] = false;
-                localPhases[ch] = 0.0;
+        for (int ch = 0; ch < numChannels; ++ch) {
+            if (m_phases[ch] >= 1.0) {
+                m_active[ch] = false;
+                m_phases[ch] = 0.0;
             }
         }
-        
-        // 2. Allocate new voice if trigger
-        if (trigger) {
-            for (int ch = 0; ch < NumChannels; ++ch) {
-                if (!isActive[ch]) {
-                    localSlopes[ch] = static_cast<double>(rate) / sampleRate;
-                    localPhases[ch] = localSlopes[ch] * subSampleOffset;
-                    isActive[ch] = true;
-                    triggers[ch] = true;
+
+        // 2. Allocate new voice on trigger, drop it if rate is zero or no voice is free
+        if (trigger && rate > 0.0f) {
+            for (int ch = 0; ch < numChannels; ++ch) {
+                if (!m_active[ch]) {
+                    m_slopes[ch] = static_cast<double>(rate) / sampleRate;
+                    m_phases[ch] = m_slopes[ch] * subSampleOffset;
+                    m_active[ch] = true;
+                    output.triggers[ch] = true;
                     break;
                 }
             }
         }
-        
-        // 3. Output current phase
-        for (int ch = 0; ch < NumChannels; ++ch) {
-            if (isActive[ch] && localPhases[ch] < 1.0) {
-                phases[ch] = static_cast<float>(localPhases[ch]);
-            } else {
-                phases[ch] = 0.0f;
+
+        // 3. Output current values, then increment active voices
+        for (int ch = 0; ch < numChannels; ++ch) {
+
+            // Prepare outputs
+            output.gates[ch] = m_active[ch];
+            output.phases[ch] = static_cast<float>(m_phases[ch]);
+            output.slopes[ch] = static_cast<float>(m_slopes[ch]);
+
+            // Increment active phases
+            if (m_active[ch]) {
+                m_phases[ch] += m_slopes[ch];
             }
         }
-        
-        // 4. Increment all active voices
-        for (int ch = 0; ch < NumChannels; ++ch) {
-            if (isActive[ch]) {
-                localPhases[ch] += localSlopes[ch];
-            }
-        }
+
+        return output;
     }
-    
+
     void reset() {
-        std::fill(localPhases.begin(), localPhases.end(), 0.0);
-        std::fill(localSlopes.begin(), localSlopes.end(), 0.0);
-        std::fill(isActive.begin(), isActive.end(), false);
-        std::fill(phases.begin(), phases.end(), 0.0f);
-        std::fill(triggers.begin(), triggers.end(), false);
+        std::fill(m_phases.begin(), m_phases.end(), 0.0);
+        std::fill(m_slopes.begin(), m_slopes.end(), 0.0);
+        std::fill(m_active.begin(), m_active.end(), false);
     }
 };
 

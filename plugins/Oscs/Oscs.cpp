@@ -462,7 +462,6 @@ void DualOscOS::next(int nSamples) {
  
 PulsarOS::PulsarOS() : 
     m_sampleRate(static_cast<float>(sampleRate())),
-    m_sampleDur(static_cast<float>(sampleDur())),
     m_oversampleIndex(sc_clip(static_cast<int>(in0(Oversample)), 0, 4)),
     m_osRatio(1 << m_oversampleIndex)
 {
@@ -557,8 +556,8 @@ void PulsarOS::next(int nSamples) {
             
             // Get current parameter values (no interpolation - latched per trigger)
             float triggerFreq = isTriggerFreqAudioRate ? 
-                sc_clip(in(TriggerFreq)[i], m_sampleRate * -0.49f, m_sampleRate * 0.49f) : 
-                sc_clip(in0(TriggerFreq), m_sampleRate * -0.49f, m_sampleRate * 0.49f);
+                sc_clip(in(TriggerFreq)[i], 0.0f, m_sampleRate * 0.49f) : 
+                sc_clip(in0(TriggerFreq), 0.0f, m_sampleRate * 0.49f);
             
             float offset = isSubSampleOffsetAudioRate ? 
                 in(SubSampleOffset)[i] : 
@@ -589,8 +588,9 @@ void PulsarOS::next(int nSamples) {
                 sc_clip(in(ModCyclePos)[i], 0.0f, 1.0f) :
                 slopedModCyclePos.consume();
             
-            // 1. Process voice allocation
-            m_allocator.process(
+            // 1. Process voice allocator
+            auto voices = m_allocator.process(
+                NUM_VOICES,
                 trigger,
                 triggerFreq,
                 offset,
@@ -602,7 +602,7 @@ void PulsarOS::next(int nSamples) {
             for (int g = 0; g < NUM_VOICES; ++g) {
                 
                 // Trigger new grain if needed and store graindata
-                if (m_allocator.triggers[g]) {
+                if (voices.triggers[g]) {
                     m_grainData[g].oscFreq = oscFreq;
                     m_grainData[g].modFreq = modFreq;
                     m_grainData[g].modIndex = modIndex;
@@ -611,16 +611,17 @@ void PulsarOS::next(int nSamples) {
                 }
                 
                 // Process grain if voice is active
-                if (m_allocator.isActive[g]) {
+                if (voices.gates[g]) {
                     
                     // Calculate slopes
-                    float oscSlope = m_grainData[g].oscFreq * m_sampleDur;
-                    float envSlope = static_cast<float>(m_allocator.localSlopes[g]);
-                    float modSlope = m_grainData[g].modFreq * m_sampleDur;
+                    float oscSlope = m_grainData[g].oscFreq / m_sampleRate;
+                    float modSlope = m_grainData[g].modFreq / m_sampleRate;
+                    float envSlope = voices.slopes[g];
  
-                    // Accumulate osc and mod phases
-                    float oscPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * static_cast<double>(oscSlope)));
-                    float modPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * static_cast<double>(modSlope)));
+                    // Calculate phases
+                    float oscPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * oscSlope));
+                    float modPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * modSlope));
+                    float envPhase = voices.phases[g];
  
                     // Calculate mipmap parameters for mod (use ceil for no oversampling)
                     float modSamplesPerFrame = sc_abs(modSlope) * static_cast<float>(modCycleSamples);
@@ -679,7 +680,7 @@ void PulsarOS::next(int nSamples) {
                     
                     // Process env wavetable oscillator
                     float grainWindow = OscUtils::wavetableOsc(
-                        m_allocator.phases[g], envTable.data, 
+                        envPhase, envTable.data, 
                         envCycleSamples, envNumCycles, envCyclePosVal,
                         envSpacing1, envSpacing2, envCrossfade
                     );
@@ -706,8 +707,8 @@ void PulsarOS::next(int nSamples) {
             
             // Get current parameter values (no interpolation - latched per trigger)
             float triggerFreq = isTriggerFreqAudioRate ? 
-                sc_clip(in(TriggerFreq)[i], m_sampleRate * -0.49f, m_sampleRate * 0.49f) : 
-                sc_clip(in0(TriggerFreq), m_sampleRate * -0.49f, m_sampleRate * 0.49f);
+                sc_clip(in(TriggerFreq)[i], 0.0f, m_sampleRate * 0.49f) : 
+                sc_clip(in0(TriggerFreq), 0.0f, m_sampleRate * 0.49f);
             
             float offset = isSubSampleOffsetAudioRate ? 
                 in(SubSampleOffset)[i] : 
@@ -738,8 +739,9 @@ void PulsarOS::next(int nSamples) {
                 sc_clip(in(ModCyclePos)[i], 0.0f, 1.0f) :
                 slopedModCyclePos.consume();
         
-            // 1. Process voice allocation
-            m_allocator.process(
+            // 1. Process voice allocator
+            auto voices = m_allocator.process(
+                NUM_VOICES,
                 trigger,
                 triggerFreq,
                 offset,
@@ -758,7 +760,7 @@ void PulsarOS::next(int nSamples) {
             for (int g = 0; g < NUM_VOICES; ++g) {
                 
                 // Trigger new grain if needed and store graindata
-                if (m_allocator.triggers[g]) {
+                if (voices.triggers[g]) {
                     m_grainData[g].oscFreq = oscFreq;
                     m_grainData[g].modFreq = modFreq;
                     m_grainData[g].modIndex = modIndex;
@@ -767,16 +769,17 @@ void PulsarOS::next(int nSamples) {
                 }
                 
                 // Process grain if voice is active
-                if (m_allocator.isActive[g]) {
+                if (voices.gates[g]) {
                     
                     // Calculate slopes
-                    float oscSlope = m_grainData[g].oscFreq * m_sampleDur;
-                    float envSlope = static_cast<float>(m_allocator.localSlopes[g]);
-                    float modSlope = m_grainData[g].modFreq * m_sampleDur;
+                    float oscSlope = m_grainData[g].oscFreq / m_sampleRate;
+                    float modSlope = m_grainData[g].modFreq / m_sampleRate;
+                    float envSlope = voices.slopes[g];
  
-                    // Accumulate osc and mod phases
-                    float oscPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * static_cast<double>(oscSlope)));
-                    float modPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * static_cast<double>(modSlope)));
+                    // Calculate phases
+                    float oscPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * oscSlope));
+                    float modPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * modSlope));
+                    float envPhase = voices.phases[g];
  
                     // Calculate mipmap parameters for mod (use floor for oversampling)
                     float modSamplesPerFrame = sc_abs(modSlope) * static_cast<float>(modCycleSamples);
@@ -808,7 +811,7 @@ void PulsarOS::next(int nSamples) {
                     
                     // Initialize env phase and slope for oversampling
                     float osEnvSlope = envSlope / static_cast<float>(m_osRatio);
-                    float osEnvPhase = m_allocator.phases[g] - envSlope;
+                    float osEnvPhase = envPhase - envSlope;
                     
                     // Calculate mipmap parameters for env (use floor for oversampling)
                     float envSamplesPerFrame = sc_abs(envSlope) * static_cast<float>(envCycleSamples);
@@ -893,15 +896,14 @@ void PulsarOS::next(int nSamples) {
  
 DualPulsarOS::DualPulsarOS() :
     m_sampleRate(static_cast<float>(sampleRate())),
-    m_sampleDur(static_cast<float>(sampleDur())),
     m_oversampleIndex(sc_clip(static_cast<int>(in0(Oversample)), 0, 4)),
     m_osRatio(1 << m_oversampleIndex)
 {
     // Initialize parameter cache (sloped params)
     oscCyclePosPast = sc_clip(in0(OscCyclePos), 0.0f, 1.0f);
     modCyclePosPast = sc_clip(in0(ModCyclePos), 0.0f, 1.0f);
-    skewPast = sc_clip(in0(Skew), 0.0f, 1.0f);
-    indexPast = sc_clip(in0(Index), 0.0f, 10.0f);
+    envSkewPast = sc_clip(in0(EnvSkew), 0.0f, 1.0f);
+    envIndexPast = sc_clip(in0(EnvIndex), 0.0f, 10.0f);
  
     // Check which inputs are audio-rate
     isTriggerAudioRate = isAudioRateIn(Trigger);
@@ -917,8 +919,8 @@ DualPulsarOS::DualPulsarOS() :
     isWarpModAudioRate = isAudioRateIn(WarpMod);
     isOscCyclePosAudioRate = isAudioRateIn(OscCyclePos);
     isModCyclePosAudioRate = isAudioRateIn(ModCyclePos);
-    isSkewAudioRate = isAudioRateIn(Skew);
-    isIndexAudioRate = isAudioRateIn(Index);
+    isEnvSkewAudioRate = isAudioRateIn(EnvSkew);
+    isEnvIndexAudioRate = isAudioRateIn(EnvIndex);
  
     // Initialize oversampling
     if (m_oversampleIndex > 0) {
@@ -935,8 +937,8 @@ DualPulsarOS::DualPulsarOS() :
         m_outputOversampling.init(m_osRatio, m_sampleRate, m_outputOSBuffer);
         m_oscCyclePosOversampling.init(m_osRatio, m_sampleRate, m_oscCyclePosOSBuffer);
         m_modCyclePosOversampling.init(m_osRatio, m_sampleRate, m_modCyclePosOSBuffer);
-        m_skewOversampling.init(m_osRatio, m_sampleRate, m_skewOSBuffer);
-        m_indexOversampling.init(m_osRatio, m_sampleRate, m_indexOSBuffer);
+        m_envSkewOversampling.init(m_osRatio, m_sampleRate, m_skewOSBuffer);
+        m_envIndexOversampling.init(m_osRatio, m_sampleRate, m_indexOSBuffer);
     }
  
     // Set calc function & compute initial sample
@@ -960,8 +962,8 @@ void DualPulsarOS::next(int nSamples) {
     // Control-rate parameters with smooth interpolation (sloped params)
     auto slopedOscCyclePos = makeSlope(sc_clip(in0(OscCyclePos), 0.0f, 1.0f), oscCyclePosPast);
     auto slopedModCyclePos = makeSlope(sc_clip(in0(ModCyclePos), 0.0f, 1.0f), modCyclePosPast);
-    auto slopedSkew = makeSlope(sc_clip(in0(Skew), 0.0f, 1.0f), skewPast);
-    auto slopedIndex = makeSlope(sc_clip(in0(Index), 0.0f, 10.0f), indexPast);
+    auto slopedEnvSkew = makeSlope(sc_clip(in0(EnvSkew), 0.0f, 1.0f), envSkewPast);
+    auto slopedEnvIndex = makeSlope(sc_clip(in0(EnvIndex), 0.0f, 10.0f), envIndexPast);
  
     // Control-rate parameters (settings, no interpolation)
     float oscBufNum = in0(OscBuffer);
@@ -995,8 +997,8 @@ void DualPulsarOS::next(int nSamples) {
  
             // Get current parameter values (no interpolation - latched per trigger)
             float triggerFreq = isTriggerFreqAudioRate ?
-                sc_clip(in(TriggerFreq)[i], m_sampleRate * -0.49f, m_sampleRate * 0.49f) :
-                sc_clip(in0(TriggerFreq), m_sampleRate * -0.49f, m_sampleRate * 0.49f);
+                sc_clip(in(TriggerFreq)[i], 0.0f, m_sampleRate * 0.49f) :
+                sc_clip(in0(TriggerFreq), 0.0f, m_sampleRate * 0.49f);
  
             float offset = isSubSampleOffsetAudioRate ?
                 in(SubSampleOffset)[i] :
@@ -1043,16 +1045,17 @@ void DualPulsarOS::next(int nSamples) {
                 sc_clip(in(ModCyclePos)[i], 0.0f, 1.0f) :
                 slopedModCyclePos.consume();
  
-            float skewVal = isSkewAudioRate ?
-                sc_clip(in(Skew)[i], 0.0f, 1.0f) :
-                slopedSkew.consume();
+            float envSkewVal = isEnvSkewAudioRate ?
+                sc_clip(in(EnvSkew)[i], 0.0f, 1.0f) :
+                slopedEnvSkew.consume();
  
-            float indexVal = isIndexAudioRate ?
-                sc_clip(in(Index)[i], 0.0f, 10.0f) :
-                slopedIndex.consume();
+            float envIndexVal = isEnvIndexAudioRate ?
+                sc_clip(in(EnvIndex)[i], 0.0f, 10.0f) :
+                slopedEnvIndex.consume();
  
-            // 1. Process voice allocation
-            m_allocator.process(
+            // 1. Process voice allocator
+            auto voices = m_allocator.process(
+                NUM_VOICES,
                 trigger,
                 triggerFreq,
                 offset,
@@ -1064,7 +1067,7 @@ void DualPulsarOS::next(int nSamples) {
             for (int g = 0; g < NUM_VOICES; ++g) {
  
                 // Trigger new grain if needed and store graindata
-                if (m_allocator.triggers[g]) {
+                if (voices.triggers[g]) {
                     m_grainData[g].oscFreq = oscFreq;
                     m_grainData[g].modFreq = modFreq;
                     m_grainData[g].pmIndexOsc = pmIndexOsc;
@@ -1078,16 +1081,17 @@ void DualPulsarOS::next(int nSamples) {
                 }
  
                 // Process grain if voice is active
-                if (m_allocator.isActive[g]) {
+                if (voices.gates[g]) {
  
                     // Calculate slopes
-                    float oscSlope = m_grainData[g].oscFreq * m_sampleDur;
-                    float modSlope = m_grainData[g].modFreq * m_sampleDur;
-                    float envSlope = static_cast<float>(m_allocator.localSlopes[g]);
+                    float oscSlope = m_grainData[g].oscFreq / m_sampleRate;
+                    float modSlope = m_grainData[g].modFreq / m_sampleRate;
+                    float envSlope = voices.slopes[g];
  
-                    // Derive osc and mod phases from sample count
-                    float oscPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * static_cast<double>(oscSlope)));
-                    float modPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * static_cast<double>(modSlope)));
+                    // Calculate phases
+                    float oscPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * oscSlope));
+                    float modPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * modSlope));
+                    float envPhase = voices.phases[g];
  
                     // Phase increment distortion ratios
                     float phsIncRatioOsc = 0.0f;
@@ -1098,10 +1102,10 @@ void DualPulsarOS::next(int nSamples) {
                     }
 
                     // Apply Phase increment distortion
-                    float phsIncDistOsc = Easing::Interp::jCurve(m_allocator.phases[g], m_grainData[g].warpOsc, Easing::Cores::cubic) - m_allocator.phases[g];
+                    float phsIncDistOsc = Easing::Interp::jCurve(envPhase, m_grainData[g].warpOsc, Easing::Cores::cubic) - envPhase;
                     float oscPhaseDistorted = sc_frac(oscPhase + (phsIncDistOsc * phsIncRatioOsc));
  
-                    float phsIncDistMod = Easing::Interp::jCurve(m_allocator.phases[g], m_grainData[g].warpMod, Easing::Cores::cubic) - m_allocator.phases[g];
+                    float phsIncDistMod = Easing::Interp::jCurve(envPhase, m_grainData[g].warpMod, Easing::Cores::cubic) - envPhase;
                     float modPhaseDistorted = sc_frac(modPhase + (phsIncDistMod * phsIncRatioMod));
  
                     // Calculate mipmap parameters for osc (use ceil for no oversampling)
@@ -1123,13 +1127,27 @@ void DualPulsarOS::next(int nSamples) {
                     int modSpacing1 = 1 << modLayer;
                     int modSpacing2 = modSpacing1 << 1;
                     float modCrossfade = sc_frac(modOctave);
- 
+
+                    // PM index scaling: normalize by modulator, scale by carrier
+                    float pmScaleRatioOsc = 0.0f;
+                    if (sc_abs(modSlope) > Utils::SAFE_DENOM_EPSILON) {
+                        pmScaleRatioOsc = sc_abs(oscSlope / modSlope);
+                    }
+                    float pmScaleRatioMod = 0.0f;
+                    if (sc_abs(oscSlope) > Utils::SAFE_DENOM_EPSILON) {
+                        pmScaleRatioMod = sc_abs(modSlope / oscSlope);
+                    }
+
+                    // Scale PM indices
+                    float pmIndexOscScaled = m_grainData[g].pmIndexOsc * pmScaleRatioOsc;
+                    float pmIndexModScaled = m_grainData[g].pmIndexMod * pmScaleRatioMod;
+
                     // Process cross-modulated dual oscillator
                     auto result = m_dualOscs[g].process(
                         oscPhaseDistorted, modPhaseDistorted,
                         oscCyclePosVal, modCyclePosVal,
                         oscSlope, modSlope,
-                        m_grainData[g].pmIndexOsc, m_grainData[g].pmIndexMod,
+                        pmIndexOscScaled, pmIndexModScaled,
                         m_grainData[g].pmFilterRatioOsc, m_grainData[g].pmFilterRatioMod,
                         oscSpacing1, oscSpacing2, oscCrossfade,
                         modSpacing1, modSpacing2, modCrossfade,
@@ -1139,7 +1157,7 @@ void DualPulsarOS::next(int nSamples) {
  
                     // Process gaussian window
                     float grainWindow = WindowFunctions::gaussianWindow(
-                        m_allocator.phases[g], skewVal, indexVal);
+                        envPhase, envSkewVal, envIndexVal);
  
                     // Accumulate grain output
                     sum += result.oscA * grainWindow;
@@ -1163,8 +1181,8 @@ void DualPulsarOS::next(int nSamples) {
  
             // Get current parameter values (no interpolation - latched per trigger)
             float triggerFreq = isTriggerFreqAudioRate ?
-                sc_clip(in(TriggerFreq)[i], m_sampleRate * -0.49f, m_sampleRate * 0.49f) :
-                sc_clip(in0(TriggerFreq), m_sampleRate * -0.49f, m_sampleRate * 0.49f);
+                sc_clip(in(TriggerFreq)[i], 0.0f, m_sampleRate * 0.49f) :
+                sc_clip(in0(TriggerFreq), 0.0f, m_sampleRate * 0.49f);
  
             float offset = isSubSampleOffsetAudioRate ?
                 in(SubSampleOffset)[i] :
@@ -1211,16 +1229,17 @@ void DualPulsarOS::next(int nSamples) {
                 sc_clip(in(ModCyclePos)[i], 0.0f, 1.0f) :
                 slopedModCyclePos.consume();
  
-            float skewVal = isSkewAudioRate ?
-                sc_clip(in(Skew)[i], 0.0f, 1.0f) :
-                slopedSkew.consume();
+            float envSkewVal = isEnvSkewAudioRate ?
+                sc_clip(in(EnvSkew)[i], 0.0f, 1.0f) :
+                slopedEnvSkew.consume();
  
-            float indexVal = isIndexAudioRate ?
-                sc_clip(in(Index)[i], 0.0f, 10.0f) :
-                slopedIndex.consume();
+            float envIndexVal = isEnvIndexAudioRate ?
+                sc_clip(in(EnvIndex)[i], 0.0f, 10.0f) :
+                slopedEnvIndex.consume();
  
-            // 1. Process voice allocation
-            m_allocator.process(
+            // 1. Process voice allocator
+            auto voices = m_allocator.process(
+                NUM_VOICES,
                 trigger,
                 triggerFreq,
                 offset,
@@ -1230,8 +1249,8 @@ void DualPulsarOS::next(int nSamples) {
             // 2. Upsample parameter values
             m_oscCyclePosOversampling.upsample(oscCyclePosVal);
             m_modCyclePosOversampling.upsample(modCyclePosVal);
-            m_skewOversampling.upsample(skewVal);
-            m_indexOversampling.upsample(indexVal);
+            m_envSkewOversampling.upsample(envSkewVal);
+            m_envIndexOversampling.upsample(envIndexVal);
  
             // 3. Clear OS buffer
             memset(m_outputOSBuffer, 0, m_osRatio * sizeof(float));
@@ -1240,7 +1259,7 @@ void DualPulsarOS::next(int nSamples) {
             for (int g = 0; g < NUM_VOICES; ++g) {
  
                 // Trigger new grain if needed and store graindata
-                if (m_allocator.triggers[g]) {
+                if (voices.triggers[g]) {
                     m_grainData[g].oscFreq = oscFreq;
                     m_grainData[g].modFreq = modFreq;
                     m_grainData[g].pmIndexOsc = pmIndexOsc;
@@ -1254,16 +1273,17 @@ void DualPulsarOS::next(int nSamples) {
                 }
  
                 // Process grain if voice is active
-                if (m_allocator.isActive[g]) {
+                if (voices.gates[g]) {
  
                     // Calculate slopes
-                    float oscSlope = m_grainData[g].oscFreq * m_sampleDur;
-                    float modSlope = m_grainData[g].modFreq * m_sampleDur;
-                    float envSlope = static_cast<float>(m_allocator.localSlopes[g]);
+                    float oscSlope = m_grainData[g].oscFreq / m_sampleRate;
+                    float modSlope = m_grainData[g].modFreq / m_sampleRate;
+                    float envSlope = voices.slopes[g];
  
-                    // Derive osc and mod phases from sample count
-                    float oscPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * static_cast<double>(oscSlope)));
-                    float modPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * static_cast<double>(modSlope)));
+                    // Calculate phases
+                    float oscPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * oscSlope));
+                    float modPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * modSlope));
+                    float envPhase = voices.phases[g];
  
                     // Calculate mipmap parameters for osc (use floor for oversampling)
                     float oscSamplesPerFrame = sc_abs(oscSlope) * static_cast<float>(oscCycleSamples);
@@ -1295,7 +1315,7 @@ void DualPulsarOS::next(int nSamples) {
  
                     // Initialize env phase and slope for oversampling
                     float osEnvSlope = envSlope / static_cast<float>(m_osRatio);
-                    float osEnvPhase = m_allocator.phases[g] - envSlope;
+                    float osEnvPhase = envPhase - envSlope;
  
                     // Phase increment distortion ratios
                     float phsIncRatioOsc = 0.0f;
@@ -1304,6 +1324,20 @@ void DualPulsarOS::next(int nSamples) {
                         phsIncRatioOsc = sc_abs(oscSlope / envSlope);
                         phsIncRatioMod = sc_abs(modSlope / envSlope);
                     }
+
+                    // PM index scaling: normalize by modulator, scale by carrier
+                    float pmScaleRatioOsc = 0.0f;
+                    if (sc_abs(modSlope) > Utils::SAFE_DENOM_EPSILON) {
+                        pmScaleRatioOsc = sc_abs(oscSlope / modSlope);
+                    }
+                    float pmScaleRatioMod = 0.0f;
+                    if (sc_abs(oscSlope) > Utils::SAFE_DENOM_EPSILON) {
+                        pmScaleRatioMod = sc_abs(modSlope / oscSlope);
+                    }
+
+                    // Scale PM indices
+                    float pmIndexOscScaled = m_grainData[g].pmIndexOsc * pmScaleRatioOsc;
+                    float pmIndexModScaled = m_grainData[g].pmIndexMod * pmScaleRatioMod;
  
                     for (int k = 0; k < m_osRatio; k++) {
  
@@ -1330,7 +1364,7 @@ void DualPulsarOS::next(int nSamples) {
                             osOscPhaseDistorted, osModPhaseDistorted,
                             m_oscCyclePosOSBuffer[k], m_modCyclePosOSBuffer[k],
                             osOscSlope, osModSlope,
-                            m_grainData[g].pmIndexOsc, m_grainData[g].pmIndexMod,
+                            pmIndexOscScaled, pmIndexModScaled,
                             m_grainData[g].pmFilterRatioOsc, m_grainData[g].pmFilterRatioMod,
                             oscSpacing1, oscSpacing2, oscCrossfade,
                             modSpacing1, modSpacing2, modCrossfade,
@@ -1363,11 +1397,11 @@ void DualPulsarOS::next(int nSamples) {
     modCyclePosPast = isModCyclePosAudioRate ?
         sc_clip(in(ModCyclePos)[nSamples - 1], 0.0f, 1.0f) : slopedModCyclePos.value;
  
-    skewPast = isSkewAudioRate ?
-        sc_clip(in(Skew)[nSamples - 1], 0.0f, 1.0f) : slopedSkew.value;
+    envSkewPast = isEnvSkewAudioRate ?
+        sc_clip(in(EnvSkew)[nSamples - 1], 0.0f, 1.0f) : slopedEnvSkew.value;
  
-    indexPast = isIndexAudioRate ?
-        sc_clip(in(Index)[nSamples - 1], 0.0f, 10.0f) : slopedIndex.value;
+    envIndexPast = isEnvIndexAudioRate ?
+        sc_clip(in(EnvIndex)[nSamples - 1], 0.0f, 10.0f) : slopedEnvIndex.value;
 }
 
 void Oscs_setup()

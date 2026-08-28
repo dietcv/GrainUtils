@@ -98,7 +98,7 @@ struct BuchlaFold {
     
     // Transfer function: F(x) = [SLOPE*x + Σ(mix * cell(x))] / SLOPE
     static inline double nlFunc(double x) {
-        double y = SLOPE * x;   // direct signal path
+        double y = SLOPE * x;
         for (const auto& cell : CELLS) {
             y += cell.mix * cell.func(x);
         }

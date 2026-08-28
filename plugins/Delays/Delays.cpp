@@ -61,8 +61,8 @@ void GrainDelay::next(int nSamples) {
         
         // Get current parameter values (no interpolation - latched per trigger)
         float triggerRate = isTriggerRateAudioRate ? 
-            sc_clip(in(TriggerRate)[i], 0.1f, 500.0f) : 
-            sc_clip(in0(TriggerRate), 0.1f, 500.0f);
+            sc_clip(in(TriggerRate)[i], 0.0f, m_sampleRate * 0.49f) : 
+            sc_clip(in0(TriggerRate), 0.0f, m_sampleRate * 0.49f);
             
         float overlap = isOverlapAudioRate ? 
             sc_clip(in(Overlap)[i], 0.001f, static_cast<float>(NUM_VOICES)) : 
@@ -102,11 +102,11 @@ void GrainDelay::next(int nSamples) {
         // 1. Get event data from scheduler
         auto scheduler = m_scheduler.process(triggerRate, reset, m_sampleRate);
         
-        // 2. Process voice allocation with scaled rate
-        float rateScaled = scheduler.rate / overlap;
-        m_allocator.process(
+        // 2. Process voice allocator
+        auto voices = m_allocator.process(
+            NUM_VOICES,
             scheduler.trigger, 
-            rateScaled, 
+            scheduler.rate / overlap, 
             scheduler.subSampleOffset,
             m_sampleRate
         );
@@ -116,7 +116,7 @@ void GrainDelay::next(int nSamples) {
         for (int g = 0; g < NUM_VOICES; ++g) {
 
             // Trigger new grain if needed
-            if (m_allocator.triggers[g]) {
+            if (voices.triggers[g]) {
 
                 // Calculate read position
                 float normalizedWritePos = static_cast<float>(m_writePos) / m_bufFrames;
@@ -129,9 +129,9 @@ void GrainDelay::next(int nSamples) {
                 m_grainData[g].sampleCount = scheduler.subSampleOffset;
             }
             
-            // Process grain if voice allocator says it's active
-            if (m_allocator.isActive[g]) {
-                
+            // Process grain if voice is active
+            if (voices.gates[g]) {
+
                 // Calculate grain position: readPos + (accumulator * grainRate)
                 float grainPos = (m_grainData[g].readPos * m_bufFrames) + (m_grainData[g].sampleCount * m_grainData[g].rate);
                 
@@ -143,7 +143,7 @@ void GrainDelay::next(int nSamples) {
                 );
                 
                 // Apply Hanning window
-                grainSample *= sc_hanwindow(m_allocator.phases[g]);
+                grainSample *= sc_hanwindow(voices.phases[g]);
                 delayed += grainSample;
 
                 // Increment sample count

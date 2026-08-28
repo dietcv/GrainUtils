@@ -97,6 +97,7 @@ set(GrainUtils_schelp_files
     plugins/EventSystem/HelpSource/RampIntegrator.schelp
     plugins/EventSystem/HelpSource/SchedulerBurst.schelp
     plugins/EventSystem/HelpSource/SchedulerCycle.schelp
+    plugins/EventSystem/HelpSource/SchedulerBank.schelp
     plugins/EventSystem/HelpSource/VoiceAllocator.schelp
 
     # Filters

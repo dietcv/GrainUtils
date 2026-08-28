@@ -49,7 +49,6 @@ private:
     
     // Constants cached at construction
     const float m_sampleRate;
-    const float m_sampleDur;
     
     // Core processing
     EventUtils::SchedulerBurst m_scheduler;
@@ -74,6 +73,47 @@ private:
     };
 };
 
+// ===== SCHEDULER BANK =====
+
+class SchedulerBank : public SCUnit {
+public:
+    SchedulerBank();
+    ~SchedulerBank();
+
+private:
+    void next(int nSamples);
+
+    // Constants
+    static constexpr int MAX_CHANNELS = 8;
+
+    // Constants cached at construction
+    const float m_sampleRate;
+    const int m_numChannels;
+
+    // Core processing
+    EventUtils::SchedulerBank<MAX_CHANNELS> m_bank;
+    EventUtils::IsTrigger m_resetTrigger;
+
+    // Audio rate flags
+    bool isRateAudioRate;
+    bool isSpreadAudioRate;
+    bool isCoupleAudioRate;
+    bool isBiasAudioRate;
+    bool isResetAudioRate;
+
+    enum InputParams {
+        NumChannels,
+        Rate,
+        Spread,
+        Couple,
+        Bias,
+        Reset
+    };
+
+    // Outputs: numChannels triggers, rates, offsets and phases
+    // Output indices are calculated dynamically based on m_numChannels
+};
+
 // ===== VOICE ALLOCATOR =====
 
 class VoiceAllocator : public SCUnit {
@@ -85,7 +125,7 @@ private:
     void next(int nSamples);
    
     // Constants
-    static constexpr int MAX_CHANNELS = 64;
+    static constexpr int MAX_CHANNELS = 16;
 
     // Constants cached at construction
     const float m_sampleRate;

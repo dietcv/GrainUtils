@@ -14,7 +14,6 @@ Disperser : UGen {
 
 MorphSVF : UGen {
     *ar { |input, freq = 440, resonance = 0, shape = 0|
- 
         ^this.multiNew('audio', input, freq, resonance, shape)
     }
 
