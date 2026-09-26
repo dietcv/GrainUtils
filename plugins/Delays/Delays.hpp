@@ -1,8 +1,9 @@
 #pragma once
 #include "SC_PlugIn.hpp"
+#include "Utils.hpp"
 #include "EventUtils.hpp"
 #include "FilterUtils.hpp"
-#include "PluginUtils.hpp"
+#include "BufferUtils.hpp"
 #include <array>
 
 class GrainDelay : public SCUnit {
@@ -25,10 +26,18 @@ private:
     const int m_bufMask;
     
     // Core trigger system
+    EventUtils::IsTrigger m_resetTrigger;
     EventUtils::SchedulerCycle m_scheduler;
     EventUtils::VoiceAllocator<NUM_VOICES> m_allocator;
-    EventUtils::IsTrigger m_resetTrigger;
-    
+    FilterUtils::DampingFilter m_dampingFilter;
+    FilterUtils::DCBlocker m_dcBlocker;
+
+    // Control-rate interpolation
+    Utils::ParamInterp m_delayTimeInterp;
+    Utils::ParamInterp m_mixInterp;
+    Utils::ParamInterp m_feedbackInterp;
+    Utils::ParamInterp m_dampingInterp;
+
     // Audio buffer and processing
     float *m_buffer{nullptr};
     int m_writePos = 0;
@@ -39,19 +48,7 @@ private:
         float rate = 1.0f;
         float sampleCount = 0.0f;
     };
-    
-    // Grain voices
     std::array<GrainData, NUM_VOICES> m_grainData;
-    
-    // Feedback processing filters
-    FilterUtils::OnePoleDirect m_dampingFilter;
-    FilterUtils::OnePoleHz m_dcBlocker;
- 
-    // Cache for SlopeSignal state
-    float delayTimePast;
-    float mixPast;
-    float feedbackPast;
-    float dampingPast;
     
     // Audio rate flags
     bool isTriggerRateAudioRate;

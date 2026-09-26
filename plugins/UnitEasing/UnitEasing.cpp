@@ -6,9 +6,6 @@ extern InterfaceTable* ft;
 // ===== JCURVE =====
 
 JCurve::JCurve() {
-
-    // Initialize parameter cache
-    shapePast = sc_clip(in0(Shape), 0.0f, 1.0f);
     
     // Check which inputs are audio-rate
     isShapeAudioRate = isAudioRateIn(Shape);
@@ -23,7 +20,7 @@ void JCurve::next(int nSamples) {
     const float* phaseIn = in(Phase);
     
     // Control-rate parameters with smooth interpolation
-    auto slopedShape = makeSlope(sc_clip(in0(Shape), 0.0f, 1.0f), shapePast);
+    m_shapeInterp.update(sc_clip(in0(Shape), 0.0f, 1.0f), nSamples);
     
     // Output pointer
     float* output = out(Out);
@@ -36,24 +33,15 @@ void JCurve::next(int nSamples) {
         // Get current parameter values (audio-rate or interpolated control-rate)
         float shape = isShapeAudioRate ? 
             sc_clip(in(Shape)[i], 0.0f, 1.0f) : 
-            slopedShape.consume();
+            m_shapeInterp.process();
         
         output[i] = Easing::Interp::jCurve(phase, shape, Easing::Cores::quintic);
     }
-    
-    // Update parameter cache (use last value if audio-rate, otherwise slope value)
-    shapePast = isShapeAudioRate ? 
-        sc_clip(in(Shape)[nSamples - 1], 0.0f, 1.0f) : 
-        slopedShape.value;
 }
 
 // ===== SCURVE =====
 
 SCurve::SCurve() {
-
-    // Initialize parameter cache
-    shapePast = sc_clip(in0(Shape), 0.0f, 1.0f);
-    inflectionPast = sc_clip(in0(Inflection), 0.0f, 1.0f);
     
     // Check which inputs are audio-rate
     isShapeAudioRate = isAudioRateIn(Shape);
@@ -69,8 +57,8 @@ void SCurve::next(int nSamples) {
     const float* phaseIn = in(Phase);
     
     // Control-rate parameters with smooth interpolation
-    auto slopedShape = makeSlope(sc_clip(in0(Shape), 0.0f, 1.0f), shapePast);
-    auto slopedInflection = makeSlope(sc_clip(in0(Inflection), 0.0f, 1.0f), inflectionPast);
+    m_shapeInterp.update(sc_clip(in0(Shape), 0.0f, 1.0f), nSamples);
+    m_inflectionInterp.update(sc_clip(in0(Inflection), 0.0f, 1.0f), nSamples);
     
     // Output pointer
     float* output = out(Out);
@@ -83,23 +71,14 @@ void SCurve::next(int nSamples) {
         // Get current parameter values (audio-rate or interpolated control-rate)
         float shape = isShapeAudioRate ? 
             sc_clip(in(Shape)[i], 0.0f, 1.0f) : 
-            slopedShape.consume();
+            m_shapeInterp.process();
             
         float inflection = isInflectionAudioRate ? 
             sc_clip(in(Inflection)[i], 0.0f, 1.0f) : 
-            slopedInflection.consume();
+            m_inflectionInterp.process();
         
         output[i] = Easing::Interp::sCurve(phase, shape, inflection, Easing::Cores::quintic);
     }
-    
-    // Update parameter cache (use last value if audio-rate, otherwise slope value)
-    shapePast = isShapeAudioRate ? 
-        sc_clip(in(Shape)[nSamples - 1], 0.0f, 1.0f) : 
-        slopedShape.value;
-        
-    inflectionPast = isInflectionAudioRate ? 
-        sc_clip(in(Inflection)[nSamples - 1], 0.0f, 1.0f) : 
-        slopedInflection.value;
 }
 
 void UnitEasing_setup()

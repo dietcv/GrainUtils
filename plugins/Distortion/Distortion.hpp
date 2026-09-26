@@ -1,8 +1,9 @@
 #pragma once
 #include "SC_PlugIn.hpp"
+#include "Utils.hpp"
 #include "DistortionUtils.hpp"
 #include "OversamplingUtils.hpp"
-#include "PluginUtils.hpp"
+#include "BufferUtils.hpp"
 
 // ===== BUCHLA 259 WAVEFOLDER =====
 
@@ -15,23 +16,21 @@ private:
     void next(int nSamples);
     
     // Constants cached at construction
-    const float m_sampleRate;
     const int m_oversampleIndex;
     const int m_osRatio;
     
     // Core processing
     DistortionUtils::BuchlaFold m_folder;
+
+    // Control-rate interpolation
+    Utils::ParamInterp m_driveInterp;
+
+    // Oversampling interpolation
+    OversamplingUtils::OSParamInterp m_osDriveInterp;
     
-    // Oversampling objects
+    // Variable-Oversampling
     OversamplingUtils::VariableOversampling m_outputOversampling;
-    OversamplingUtils::VariableOversampling m_driveOversampling;
-    
-    // Stored oversampling state
     float* m_outputOSBuffer{nullptr};
-    float* m_driveOSBuffer{nullptr};
-    
-    // Cache for SlopeSignal state
-    float drivePast;
     
     // Audio rate flags
     bool isDriveAudioRate;
@@ -58,23 +57,21 @@ private:
     void next(int nSamples);
  
     // Constants cached at construction
-    const float m_sampleRate;
     const int m_oversampleIndex;
     const int m_osRatio;
  
     // Core processing
     DistortionUtils::SergeFold m_folder;
- 
-    // Oversampling objects
+
+    // Control-rate interpolation
+    Utils::ParamInterp m_driveInterp;
+
+    // Oversampling interpolation
+    OversamplingUtils::OSParamInterp m_osDriveInterp;
+    
+    // Variable-Oversampling
     OversamplingUtils::VariableOversampling m_outputOversampling;
-    OversamplingUtils::VariableOversampling m_driveOversampling;
- 
-    // Stored oversampling state
     float* m_outputOSBuffer{nullptr};
-    float* m_driveOSBuffer{nullptr};
- 
-    // Cache for SlopeSignal state
-    float drivePast;
  
     // Audio rate flags
     bool isDriveAudioRate;

@@ -1,5 +1,6 @@
 #pragma once
 #include "SC_PlugIn.hpp"
+#include "Utils.hpp"
 #include "ShaperUtils.hpp"
 
 // ===== HANNING WINDOW =====
@@ -10,9 +11,9 @@ public:
 
 private:
     void next(int nSamples);
-    
-    // Cache for SlopeSignal state
-    float skewPast;
+
+    // Control-rate interpolation
+    Utils::ParamInterp m_skewInterp;
     
     // Audio rate flags
     bool isSkewAudioRate;
@@ -37,9 +38,10 @@ public:
 
 private:
     void next(int nSamples);
-    
-    // Cache for SlopeSignal state
-    float skewPast, indexPast;
+
+    // Control-rate interpolation
+    Utils::ParamInterp m_skewInterp;
+    Utils::ParamInterp m_indexInterp;
     
     // Audio rate flags
     bool isSkewAudioRate;
@@ -66,9 +68,11 @@ public:
 
 private:
     void next(int nSamples);
-    
-    // Cache for SlopeSignal state
-    float skewPast, widthPast, dutyPast;
+
+    // Control-rate interpolation
+    Utils::ParamInterp m_skewInterp;
+    Utils::ParamInterp m_widthInterp;
+    Utils::ParamInterp m_dutyInterp;
     
     // Audio rate flags
     bool isSkewAudioRate;
@@ -97,9 +101,10 @@ public:
 
 private:
     void next(int nSamples);
-    
-    // Cache for SlopeSignal state
-    float skewPast, widthPast;
+
+    // Control-rate interpolation
+    Utils::ParamInterp m_skewInterp;
+    Utils::ParamInterp m_widthInterp;
     
     // Audio rate flags
     bool isSkewAudioRate;
@@ -126,9 +131,10 @@ public:
 
 private:
     void next(int nSamples);
-    
-    // Cache for SlopeSignal state
-    float skewPast, shapePast;
+
+    // Control-rate interpolation
+    Utils::ParamInterp m_skewInterp;
+    Utils::ParamInterp m_shapeInterp;
     
     // Audio rate flags
     bool isSkewAudioRate;

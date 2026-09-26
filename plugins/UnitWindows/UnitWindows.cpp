@@ -6,9 +6,6 @@ extern InterfaceTable* ft;
 // ===== HANNING WINDOW =====
 
 HanningWindow::HanningWindow() {
-
-    // Initialize parameter cache
-    skewPast = sc_clip(in0(Skew), 0.0f, 1.0f);
     
     // Check which inputs are audio-rate
     isSkewAudioRate = isAudioRateIn(Skew);
@@ -23,7 +20,7 @@ void HanningWindow::next(int nSamples) {
     const float* phaseIn = in(Phase);
     
     // Control-rate parameters with smooth interpolation
-    auto slopedSkew = makeSlope(sc_clip(in0(Skew), 0.0f, 1.0f), skewPast);
+    m_skewInterp.update(sc_clip(in0(Skew), 0.0f, 1.0f), nSamples);
     
     // Output pointer
     float* output = out(Out);
@@ -36,24 +33,15 @@ void HanningWindow::next(int nSamples) {
         // Get current parameter values (audio-rate or interpolated control-rate)
         float skew = isSkewAudioRate ? 
             sc_clip(in(Skew)[i], 0.0f, 1.0f) : 
-            slopedSkew.consume();
+            m_skewInterp.process();
         
         output[i] = WindowFunctions::hanningWindow(phase, skew);
     }
-    
-    // Update parameter cache (use last value if audio-rate, otherwise slope value)
-    skewPast = isSkewAudioRate ? 
-        sc_clip(in(Skew)[nSamples - 1], 0.0f, 1.0f) : 
-        slopedSkew.value;
 }
 
 // ===== GAUSSIAN WINDOW =====
 
 GaussianWindow::GaussianWindow() {
-
-    // Initialize parameter cache
-    skewPast = sc_clip(in0(Skew), 0.0f, 1.0f);
-    indexPast = sc_clip(in0(Index), 0.0f, 10.0f);
     
     // Check which inputs are audio-rate
     isSkewAudioRate = isAudioRateIn(Skew);
@@ -69,8 +57,8 @@ void GaussianWindow::next(int nSamples) {
     const float* phaseIn = in(Phase);
     
     // Control-rate parameters with smooth interpolation
-    auto slopedSkew = makeSlope(sc_clip(in0(Skew), 0.0f, 1.0f), skewPast);
-    auto slopedIndex = makeSlope(sc_clip(in0(Index), 0.0f, 10.0f), indexPast);
+    m_skewInterp.update(sc_clip(in0(Skew), 0.0f, 1.0f), nSamples);
+    m_indexInterp.update(sc_clip(in0(Index), 0.0f, 10.0f), nSamples);
     
     // Output pointer
     float* output = out(Out);
@@ -83,33 +71,19 @@ void GaussianWindow::next(int nSamples) {
         // Get current parameter values (audio-rate or interpolated control-rate)
         float skew = isSkewAudioRate ? 
             sc_clip(in(Skew)[i], 0.0f, 1.0f) : 
-            slopedSkew.consume();
+            m_skewInterp.process();
             
         float index = isIndexAudioRate ? 
             sc_clip(in(Index)[i], 0.0f, 10.0f) : 
-            slopedIndex.consume();
+            m_indexInterp.process();
         
         output[i] = WindowFunctions::gaussianWindow(phase, skew, index);
     }
-    
-    // Update parameter cache (use last value if audio-rate, otherwise slope value)
-    skewPast = isSkewAudioRate ? 
-        sc_clip(in(Skew)[nSamples - 1], 0.0f, 1.0f) : 
-        slopedSkew.value;
-        
-    indexPast = isIndexAudioRate ? 
-        sc_clip(in(Index)[nSamples - 1], 0.0f, 10.0f) : 
-        slopedIndex.value;
 }
 
 // ===== TRAPEZOIDAL WINDOW =====
 
 TrapezoidalWindow::TrapezoidalWindow() {
-
-    // Initialize parameter cache
-    skewPast = sc_clip(in0(Skew), 0.0f, 1.0f);
-    widthPast = sc_clip(in0(Width), 0.0f, 1.0f);
-    dutyPast = sc_clip(in0(Duty), 0.0f, 1.0f);
     
     // Check which inputs are audio-rate
     isSkewAudioRate = isAudioRateIn(Skew);
@@ -126,9 +100,9 @@ void TrapezoidalWindow::next(int nSamples) {
     const float* phaseIn = in(Phase);
     
     // Control-rate parameters with smooth interpolation
-    auto slopedSkew = makeSlope(sc_clip(in0(Skew), 0.0f, 1.0f), skewPast);
-    auto slopedWidth = makeSlope(sc_clip(in0(Width), 0.0f, 1.0f), widthPast);
-    auto slopedDuty = makeSlope(sc_clip(in0(Duty), 0.0f, 1.0f), dutyPast);
+    m_skewInterp.update(sc_clip(in0(Skew), 0.0f, 1.0f), nSamples);
+    m_widthInterp.update(sc_clip(in0(Width), 0.0f, 1.0f), nSamples);
+    m_dutyInterp.update(sc_clip(in0(Duty), 0.0f, 1.0f), nSamples);
     
     // Output pointer
     float* output = out(Out);
@@ -141,40 +115,23 @@ void TrapezoidalWindow::next(int nSamples) {
         // Get current parameter values (audio-rate or interpolated control-rate)
         float skew = isSkewAudioRate ? 
             sc_clip(in(Skew)[i], 0.0f, 1.0f) : 
-            slopedSkew.consume();
+            m_skewInterp.process();
             
         float width = isWidthAudioRate ? 
             sc_clip(in(Width)[i], 0.0f, 1.0f) : 
-            slopedWidth.consume();
+            m_widthInterp.process();
             
         float duty = isDutyAudioRate ? 
             sc_clip(in(Duty)[i], 0.0f, 1.0f) : 
-            slopedDuty.consume();
+            m_dutyInterp.process();
         
         output[i] = WindowFunctions::trapezoidalWindow(phase, skew, width, duty);
     }
-    
-    // Update parameter cache (use last value if audio-rate, otherwise slope value)
-    skewPast = isSkewAudioRate ? 
-        sc_clip(in(Skew)[nSamples - 1], 0.0f, 1.0f) : 
-        slopedSkew.value;
-        
-    widthPast = isWidthAudioRate ? 
-        sc_clip(in(Width)[nSamples - 1], 0.0f, 1.0f) : 
-        slopedWidth.value;
-        
-    dutyPast = isDutyAudioRate ? 
-        sc_clip(in(Duty)[nSamples - 1], 0.0f, 1.0f) : 
-        slopedDuty.value;
 }
 
 // ===== TUKEY WINDOW =====
 
 TukeyWindow::TukeyWindow() {
-
-    // Initialize parameter cache
-    skewPast = sc_clip(in0(Skew), 0.0f, 1.0f);
-    widthPast = sc_clip(in0(Width), 0.0f, 1.0f);
     
     // Check which inputs are audio-rate
     isSkewAudioRate = isAudioRateIn(Skew);
@@ -190,8 +147,8 @@ void TukeyWindow::next(int nSamples) {
     const float* phaseIn = in(Phase);
     
     // Control-rate parameters with smooth interpolation
-    auto slopedSkew = makeSlope(sc_clip(in0(Skew), 0.0f, 1.0f), skewPast);
-    auto slopedWidth = makeSlope(sc_clip(in0(Width), 0.0f, 1.0f), widthPast);
+    m_skewInterp.update(sc_clip(in0(Skew), 0.0f, 1.0f), nSamples);
+    m_widthInterp.update(sc_clip(in0(Width), 0.0f, 1.0f), nSamples);
     
     // Output pointer
     float* output = out(Out);
@@ -204,32 +161,19 @@ void TukeyWindow::next(int nSamples) {
         // Get current parameter values (audio-rate or interpolated control-rate)
         float skew = isSkewAudioRate ? 
             sc_clip(in(Skew)[i], 0.0f, 1.0f) : 
-            slopedSkew.consume();
+            m_skewInterp.process();
             
         float width = isWidthAudioRate ? 
             sc_clip(in(Width)[i], 0.0f, 1.0f) : 
-            slopedWidth.consume();
+            m_widthInterp.process();
         
         output[i] = WindowFunctions::tukeyWindow(phase, skew, width);
     }
-    
-    // Update parameter cache (use last value if audio-rate, otherwise slope value)
-    skewPast = isSkewAudioRate ? 
-        sc_clip(in(Skew)[nSamples - 1], 0.0f, 1.0f) : 
-        slopedSkew.value;
-        
-    widthPast = isWidthAudioRate ? 
-        sc_clip(in(Width)[nSamples - 1], 0.0f, 1.0f) : 
-        slopedWidth.value;
 }
 
 // ===== EXPONENTIAL WINDOW =====
 
 ExponentialWindow::ExponentialWindow() {
-
-    // Initialize parameter cache
-    skewPast = sc_clip(in0(Skew), 0.0f, 1.0f);
-    shapePast = sc_clip(in0(Shape), 0.0f, 1.0f);
     
     // Check which inputs are audio-rate
     isSkewAudioRate = isAudioRateIn(Skew);
@@ -245,8 +189,8 @@ void ExponentialWindow::next(int nSamples) {
     const float* phaseIn = in(Phase);
     
     // Control-rate parameters with smooth interpolation
-    auto slopedSkew = makeSlope(sc_clip(in0(Skew), 0.0f, 1.0f), skewPast);
-    auto slopedShape = makeSlope(sc_clip(in0(Shape), 0.0f, 1.0f), shapePast);
+    m_skewInterp.update(sc_clip(in0(Skew), 0.0f, 1.0f), nSamples);
+    m_shapeInterp.update(sc_clip(in0(Shape), 0.0f, 1.0f), nSamples);
     
     // Output pointer
     float* output = out(Out);
@@ -259,23 +203,14 @@ void ExponentialWindow::next(int nSamples) {
         // Get current parameter values (audio-rate or interpolated control-rate)
         float skew = isSkewAudioRate ? 
             sc_clip(in(Skew)[i], 0.0f, 1.0f) : 
-            slopedSkew.consume();
+            m_skewInterp.process();
             
         float shape = isShapeAudioRate ? 
             sc_clip(in(Shape)[i], 0.0f, 1.0f) : 
-            slopedShape.consume();
+            m_shapeInterp.process();
         
         output[i] = WindowFunctions::exponentialWindow(phase, skew, shape);
     }
-    
-    // Update parameter cache (use last value if audio-rate, otherwise slope value)
-    skewPast = isSkewAudioRate ? 
-        sc_clip(in(Skew)[nSamples - 1], 0.0f, 1.0f) : 
-        slopedSkew.value;
-        
-    shapePast = isShapeAudioRate ? 
-        sc_clip(in(Shape)[nSamples - 1], 0.0f, 1.0f) : 
-        slopedShape.value;
 }
 
 void UnitWindows_setup()

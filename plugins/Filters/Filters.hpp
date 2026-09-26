@@ -1,5 +1,6 @@
 #pragma once
 #include "SC_PlugIn.hpp"
+#include "Utils.hpp"
 #include "FilterUtils.hpp"
 
 // ===== DISPERSER =====
@@ -19,14 +20,17 @@ private:
     const float m_sampleRate;
    
     // Core processing
-    FilterUtils::AllpassCascade<NUM_ALLPASSES> disperser;
-    FilterUtils::OnePoleHz m_dcBlocker;
+    FilterUtils::AllpassChain<NUM_ALLPASSES> m_allpassChain;
+    FilterUtils::DCBlocker m_dcBlocker;
     
     // Feedback state
     float m_feedbackState{0.0f};
-    
-    // Cache for SlopeSignal state
-    float freqPast, resonancePast, mixPast, feedbackPast;
+
+    // Control-rate interpolation
+    Utils::ParamInterp m_freqInterp;
+    Utils::ParamInterp m_resonanceInterp;
+    Utils::ParamInterp m_mixInterp;
+    Utils::ParamInterp m_feedbackInterp;
 
     // Audio rate flags
     bool isFreqAudioRate;
@@ -48,7 +52,7 @@ private:
 
 };
 
-// ===== MORPHING STATE VARIABLE FILTER =====
+// ===== MORPHING FILTER =====
  
 class MorphSVF : public SCUnit {
 public:
@@ -62,10 +66,12 @@ private:
     const float m_sampleRate;
  
     // Core processing
-    FilterUtils::MorphingStateVariableFilter m_svf;
- 
-    // Cache for SlopeSignal state
-    float freqPast, resonancePast, shapePast;
+    FilterUtils::MorphingFilter m_morphingFilter;
+
+    // Control-rate interpolation
+    Utils::ParamInterp m_freqInterp;
+    Utils::ParamInterp m_resonanceInterp;
+    Utils::ParamInterp m_shapeInterp;
  
     // Audio rate flags
     bool isFreqAudioRate;

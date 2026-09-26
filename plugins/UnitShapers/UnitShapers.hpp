@@ -1,5 +1,6 @@
 #pragma once
 #include "SC_PlugIn.hpp"
+#include "Utils.hpp"
 #include "ShaperUtils.hpp"
 
 // ===== UNIT TRIANGLE =====
@@ -10,9 +11,9 @@ public:
 
 private:
     void next(int nSamples);
-    
-    // Cache for SlopeSignal state
-    float skewPast;
+
+    // Control-rate interpolation
+    Utils::ParamInterp m_skewInterp;
     
     // Audio rate flags
     bool isSkewAudioRate;
@@ -37,9 +38,9 @@ public:
 
 private:
     void next(int nSamples);
-    
-    // Cache for SlopeSignal state
-    float skewPast;
+
+    // Control-rate interpolation
+    Utils::ParamInterp m_skewInterp;
     
     // Audio rate flags
     bool isSkewAudioRate;
@@ -64,9 +65,9 @@ public:
 
 private:
     void next(int nSamples);
-    
-    // Cache for SlopeSignal state
-    float indexPast;
+
+    // Control-rate interpolation
+    Utils::ParamInterp m_indexInterp;
     
     // Audio rate flags
     bool isIndexAudioRate;

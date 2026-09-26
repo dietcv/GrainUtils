@@ -3,8 +3,8 @@
 DualOscOS : MultiOutUGen {
 	*ar { |bufnumA, phaseA, numCyclesA = 1, cyclePosA = 0,
 		  bufnumB, phaseB, numCyclesB = 1, cyclePosB = 0,
-		  pmIndexA = 0, pmIndexB = 0,
-		  pmFilterRatioA = 1, pmFilterRatioB = 1,
+		  xmIndexA = 0, xmIndexB = 0,
+		  xmFltRatioA = 1, xmFltRatioB = 1,
 		  oversample = 0|
 
 		// Validate buffers
@@ -14,7 +14,7 @@ DualOscOS : MultiOutUGen {
 		^this.multiNew('audio',
 			bufnumA, phaseA, numCyclesA, cyclePosA,
 			bufnumB, phaseB, numCyclesB, cyclePosB,
-			pmIndexA, pmIndexB, pmFilterRatioA, pmFilterRatioB,
+			xmIndexA, xmIndexB, xmFltRatioA, xmFltRatioB,
 			oversample)
 	}
 
@@ -65,9 +65,9 @@ PulsarOS : UGen {
 DualPulsarOS : UGen {
 	*ar { |trig, triggerFreq, subSampleOffset = 0,
 		  oscFreq = 440, modFreq = 440,
-		  pmIndexOsc = 0, pmIndexMod = 0,
-		  pmFilterRatioOsc = 1, pmFilterRatioMod = 1,
-		  warpOsc = 0.5, warpMod = 0.5,
+		  oscXmIndex = 0, modXmIndex = 0,
+		  oscXmFltRatio = 1, modXmFltRatio = 1,
+		  oscWarp = 0.5, modWarp = 0.5,
 		  oscBuffer, oscNumCycles = 1, oscCyclePos = 0,
 		  modBuffer, modNumCycles = 1, modCyclePos = 0,
 		  envSkew = 0.5, envIndex = 0,
@@ -79,9 +79,9 @@ DualPulsarOS : UGen {
 		^this.multiNew('audio',
 			trig, triggerFreq, subSampleOffset,
 			oscFreq, modFreq,
-			pmIndexOsc, pmIndexMod,
-			pmFilterRatioOsc, pmFilterRatioMod,
-			warpOsc, warpMod,
+			oscXmIndex, modXmIndex,
+			oscXmFltRatio, modXmFltRatio,
+			oscWarp, modWarp,
 			oscBuffer, oscNumCycles, oscCyclePos,
 			modBuffer, modNumCycles, modCyclePos,
 			envSkew, envIndex,

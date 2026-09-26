@@ -5,7 +5,7 @@
 #include "ShaperUtils.hpp"
 #include "OscUtils.hpp"
 #include "OversamplingUtils.hpp"
-#include "PluginUtils.hpp"
+#include "BufferUtils.hpp"
 
 // ===== SINGLE WAVETABLE OSCILLATOR =====
 
@@ -18,26 +18,24 @@ private:
     void next(int nSamples);
     
     // Constants cached at construction
-    const float m_sampleRate;
     const int m_oversampleIndex;
     const int m_osRatio;
     
     // Core processing
     EventUtils::RampToSlope m_rampToSlope;
 
-    // Buffer units
-    PluginUtils::BufUnit m_oscBufUnit;
-    
-    // Oversampling objects
-    OversamplingUtils::VariableOversampling m_outputOversampling;
-    OversamplingUtils::VariableOversampling m_cyclePosOversampling;
+    // Wavetables
+    BufferUtils::Wavetable m_oscWavetable;
 
-    // Stored oversampling state
-    float* m_outputOSBuffer{nullptr};
-    float* m_cyclePosOSBuffer{nullptr};
+    // Control-rate interpolation
+    Utils::ParamInterp m_cyclePosInterp;
+
+    // Oversampling interpolation
+    OversamplingUtils::OSParamInterp m_osCyclePosInterp;
     
-    // Cache for SlopeSignal state
-    float cyclePosPast;
+    // Variable-Oversampling
+    OversamplingUtils::VariableOversampling m_outputOversampling;
+    float* m_outputOSBuffer{nullptr};
     
     // Audio rate flags
     bool isCyclePosAudioRate;
@@ -75,45 +73,39 @@ private:
     EventUtils::RampToSlope m_rampToSlopeB;
     OscUtils::DualOsc m_dualOsc;
 
-    // Buffer units
-    PluginUtils::BufUnit m_oscBufUnitA;
-    PluginUtils::BufUnit m_oscBufUnitB;
+    // Wavetables
+    BufferUtils::Wavetable m_oscWavetableA;
+    BufferUtils::Wavetable m_oscWavetableB;
+
+    // Control-rate interpolation
+    Utils::ParamInterp m_cyclePosAInterp;
+    Utils::ParamInterp m_cyclePosBInterp;
+    Utils::ParamInterp m_xmIndexAInterp;
+    Utils::ParamInterp m_xmIndexBInterp;
+    Utils::ParamInterp m_xmFltRatioAInterp;
+    Utils::ParamInterp m_xmFltRatioBInterp;
+
+    // Oversampling interpolation
+    OversamplingUtils::OSParamInterp m_osCyclePosAInterp;
+    OversamplingUtils::OSParamInterp m_osCyclePosBInterp;
+    OversamplingUtils::OSParamInterp m_osXmIndexAInterp;
+    OversamplingUtils::OSParamInterp m_osXmIndexBInterp;
+    OversamplingUtils::OSParamInterp m_osXmFltRatioAInterp;
+    OversamplingUtils::OSParamInterp m_osXmFltRatioBInterp;
     
-    // Oversampling objects
+    // Variable-Oversampling
     OversamplingUtils::VariableOversampling m_outputOversamplingA;
     OversamplingUtils::VariableOversampling m_outputOversamplingB;
-    OversamplingUtils::VariableOversampling m_cyclePosAOversampling;
-    OversamplingUtils::VariableOversampling m_cyclePosBOversampling;
-    OversamplingUtils::VariableOversampling m_pmIndexAOversampling;
-    OversamplingUtils::VariableOversampling m_pmIndexBOversampling;
-    OversamplingUtils::VariableOversampling m_pmFilterRatioAOversampling;
-    OversamplingUtils::VariableOversampling m_pmFilterRatioBOversampling;
-    
-    // Stored oversampling state
     float* m_outputOSBufferA{nullptr};
     float* m_outputOSBufferB{nullptr};
-    float* m_cyclePosAOSBuffer{nullptr};
-    float* m_cyclePosBOSBuffer{nullptr};
-    float* m_pmIndexAOSBuffer{nullptr};
-    float* m_pmIndexBOSBuffer{nullptr};
-    float* m_pmFilterRatioAOSBuffer{nullptr};
-    float* m_pmFilterRatioBOSBuffer{nullptr};
-        
-    // Cache for SlopeSignal state
-    float cyclePosAPast;
-    float cyclePosBPast;
-    float pmIndexAPast;
-    float pmIndexBPast;
-    float pmFilterRatioAPast;
-    float pmFilterRatioBPast;
     
     // Audio rate flags
     bool isCyclePosAAudioRate;
     bool isCyclePosBAAudioRate;
-    bool isPMIndexAAudioRate;
-    bool isPMIndexBAudioRate;
-    bool isPMFilterRatioAAudioRate;
-    bool isPMFilterRatioBAudioRate;
+    bool isXmIndexAAudioRate;
+    bool isXmIndexBAudioRate;
+    bool isXmFltRatioAAudioRate;
+    bool isXmFltRatioBAudioRate;
     
     enum InputParams {
         BufNumA,
@@ -126,10 +118,10 @@ private:
         NumCyclesB,
         CyclePosB,
         
-        PMIndexA,       
-        PMIndexB,       
-        PMFilterRatioA, 
-        PMFilterRatioB,
+        XmIndexA,       
+        XmIndexB,       
+        XmFltRatioA, 
+        XmFltRatioB,
         
         Oversample
     };
@@ -151,7 +143,7 @@ private:
     void next(int nSamples);
     
     // Constants
-    static constexpr int NUM_VOICES = 16;
+    static constexpr int NUM_VOICES = 8;
     
     // Constants cached at construction
     const float m_sampleRate;
@@ -159,53 +151,48 @@ private:
     const int m_osRatio;
  
     // Core processing
-    EventUtils::VoiceAllocator<NUM_VOICES> m_allocator;
     EventUtils::IsTrigger m_trigger;
-    std::array<FilterUtils::OnePoleSlope, NUM_VOICES> m_pmFilters;
- 
-    // Buffer units
-    PluginUtils::BufUnit m_oscBufUnit;
-    PluginUtils::BufUnit m_envBufUnit;
-    PluginUtils::BufUnit m_modBufUnit;
-    
-    // Oversampling objects
-    OversamplingUtils::VariableOversampling m_outputOversampling;
-    OversamplingUtils::VariableOversampling m_oscCyclePosOversampling;
-    OversamplingUtils::VariableOversampling m_envCyclePosOversampling;
-    OversamplingUtils::VariableOversampling m_modCyclePosOversampling;
+    EventUtils::VoiceAllocator<NUM_VOICES> m_allocator;
+    FilterUtils::DCBlocker m_dcBlocker;
 
-    // Stored oversampling state
+    // Per-voice phase modulation state
+    std::array<OscUtils::PMOsc, NUM_VOICES> m_pmOscs;
+ 
+    // Wavetables
+    BufferUtils::Wavetable m_oscWavetable;
+    BufferUtils::Wavetable m_envWavetable;
+    BufferUtils::Wavetable m_modWavetable;
+
+    // Control-rate interpolation
+    Utils::ParamInterp m_oscCyclePosInterp;
+    Utils::ParamInterp m_envCyclePosInterp;
+    Utils::ParamInterp m_modCyclePosInterp;
+
+    // Oversampling interpolation
+    OversamplingUtils::OSParamInterp m_osOscCyclePosInterp;
+    OversamplingUtils::OSParamInterp m_osEnvCyclePosInterp;
+    OversamplingUtils::OSParamInterp m_osModCyclePosInterp;
+    
+    // Variable-Oversampling
+    OversamplingUtils::VariableOversampling m_outputOversampling;
     float* m_outputOSBuffer{nullptr};
-    float* m_oscCyclePosOSBuffer{nullptr};
-    float* m_envCyclePosOSBuffer{nullptr};
-    float* m_modCyclePosOSBuffer{nullptr};
     
     // Grain data structure
     struct GrainData {
         float oscFreq = 0.0f;
         float modFreq = 0.0f;
-        float modIndex = 0.0f;
+        float pmIndex = 0.0f;
         double sampleCount = 0.0;
     };
-    
-    // Grain voices
     std::array<GrainData, NUM_VOICES> m_grainData;
-    
-    // Output processing
-    FilterUtils::OnePoleHz m_dcBlocker;
-    
-    // Cache for SlopeSignal state
-    float oscCyclePosPast;
-    float envCyclePosPast;
-    float modCyclePosPast;
-    
+
     // Audio rate flags
     bool isTriggerAudioRate;
     bool isTriggerFreqAudioRate;
     bool isSubSampleOffsetAudioRate;
     bool isOscFreqAudioRate;
     bool isModFreqAudioRate;
-    bool isModIndexAudioRate;
+    bool isPmIndexAudioRate;
     bool isOscCyclePosAudioRate;
     bool isEnvCyclePosAudioRate;
     bool isModCyclePosAudioRate;
@@ -217,17 +204,17 @@ private:
  
         OscFreq,
         ModFreq,
-        ModIndex,
+        PmIndex,
  
-        OscBuffer,
+        OscBufNum,
         OscNumCycles,
         OscCyclePos,
  
-        EnvBuffer,
+        EnvBufNum,
         EnvNumCycles,
         EnvCyclePos,
  
-        ModBuffer,
+        ModBufNum,
         ModNumCycles,
         ModCyclePos,
         
@@ -250,7 +237,7 @@ private:
     void next(int nSamples);
  
     // Constants
-    static constexpr int NUM_VOICES = 16;
+    static constexpr int NUM_VOICES = 8;
  
     // Constants cached at construction
     const float m_sampleRate;
@@ -258,52 +245,46 @@ private:
     const int m_osRatio;
  
     // Core processing
-    EventUtils::VoiceAllocator<NUM_VOICES> m_allocator;
     EventUtils::IsTrigger m_trigger;
+    EventUtils::VoiceAllocator<NUM_VOICES> m_allocator;
+    FilterUtils::DCBlocker m_dcBlocker;
  
     // Per-voice cross-modulation state
     std::array<OscUtils::DualOsc, NUM_VOICES> m_dualOscs;
  
-    // Buffer units
-    PluginUtils::BufUnit m_oscBufUnit;
-    PluginUtils::BufUnit m_modBufUnit;
- 
-    // Oversampling objects
-    OversamplingUtils::VariableOversampling m_outputOversampling;
-    OversamplingUtils::VariableOversampling m_oscCyclePosOversampling;
-    OversamplingUtils::VariableOversampling m_modCyclePosOversampling;
-    OversamplingUtils::VariableOversampling m_envSkewOversampling;
-    OversamplingUtils::VariableOversampling m_envIndexOversampling;
+    // Wavetables
+    BufferUtils::Wavetable m_oscWavetable;
+    BufferUtils::Wavetable m_modWavetable;
 
-    // Stored oversampling state
+    // Control-rate interpolation
+    Utils::ParamInterp m_oscCyclePosInterp;
+    Utils::ParamInterp m_modCyclePosInterp;
+    Utils::ParamInterp m_envSkewInterp;
+    Utils::ParamInterp m_envIndexInterp;
+
+    // Oversampling interpolation
+    OversamplingUtils::OSParamInterp m_osOscCyclePosInterp;
+    OversamplingUtils::OSParamInterp m_osModCyclePosInterp;
+    OversamplingUtils::OSParamInterp m_osEnvSkewInterp;
+    OversamplingUtils::OSParamInterp m_osEnvIndexInterp;
+ 
+    // Variable-Oversampling
+    OversamplingUtils::VariableOversampling m_outputOversampling;
     float* m_outputOSBuffer{nullptr};
-    float* m_oscCyclePosOSBuffer{nullptr};
-    float* m_modCyclePosOSBuffer{nullptr};
-    float* m_skewOSBuffer{nullptr};
-    float* m_indexOSBuffer{nullptr};
  
     // Grain data structure
     struct GrainData {
         float oscFreq = 0.0f;
         float modFreq = 0.0f;
-        float pmIndexOsc = 0.0f;
-        float pmIndexMod = 0.0f;
-        float pmFilterRatioOsc = 1.0f;
-        float pmFilterRatioMod = 1.0f;
-        float warpOsc = 0.5f;
-        float warpMod = 0.5f;
+        float oscXmIndex = 0.0f;
+        float modXmIndex = 0.0f;
+        float oscXmFltRatio = 1.0f;
+        float modXmFltRatio = 1.0f;
+        float oscWarp = 0.5f;
+        float modWarp = 0.5f;
         double sampleCount = 0.0;
     };
     std::array<GrainData, NUM_VOICES> m_grainData;
- 
-    // Output processing
-    FilterUtils::OnePoleHz m_dcBlocker;
- 
-    // Cache for SlopeSignal state
-    float oscCyclePosPast;
-    float modCyclePosPast;
-    float envSkewPast;
-    float envIndexPast;
  
     // Audio rate flags
     bool isTriggerAudioRate;
@@ -311,12 +292,12 @@ private:
     bool isSubSampleOffsetAudioRate;
     bool isOscFreqAudioRate;
     bool isModFreqAudioRate;
-    bool isPmIndexOscAudioRate;
-    bool isPmIndexModAudioRate;
-    bool isPmFilterRatioOscAudioRate;
-    bool isPmFilterRatioModAudioRate;
-    bool isWarpOscAudioRate;
-    bool isWarpModAudioRate;
+    bool isOscXmIndexAudioRate;
+    bool isModXmIndexAudioRate;
+    bool isOscXmFltRatioAudioRate;
+    bool isModXmFltRatioAudioRate;
+    bool isOscWarpAudioRate;
+    bool isModWarpAudioRate;
     bool isOscCyclePosAudioRate;
     bool isModCyclePosAudioRate;
     bool isEnvSkewAudioRate;
@@ -330,19 +311,19 @@ private:
         OscFreq,
         ModFreq,
 
-        PmIndexOsc,
-        PmIndexMod,
-        PmFilterRatioOsc,
-        PmFilterRatioMod,
+        OscXmIndex,
+        ModXmIndex,
+        OscXmFltRatio,
+        ModXmFltRatio,
         
-        WarpOsc,
-        WarpMod,
+        OscWarp,
+        ModWarp,
  
-        OscBuffer,
+        OscBufNum,
         OscNumCycles,
         OscCyclePos,
  
-        ModBuffer,
+        ModBufNum,
         ModNumCycles,
         ModCyclePos,
  

@@ -3,12 +3,16 @@
 #include "StepUtils.hpp"
 
 // ===== UNIT STEP =====
+
 class UnitStep : public SCUnit {
 public:
     UnitStep();
     
 private:
     void next(int nSamples);
+
+    // Constants cached at construction
+    const bool m_interp;
     
     // Core processing
     UnitSteps::UnitStep m_state;
@@ -26,12 +30,16 @@ private:
 };
 
 // ===== UNIT WALK =====
+
 class UnitWalk : public SCUnit {
 public:
     UnitWalk();
     
 private:
     void next(int nSamples);
+
+    // Constants cached at construction
+    const bool m_interp;
     
     // Core processing
     UnitSteps::UnitWalk m_state;
@@ -53,6 +61,7 @@ private:
 };
 
 // ===== UNIT REGISTER =====
+
 class UnitRegister : public SCUnit {
 public:
     UnitRegister();
@@ -63,6 +72,9 @@ private:
     // Constants
     static constexpr int NUM_BITS = 8;
     static constexpr int MAX_LENGTH = 16;
+
+    // Constants cached at construction
+    const bool m_interp;
     
     // Core processing
     UnitSteps::UnitRegister m_register;
@@ -72,6 +84,7 @@ private:
     bool isChanceAudioRate;
     bool isSizeAudioRate;
     bool isRotateAudioRate;
+    bool isResetAudioRate;
     
     // Input parameter indices
     enum Inputs {

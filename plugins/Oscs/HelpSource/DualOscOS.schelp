@@ -1,14 +1,14 @@
 class:: DualOscOS
-summary:: bandlimited dual wavetable oscillator with cross-modulation and oversampling
+summary:: A bandlimited dual wavetable oscillator with cross-phase modulation and optional oversampling
 categories:: UGens>Oscillator
 
 DESCRIPTION::
-DualOscOS is a bandlimited dual wavetable oscillator with cross-modulation and optional oversampling. 
-It features cross-modulation between the two coupled wavetable oscillators via phase modulation with a tracking OnePole filter in the feedback path.
-The wavetable oscillators are bandlimited via dynamic mipmapping and sinc interpolation. 
-The amount of phase modulation is set by the pmIndex parameters. 
-The cutoff frequencies of the OnePole filters are set to the fundamental frequencies of the modulators 
-and can be adjusted by the pmFilterRatio parameters for different modulation flavours.
+DualOscOS is a bandlimited dual wavetable oscillator with cross-phase modulation and optional oversampling. 
+The oscillators modulate each other’s phase through a single-sample feedback loop, 
+with independent modulation indices controlling the depth of each cross-modulation path. 
+Each path includes a slope-tracking one-pole filter whose cutoff follows the modulator’s fundamental frequency 
+and is scaled by the corresponding filter ratio. 
+The wavetable oscillators are bandlimited via dynamic mipmapping and sinc interpolation.
 
 CLASSMETHODS::
 
@@ -17,7 +17,7 @@ METHOD:: ar
 ARGUMENT:: bufnumA
 Buffer containing wavetable data for oscillator A (the size has to be a power-of-2).
 
-ARGUMENT:: phaseA  
+ARGUMENT:: phaseA
 Phase input for oscillator A (0.0 to 1.0).
 
 ARGUMENT:: numCyclesA
@@ -38,17 +38,19 @@ Number of cycles in buffer B (default: 1).
 ARGUMENT:: cyclePosB
 Cycle position for oscillator B (0.0 to 1.0).
 
-ARGUMENT:: pmIndexA
-Phase modulation depth - how much oscillator B modulates oscillator A (default: 0).
+ARGUMENT:: xmIndexA
+Cross-phase modulation depth received by oscillator A from oscillator B (default: 0).
 
-ARGUMENT:: pmIndexB
-Phase modulation depth - how much oscillator A modulates oscillator B (default: 0).
+ARGUMENT:: xmIndexB
+Cross-phase modulation depth received by oscillator B from oscillator A (default: 0).
 
-ARGUMENT:: pmFilterRatioA
-Filter ratio for oscillator A's phase modulation (default: 1).
+ARGUMENT:: xmFltRatioA
+Damping filter ratio for the cross-phase modulation path from oscillator B to oscillator A.
+Sets the filter cutoff as a multiple of oscillator B's fundamental frequency (default: 1).
 
-ARGUMENT:: pmFilterRatioB
-Filter ratio for oscillator B's phase modulation (default: 1).
+ARGUMENT:: xmFltRatioB
+Damping filter ratio for the cross-phase modulation path from oscillator A to oscillator B.
+Sets the filter cutoff as a multiple of oscillator A's fundamental frequency (default: 1).
 
 ARGUMENT:: oversample
 Oversampling factor: 0=1x, 1=2x, 2=4x, 3=8x, 4=16x (default: 0).
@@ -81,7 +83,7 @@ SynthDef(\dualOscOS, {
 	calcWavetableData = { |chainID, phaseOffset|
 		
 		var tableIndexMF, tableIndexMod, tableIndex;
-		var wavetable, sizeOfTable, pmIndex, pmFltRatio;
+		var wavetable, sizeOfTable, xmIndex, xmFltRatio;
 		var freq, phase;
 		
 		freq = param.(chainID, \freq, 440, spec: ControlSpec(1, 1000, \exp));
@@ -105,16 +107,16 @@ SynthDef(\dualOscOS, {
 		wavetable = param.(chainID, \sndBuf, 0);
 		sizeOfTable = BufFrames.kr(wavetable) / 2048;
 		
-		// Phase modulation params
-		pmIndex = param.(chainID, \pmIndex, 0, ControlSpec(0, 5));
-		pmFltRatio = param.(chainID, \pmFltRatio, 1, ControlSpec(1, 5));
+		// Cross-phase modulation params
+		xmIndex = param.(chainID, \xmIndex, 0, ControlSpec(0, 5));
+		xmFltRatio = param.(chainID, \xmFltRatio, 1, ControlSpec(1, 5));
 		
 		/////////////////////////////////////////////////////////////////////////////////
 		
 		(
 			phase: phase,
-			pmIndex: pmIndex,
-			pmFltRatio: pmFltRatio,
+			xmIndex: xmIndex,
+			xmFltRatio: xmFltRatio,
 			wavetable: wavetable,
 			sizeOfTable: sizeOfTable,
 			tableIndex: tableIndex
@@ -137,10 +139,10 @@ SynthDef(\dualOscOS, {
 		numCyclesB: wavetableDataB[\sizeOfTable],
 		cyclePosB: wavetableDataB[\tableIndex],
 
-		pmIndexA: wavetableDataA[\pmIndex],
-		pmIndexB: wavetableDataB[\pmIndex],
-		pmFilterRatioA: wavetableDataA[\pmFltRatio],
-		pmFilterRatioB: wavetableDataB[\pmFltRatio],
+		xmIndexA: wavetableDataA[\xmIndex],
+		xmIndexB: wavetableDataB[\xmIndex],
+		xmFltRatioA: wavetableDataA[\xmFltRatio],
+		xmFltRatioB: wavetableDataB[\xmFltRatio],
 
 		oversample: 0
 	);
@@ -178,8 +180,8 @@ x = Synth(\dualOscOS, [
 	\tableIndexMD_A, 1,
 	\tableIndex_A, 0,
 	
-	\pmFltRatio_A, 1, 
-	\pmIndex_A, 2,
+	\xmFltRatio_A, 1, 
+	\xmIndex_A, 2,
 	
 	///////////////////////
 	
@@ -190,8 +192,8 @@ x = Synth(\dualOscOS, [
 	\tableIndexMD_B, 1, 
 	\tableIndex_B, 0,
 	
-	\pmFltRatio_B, 2, 
-	\pmIndex_B, 1, 
+	\xmFltRatio_B, 2, 
+	\xmIndex_B, 1, 
 	
 	///////////////////////
 	
@@ -204,5 +206,4 @@ x = Synth(\dualOscOS, [
 )
 
 x.free;
-
 ::

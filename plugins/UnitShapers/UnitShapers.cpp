@@ -6,9 +6,6 @@ extern InterfaceTable* ft;
 // ===== UNIT TRIANGLE =====
 
 UnitTriangle::UnitTriangle() {
-
-    // Initialize parameter cache
-    skewPast = sc_clip(in0(Skew), 0.0f, 1.0f);
     
     // Check which inputs are audio-rate
     isSkewAudioRate = isAudioRateIn(Skew);
@@ -23,7 +20,7 @@ void UnitTriangle::next(int nSamples) {
     const float* phaseIn = in(Phase);
     
     // Control-rate parameters with smooth interpolation
-    auto slopedSkew = makeSlope(sc_clip(in0(Skew), 0.0f, 1.0f), skewPast);
+    m_skewInterp.update(sc_clip(in0(Skew), 0.0f, 1.0f), nSamples);
     
     // Output pointer
     float* output = out(Out);
@@ -36,23 +33,15 @@ void UnitTriangle::next(int nSamples) {
         // Get current parameter values (audio-rate or interpolated control-rate)
         float skew = isSkewAudioRate ? 
             sc_clip(in(Skew)[i], 0.0f, 1.0f) : 
-            slopedSkew.consume();
+            m_skewInterp.process();
         
         output[i] = UnitShapers::triangle(phase, skew);
     }
-    
-    // Update parameter cache (use last value if audio-rate, otherwise slope value)
-    skewPast = isSkewAudioRate ? 
-        sc_clip(in(Skew)[nSamples - 1], 0.0f, 1.0f) : 
-        slopedSkew.value;
 }
 
 // ===== UNIT KINK =====
 
 UnitKink::UnitKink() {
-
-    // Initialize parameter cache
-    skewPast = sc_clip(in0(Skew), 0.0f, 1.0f);
     
     // Check which inputs are audio-rate
     isSkewAudioRate = isAudioRateIn(Skew);
@@ -67,7 +56,7 @@ void UnitKink::next(int nSamples) {
     const float* phaseIn = in(Phase);
     
     // Control-rate parameters with smooth interpolation
-    auto slopedSkew = makeSlope(sc_clip(in0(Skew), 0.0f, 1.0f), skewPast);
+    m_skewInterp.update(sc_clip(in0(Skew), 0.0f, 1.0f), nSamples);
     
     // Output pointer
     float* output = out(Out);
@@ -80,23 +69,15 @@ void UnitKink::next(int nSamples) {
         // Get current parameter values (audio-rate or interpolated control-rate)
         float skew = isSkewAudioRate ? 
             sc_clip(in(Skew)[i], 0.0f, 1.0f) : 
-            slopedSkew.consume();
+            m_skewInterp.process();
         
         output[i] = UnitShapers::kink(phase, skew);
     }
-    
-    // Update parameter cache (use last value if audio-rate, otherwise slope value)
-    skewPast = isSkewAudioRate ? 
-        sc_clip(in(Skew)[nSamples - 1], 0.0f, 1.0f) : 
-        slopedSkew.value;
 }
 
 // ===== UNIT CUBIC =====
 
 UnitCubic::UnitCubic() {
-
-    // Initialize parameter cache
-    indexPast = sc_clip(in0(Index), 0.0f, 1.0f);
     
     // Check which inputs are audio-rate
     isIndexAudioRate = isAudioRateIn(Index);
@@ -111,7 +92,7 @@ void UnitCubic::next(int nSamples) {
     const float* phaseIn = in(Phase);
     
     // Control-rate parameters with smooth interpolation
-    auto slopedIndex = makeSlope(sc_clip(in0(Index), 0.0f, 1.0f), indexPast);
+    m_indexInterp.update(sc_clip(in0(Index), 0.0f, 1.0f), nSamples);
     
     // Output pointer
     float* output = out(Out);
@@ -124,15 +105,10 @@ void UnitCubic::next(int nSamples) {
         // Get current parameter values (audio-rate or interpolated control-rate)
         float index = isIndexAudioRate ? 
             sc_clip(in(Index)[i], 0.0f, 1.0f) : 
-            slopedIndex.consume();
+            m_indexInterp.process();
         
         output[i] = UnitShapers::cubic(phase, index);
     }
-    
-    // Update parameter cache (use last value if audio-rate, otherwise slope value)
-    indexPast = isIndexAudioRate ? 
-        sc_clip(in(Index)[nSamples - 1], 0.0f, 1.0f) : 
-        slopedIndex.value;
 }
 
 void UnitShapers_setup()

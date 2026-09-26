@@ -5,28 +5,16 @@ extern InterfaceTable* ft;
 
 // ===== SINGLE WAVETABLE OSCILLATOR =====
 
-SingleOscOS::SingleOscOS() : 
-    m_sampleRate(static_cast<float>(sampleRate())),
+SingleOscOS::SingleOscOS() :
     m_oversampleIndex(sc_clip(static_cast<int>(in0(Oversample)), 0, 4)),
     m_osRatio(1 << m_oversampleIndex)
 {
-    // Initialize parameter cache
-    cyclePosPast = sc_clip(in0(CyclePos), 0.0f, 1.0f);
-    
     // Check which inputs are audio-rate
     isCyclePosAudioRate = isAudioRateIn(CyclePos);
     
-    // Initialize oversampling
+    // Allocate oversampling buffer
     if (m_oversampleIndex > 0) {
-        auto unit = this;
-
-        // Allocate oversampling buffers
-        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_outputOSBuffer);
-        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_cyclePosOSBuffer);
-
-        // Setup oversampling filters
-        m_outputOversampling.init(m_osRatio, m_sampleRate, m_outputOSBuffer);
-        m_cyclePosOversampling.init(m_osRatio, m_sampleRate, m_cyclePosOSBuffer);
+        BufferUtils::allocBuffer(this, mWorld, m_osRatio, m_outputOSBuffer);
     }
     
     // Set calc function & compute initial sample
@@ -35,7 +23,6 @@ SingleOscOS::SingleOscOS() :
 
 SingleOscOS::~SingleOscOS() {
     RTFree(mWorld, m_outputOSBuffer);
-    RTFree(mWorld, m_cyclePosOSBuffer);
 }
 
 void SingleOscOS::next(int nSamples) {
@@ -44,7 +31,7 @@ void SingleOscOS::next(int nSamples) {
     const float* phaseIn = in(Phase);
     
     // Control-rate parameters with smooth interpolation
-    auto slopedCyclePos = makeSlope(sc_clip(in0(CyclePos), 0.0f, 1.0f), cyclePosPast);
+    m_cyclePosInterp.update(sc_clip(in0(CyclePos), 0.0f, 1.0f), nSamples);
 
     // Control-rate parameters (settings, no interpolation)
     float bufNum = in0(BufNum);
@@ -52,17 +39,11 @@ void SingleOscOS::next(int nSamples) {
 
     // Output pointer
     float* output = out(Out);
-    
+
     // Get wavetable data
-    auto oscTable = m_oscBufUnit.GetTable(this, bufNum, "SingleOscOS");
-    if (!oscTable.valid) { 
-        ClearUnitOutputs(this, nSamples); 
-        return; 
-    }
-    
-    // Calculate samples per cycle
-    int cycleSamples = oscTable.size / numCycles;
-    
+    auto oscTable = m_oscWavetable.update(this, mWorld, nSamples, bufNum, numCycles, "SingleOscOS");
+    if (!oscTable.data) return;
+
     if (m_oversampleIndex == 0) {
 
         for (int i = 0; i < nSamples; ++i) {
@@ -71,28 +52,17 @@ void SingleOscOS::next(int nSamples) {
             float phase = sc_frac(phaseIn[i]);
             
             // Get current parameter values (audio-rate or interpolated control-rate)
-            float cyclePosVal = isCyclePosAudioRate ? 
+            float cyclePos = isCyclePosAudioRate ? 
                 sc_clip(in(CyclePos)[i], 0.0f, 1.0f) : 
-                slopedCyclePos.consume();
-            
-            // Calculate slope
-            float slope = static_cast<float>(m_rampToSlope.process(static_cast<double>(phase)));
-            
-            // Calculate mipmap parameters (use ceil for no oversampling)
-            float samplesPerFrame = sc_abs(slope) * static_cast<float>(cycleSamples);
-            float octave = sc_max(0.0f, sc_log2(samplesPerFrame));
-            int layer = static_cast<int>(sc_ceil(octave));
+                m_cyclePosInterp.process();
 
-            // Calculate spacings for adjacent mipmap levels
-            int spacing1 = 1 << layer;
-            int spacing2 = spacing1 << 1;
-            float crossfade = sc_frac(octave);
-            
+            // Derive slope from incoming ramp
+            float slope = static_cast<float>(m_rampToSlope.process(static_cast<double>(phase)));
+
             // Process wavetable oscillator
             output[i] = OscUtils::wavetableOsc(
-                phase, oscTable.data, 
-                cycleSamples, numCycles, cyclePosVal, 
-                spacing1, spacing2, crossfade
+                phase, slope, 
+                oscTable, cyclePos
             );
         }
     } else {
@@ -103,103 +73,64 @@ void SingleOscOS::next(int nSamples) {
             float phase = sc_frac(phaseIn[i]);
             
             // Get current parameter values (audio-rate or interpolated control-rate)
-            float cyclePosVal = isCyclePosAudioRate ? 
+            float cyclePos = isCyclePosAudioRate ? 
                 sc_clip(in(CyclePos)[i], 0.0f, 1.0f) : 
-                slopedCyclePos.consume();
-            
-            // Calculate slope
-            float slope = static_cast<float>(m_rampToSlope.process(static_cast<double>(phase)));
-            
-            // Calculate mipmap parameters (use floor for oversampling)
-            float samplesPerFrame = sc_abs(slope) * static_cast<float>(cycleSamples);
-            float octave = sc_max(0.0f, sc_log2(samplesPerFrame));
-            int layer = static_cast<int>(sc_floor(octave));
-            
-            // Calculate spacings for adjacent mipmap levels
-            int spacing1 = 1 << layer;
-            int spacing2 = spacing1 << 1;
-            float crossfade = sc_frac(octave);
-            
-            // Upsample parameter values
-            m_cyclePosOversampling.upsample(cyclePosVal);
+                m_cyclePosInterp.process();
 
-            // Initialize phase and slope for oversampling
+            // Derive slope from incoming ramp
+            float slope = static_cast<float>(m_rampToSlope.process(static_cast<double>(phase)));
+
+            // Prepare phase and slope for oversampling
             float osSlope = slope / static_cast<float>(m_osRatio);
             float osPhase = phase - slope;
+
+            // Store parameter values for oversampling
+            m_osCyclePosInterp.update(cyclePos);
             
             for (int k = 0; k < m_osRatio; k++) {
                 
-                // Clamp upsampled values
-                m_cyclePosOSBuffer[k] = sc_clip(m_cyclePosOSBuffer[k], 0.0f, 1.0f);
+                // Calculate fractional position for interpolation
+                float frac = static_cast<float>(k + 1) / static_cast<float>(m_osRatio);
                 
-                // Increment oversampled phase
+                // Interpolate parameter values
+                float osCyclePos = m_osCyclePosInterp.process(frac);
+
+                // Increment phase
                 osPhase += osSlope;
                 
-                // Process wavetable oscillator with upsampled parameter values
+                // Process wavetable oscillator
                 m_outputOSBuffer[k] = OscUtils::wavetableOsc(
-                    sc_frac(osPhase), oscTable.data, 
-                    cycleSamples, numCycles, m_cyclePosOSBuffer[k], 
-                    spacing1, spacing2, crossfade
+                    sc_frac(osPhase), osSlope, 
+                    oscTable, osCyclePos
                 );
             }
             
             // Downsample output
-            output[i] = m_outputOversampling.downsample();
+            output[i] = m_outputOversampling.downsample(m_outputOSBuffer, m_osRatio);
         }
     }
     
-    // Update parameter cache (use last value if audio-rate, otherwise slope value)
-    cyclePosPast = isCyclePosAudioRate ? 
-        sc_clip(in(CyclePos)[nSamples - 1], 0.0f, 1.0f) : 
-        slopedCyclePos.value;
 }
 
 // ===== DUAL WAVETABLE OSCILLATOR =====
 
-DualOscOS::DualOscOS() : 
-    m_sampleRate(static_cast<float>(sampleRate())),
+DualOscOS::DualOscOS() :
+    m_sampleRate(static_cast<float>(sampleRate())), 
     m_oversampleIndex(sc_clip(static_cast<int>(in0(Oversample)), 0, 4)),
     m_osRatio(1 << m_oversampleIndex)
 {
-    // Initialize parameter cache
-    cyclePosAPast = sc_clip(in0(CyclePosA), 0.0f, 1.0f);
-    cyclePosBPast = sc_clip(in0(CyclePosB), 0.0f, 1.0f);
-    pmIndexAPast = sc_clip(in0(PMIndexA), 0.0f, 10.0f);
-    pmIndexBPast = sc_clip(in0(PMIndexB), 0.0f, 10.0f);
-    pmFilterRatioAPast = sc_clip(in0(PMFilterRatioA), 1.0f, 10.0f);
-    pmFilterRatioBPast = sc_clip(in0(PMFilterRatioB), 1.0f, 10.0f);
-    
     // Check which inputs are audio-rate
     isCyclePosAAudioRate = isAudioRateIn(CyclePosA);
     isCyclePosBAAudioRate = isAudioRateIn(CyclePosB);
-    isPMIndexAAudioRate = isAudioRateIn(PMIndexA);
-    isPMIndexBAudioRate = isAudioRateIn(PMIndexB);
-    isPMFilterRatioAAudioRate = isAudioRateIn(PMFilterRatioA);
-    isPMFilterRatioBAudioRate = isAudioRateIn(PMFilterRatioB);
+    isXmIndexAAudioRate = isAudioRateIn(XmIndexA);
+    isXmIndexBAudioRate = isAudioRateIn(XmIndexB);
+    isXmFltRatioAAudioRate = isAudioRateIn(XmFltRatioA);
+    isXmFltRatioBAudioRate = isAudioRateIn(XmFltRatioB);
 
-    // Initialize oversampling
+    // Allocate oversampling buffers
     if (m_oversampleIndex > 0) {
-        auto unit = this;
-
-        // Allocate oversampling buffers
-        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_outputOSBufferA);
-        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_outputOSBufferB);
-        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_cyclePosAOSBuffer);
-        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_cyclePosBOSBuffer);
-        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_pmIndexAOSBuffer);
-        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_pmIndexBOSBuffer);
-        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_pmFilterRatioAOSBuffer);
-        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_pmFilterRatioBOSBuffer);
-
-        // Setup oversampling filters
-        m_outputOversamplingA.init(m_osRatio, m_sampleRate, m_outputOSBufferA);
-        m_outputOversamplingB.init(m_osRatio, m_sampleRate, m_outputOSBufferB);
-        m_cyclePosAOversampling.init(m_osRatio, m_sampleRate, m_cyclePosAOSBuffer);
-        m_cyclePosBOversampling.init(m_osRatio, m_sampleRate, m_cyclePosBOSBuffer);
-        m_pmIndexAOversampling.init(m_osRatio, m_sampleRate, m_pmIndexAOSBuffer);
-        m_pmIndexBOversampling.init(m_osRatio, m_sampleRate, m_pmIndexBOSBuffer);
-        m_pmFilterRatioAOversampling.init(m_osRatio, m_sampleRate, m_pmFilterRatioAOSBuffer);
-        m_pmFilterRatioBOversampling.init(m_osRatio, m_sampleRate, m_pmFilterRatioBOSBuffer);
+        BufferUtils::allocBuffer(this, mWorld, m_osRatio, m_outputOSBufferA);
+        BufferUtils::allocBuffer(this, mWorld, m_osRatio, m_outputOSBufferB);
     }
     
     // Set calc function & compute initial sample
@@ -209,12 +140,6 @@ DualOscOS::DualOscOS() :
 DualOscOS::~DualOscOS() {
     RTFree(mWorld, m_outputOSBufferA);
     RTFree(mWorld, m_outputOSBufferB);
-    RTFree(mWorld, m_cyclePosAOSBuffer);
-    RTFree(mWorld, m_cyclePosBOSBuffer);
-    RTFree(mWorld, m_pmIndexAOSBuffer);
-    RTFree(mWorld, m_pmIndexBOSBuffer);
-    RTFree(mWorld, m_pmFilterRatioAOSBuffer);
-    RTFree(mWorld, m_pmFilterRatioBOSBuffer);
 }
 
 void DualOscOS::next(int nSamples) {
@@ -224,12 +149,12 @@ void DualOscOS::next(int nSamples) {
     const float* phaseBIn = in(PhaseB);
     
     // Control-rate parameters with smooth interpolation
-    auto slopedCyclePosA = makeSlope(sc_clip(in0(CyclePosA), 0.0f, 1.0f), cyclePosAPast);
-    auto slopedCyclePosB = makeSlope(sc_clip(in0(CyclePosB), 0.0f, 1.0f), cyclePosBPast);
-    auto slopedPMIndexA = makeSlope(sc_clip(in0(PMIndexA), 0.0f, 10.0f), pmIndexAPast);
-    auto slopedPMIndexB = makeSlope(sc_clip(in0(PMIndexB), 0.0f, 10.0f), pmIndexBPast);
-    auto slopedPMFilterRatioA = makeSlope(sc_clip(in0(PMFilterRatioA), 1.0f, 10.0f), pmFilterRatioAPast);
-    auto slopedPMFilterRatioB = makeSlope(sc_clip(in0(PMFilterRatioB), 1.0f, 10.0f), pmFilterRatioBPast);
+    m_cyclePosAInterp.update(sc_clip(in0(CyclePosA), 0.0f, 1.0f), nSamples);
+    m_cyclePosBInterp.update(sc_clip(in0(CyclePosB), 0.0f, 1.0f), nSamples);
+    m_xmIndexAInterp.update(sc_clip(in0(XmIndexA), 0.0f, 10.0f), nSamples);
+    m_xmIndexBInterp.update(sc_clip(in0(XmIndexB), 0.0f, 10.0f), nSamples);
+    m_xmFltRatioAInterp.update(sc_clip(in0(XmFltRatioA), 0.0f, 10.0f), nSamples);
+    m_xmFltRatioBInterp.update(sc_clip(in0(XmFltRatioB), 0.0f, 10.0f), nSamples);
     
     // Control-rate parameters (settings, no interpolation)
     float bufNumA = in0(BufNumA);
@@ -242,17 +167,10 @@ void DualOscOS::next(int nSamples) {
     float* outputB = out(OutB);
 
     // Get wavetable data
-    auto oscTableA = m_oscBufUnitA.GetTable(this, bufNumA, "DualOscOS OscA");
-    auto oscTableB = m_oscBufUnitB.GetTable(this, bufNumB, "DualOscOS OscB");
-    if (!oscTableA.valid || !oscTableB.valid) {
-        ClearUnitOutputs(this, nSamples);
-        return;
-    }
-    
-    // Calculate samples per cycle
-    int cycleSamplesA = oscTableA.size / numCyclesA;
-    int cycleSamplesB = oscTableB.size / numCyclesB;
-    
+    auto oscTableA = m_oscWavetableA.update(this, mWorld, nSamples, bufNumA, numCyclesA, "DualOscOS oscA");
+    auto oscTableB = m_oscWavetableB.update(this, mWorld, nSamples, bufNumB, numCyclesB, "DualOscOS oscB");
+    if (!oscTableA.data || !oscTableB.data) return;
+
     if (m_oversampleIndex == 0) {
 
         for (int i = 0; i < nSamples; ++i) {
@@ -262,63 +180,43 @@ void DualOscOS::next(int nSamples) {
             float phaseB = sc_frac(phaseBIn[i]);
 
             // Get current parameter values (audio-rate or interpolated control-rate)
-            float cyclePosAVal = isCyclePosAAudioRate ? 
+            float cyclePosA = isCyclePosAAudioRate ?
                 sc_clip(in(CyclePosA)[i], 0.0f, 1.0f) : 
-                slopedCyclePosA.consume();
+                m_cyclePosAInterp.process();
 
-            float cyclePosBVal = isCyclePosBAAudioRate ? 
+            float cyclePosB = isCyclePosBAAudioRate ? 
                 sc_clip(in(CyclePosB)[i], 0.0f, 1.0f) : 
-                slopedCyclePosB.consume();
+                m_cyclePosBInterp.process();
 
-            float pmIndexAVal = isPMIndexAAudioRate ? 
-                sc_clip(in(PMIndexA)[i], 0.0f, 10.0f) : 
-                slopedPMIndexA.consume();
+            float xmIndexA = isXmIndexAAudioRate ? 
+                sc_clip(in(XmIndexA)[i], 0.0f, 10.0f) : 
+                m_xmIndexAInterp.process();
 
-            float pmIndexBVal = isPMIndexBAudioRate ? 
-                sc_clip(in(PMIndexB)[i], 0.0f, 10.0f) : 
-                slopedPMIndexB.consume();
+            float xmIndexB = isXmIndexBAudioRate ? 
+                sc_clip(in(XmIndexB)[i], 0.0f, 10.0f) : 
+                m_xmIndexBInterp.process();
 
-            float pmFilterRatioAVal = isPMFilterRatioAAudioRate ? 
-                sc_clip(in(PMFilterRatioA)[i], 1.0f, 10.0f) : 
-                slopedPMFilterRatioA.consume();
+            float xmFltRatioA = isXmFltRatioAAudioRate ? 
+                sc_clip(in(XmFltRatioA)[i], 1.0f, 10.0f) : 
+                m_xmFltRatioAInterp.process();
 
-            float pmFilterRatioBVal = isPMFilterRatioBAudioRate ? 
-                sc_clip(in(PMFilterRatioB)[i], 1.0f, 10.0f) : 
-                slopedPMFilterRatioB.consume();
-            
-            // Calculate slopes
+            float xmFltRatioB = isXmFltRatioBAudioRate ? 
+                sc_clip(in(XmFltRatioB)[i], 1.0f, 10.0f) : 
+                m_xmFltRatioBInterp.process();
+
+            // Derive slopes from incoming ramps
             float slopeA = static_cast<float>(m_rampToSlopeA.process(static_cast<double>(phaseA)));
             float slopeB = static_cast<float>(m_rampToSlopeB.process(static_cast<double>(phaseB)));
-            
-            // Calculate mipmap parameters for oscillator A (use ceil for no oversampling)
-            float samplesPerFrameA = sc_abs(slopeA) * static_cast<float>(cycleSamplesA);
-            float octaveA = sc_max(0.0f, sc_log2(samplesPerFrameA));
-            int layerA = static_cast<int>(sc_ceil(octaveA));
 
-            // Calculate spacings for adjacent mipmap levels for oscillator A
-            int spacing1A = 1 << layerA;
-            int spacing2A = spacing1A << 1;
-            float crossfadeA = sc_frac(octaveA);
-            
-            // Calculate mipmap parameters for oscillator B (use ceil for no oversampling)
-            float samplesPerFrameB = sc_abs(slopeB) * static_cast<float>(cycleSamplesB);
-            float octaveB = sc_max(0.0f, sc_log2(samplesPerFrameB));
-            int layerB = static_cast<int>(sc_ceil(octaveB));
-
-            // Calculate spacings for adjacent mipmap levels for oscillator B
-            int spacing1B = 1 << layerB;
-            int spacing2B = spacing1B << 1;
-            float crossfadeB = sc_frac(octaveB);
-            
-            // Process dual wavetable oscillator
+            // Process wavetable oscillator with cross modulation
             auto result = m_dualOsc.process(
-                phaseA, phaseB, cyclePosAVal, cyclePosBVal,
-                slopeA, slopeB, pmIndexAVal, pmIndexBVal,
-                pmFilterRatioAVal, pmFilterRatioBVal,
-                spacing1A, spacing2A, crossfadeA,
-                spacing1B, spacing2B, crossfadeB,
-                oscTableA.data, cycleSamplesA, numCyclesA,
-                oscTableB.data, cycleSamplesB, numCyclesB
+                phaseA, phaseB,
+                slopeA, slopeB,
+                xmIndexA, xmIndexB,
+                xmFltRatioA, xmFltRatioB,
+                cyclePosA, cyclePosB,
+                oscTableA, oscTableB,
+                m_sampleRate
             );
             
             outputA[i] = result.oscA;
@@ -333,93 +231,74 @@ void DualOscOS::next(int nSamples) {
             float phaseB = sc_frac(phaseBIn[i]);
 
             // Get current parameter values (audio-rate or interpolated control-rate)
-            float cyclePosAVal = isCyclePosAAudioRate ? 
+            float cyclePosA = isCyclePosAAudioRate ? 
                 sc_clip(in(CyclePosA)[i], 0.0f, 1.0f) : 
-                slopedCyclePosA.consume();
+                m_cyclePosAInterp.process();
 
-            float cyclePosBVal = isCyclePosBAAudioRate ? 
+            float cyclePosB = isCyclePosBAAudioRate ? 
                 sc_clip(in(CyclePosB)[i], 0.0f, 1.0f) : 
-                slopedCyclePosB.consume();
+                m_cyclePosBInterp.process();
 
-            float pmIndexAVal = isPMIndexAAudioRate ? 
-                sc_clip(in(PMIndexA)[i], 0.0f, 10.0f) : 
-                slopedPMIndexA.consume();
+            float xmIndexA = isXmIndexAAudioRate ? 
+                sc_clip(in(XmIndexA)[i], 0.0f, 10.0f) : 
+                m_xmIndexAInterp.process();
 
-            float pmIndexBVal = isPMIndexBAudioRate ? 
-                sc_clip(in(PMIndexB)[i], 0.0f, 10.0f) : 
-                slopedPMIndexB.consume();
+            float xmIndexB = isXmIndexBAudioRate ? 
+                sc_clip(in(XmIndexB)[i], 0.0f, 10.0f) : 
+                m_xmIndexBInterp.process();
 
-            float pmFilterRatioAVal = isPMFilterRatioAAudioRate ? 
-                sc_clip(in(PMFilterRatioA)[i], 1.0f, 10.0f) : 
-                slopedPMFilterRatioA.consume();
+            float xmFltRatioA = isXmFltRatioAAudioRate ? 
+                sc_clip(in(XmFltRatioA)[i], 1.0f, 10.0f) : 
+                m_xmFltRatioAInterp.process();
 
-            float pmFilterRatioBVal = isPMFilterRatioBAudioRate ? 
-                sc_clip(in(PMFilterRatioB)[i], 1.0f, 10.0f) : 
-                slopedPMFilterRatioB.consume();
+            float xmFltRatioB = isXmFltRatioBAudioRate ? 
+                sc_clip(in(XmFltRatioB)[i], 1.0f, 10.0f) : 
+                m_xmFltRatioBInterp.process();
 
-            // Calculate slopes
+            // Derive slopes from incoming ramps
             float slopeA = static_cast<float>(m_rampToSlopeA.process(static_cast<double>(phaseA)));
             float slopeB = static_cast<float>(m_rampToSlopeB.process(static_cast<double>(phaseB)));
-            
-            // Calculate mipmap parameters for oscillator A (use floor for oversampling)
-            float samplesPerFrameA = sc_abs(slopeA) * static_cast<float>(cycleSamplesA);
-            float octaveA = sc_max(0.0f, sc_log2(samplesPerFrameA));
-            int layerA = static_cast<int>(sc_floor(octaveA));
 
-            // Calculate spacings for adjacent mipmap levels for oscillator A
-            int spacing1A = 1 << layerA;
-            int spacing2A = spacing1A << 1;
-            float crossfadeA = sc_frac(octaveA);
-            
-            // Calculate mipmap parameters for oscillator B (use floor for oversampling)
-            float samplesPerFrameB = sc_abs(slopeB) * static_cast<float>(cycleSamplesB);
-            float octaveB = sc_max(0.0f, sc_log2(samplesPerFrameB));
-            int layerB = static_cast<int>(sc_floor(octaveB));
-
-            // Calculate spacings for adjacent mipmap levels for oscillator B
-            int spacing1B = 1 << layerB;
-            int spacing2B = spacing1B << 1;
-            float crossfadeB = sc_frac(octaveB);
-            
-            // Upsample parameter values
-            m_cyclePosAOversampling.upsample(cyclePosAVal);
-            m_cyclePosBOversampling.upsample(cyclePosBVal);
-            m_pmIndexAOversampling.upsample(pmIndexAVal);
-            m_pmIndexBOversampling.upsample(pmIndexBVal);
-            m_pmFilterRatioAOversampling.upsample(pmFilterRatioAVal);
-            m_pmFilterRatioBOversampling.upsample(pmFilterRatioBVal);
-
-            // Initialize phases and slopes for oversampling
+            // Prepare phases and slopes for oversampling
             float osSlopeA = slopeA / static_cast<float>(m_osRatio);
             float osSlopeB = slopeB / static_cast<float>(m_osRatio);
             float osPhaseA = phaseA - slopeA;
             float osPhaseB = phaseB - slopeB;
+
+            // Store parameter values for oversampling
+            m_osCyclePosAInterp.update(cyclePosA);
+            m_osCyclePosBInterp.update(cyclePosB);
+            m_osXmIndexAInterp.update(xmIndexA);
+            m_osXmIndexBInterp.update(xmIndexB);
+            m_osXmFltRatioAInterp.update(xmFltRatioA);
+            m_osXmFltRatioBInterp.update(xmFltRatioB);
             
             for (int k = 0; k < m_osRatio; k++) {
                 
-                // Clamp upsampled values
-                m_cyclePosAOSBuffer[k] = sc_clip(m_cyclePosAOSBuffer[k], 0.0f, 1.0f);
-                m_cyclePosBOSBuffer[k] = sc_clip(m_cyclePosBOSBuffer[k], 0.0f, 1.0f);
-                m_pmIndexAOSBuffer[k] = sc_clip(m_pmIndexAOSBuffer[k], 0.0f, 10.0f);
-                m_pmIndexBOSBuffer[k] = sc_clip(m_pmIndexBOSBuffer[k], 0.0f, 10.0f);
-                m_pmFilterRatioAOSBuffer[k] = sc_clip(m_pmFilterRatioAOSBuffer[k], 1.0f, 10.0f);
-                m_pmFilterRatioBOSBuffer[k] = sc_clip(m_pmFilterRatioBOSBuffer[k], 1.0f, 10.0f);
+                // Calculate fractional position for interpolation
+                float frac = static_cast<float>(k + 1) / static_cast<float>(m_osRatio);
                 
-                // Increment oversampled phases
+                // Interpolate parameter values
+                float osCyclePosA = m_osCyclePosAInterp.process(frac);
+                float osCyclePosB = m_osCyclePosBInterp.process(frac);
+                float osXmIndexA = m_osXmIndexAInterp.process(frac);
+                float osXmIndexB = m_osXmIndexBInterp.process(frac);
+                float osXmFltRatioA = m_osXmFltRatioAInterp.process(frac);
+                float osXmFltRatioB = m_osXmFltRatioBInterp.process(frac);
+
+                // Increment phases
                 osPhaseA += osSlopeA;
                 osPhaseB += osSlopeB;
                 
-                // Process dual wavetable oscillator with upsampled parameter values
+                // Process wavetable oscillator with cross modulation
                 auto result = m_dualOsc.process(
                     sc_frac(osPhaseA), sc_frac(osPhaseB),
-                    m_cyclePosAOSBuffer[k], m_cyclePosBOSBuffer[k],
                     osSlopeA, osSlopeB,
-                    m_pmIndexAOSBuffer[k], m_pmIndexBOSBuffer[k],
-                    m_pmFilterRatioAOSBuffer[k], m_pmFilterRatioBOSBuffer[k],
-                    spacing1A, spacing2A, crossfadeA,
-                    spacing1B, spacing2B, crossfadeB,
-                    oscTableA.data, cycleSamplesA, numCyclesA,
-                    oscTableB.data, cycleSamplesB, numCyclesB
+                    osXmIndexA, osXmIndexB,
+                    osXmFltRatioA, osXmFltRatioB,
+                    osCyclePosA, osCyclePosB,
+                    oscTableA, oscTableB,
+                    m_sampleRate
                 );
                 
                 m_outputOSBufferA[k] = result.oscA;
@@ -427,35 +306,11 @@ void DualOscOS::next(int nSamples) {
             }
             
             // Downsample outputs
-            outputA[i] = m_outputOversamplingA.downsample();
-            outputB[i] = m_outputOversamplingB.downsample();
+            outputA[i] = m_outputOversamplingA.downsample(m_outputOSBufferA, m_osRatio);
+            outputB[i] = m_outputOversamplingB.downsample(m_outputOSBufferB, m_osRatio);
         }
     }
 
-    // Update parameter cache (use last value if audio-rate, otherwise slope value)
-    cyclePosAPast = isCyclePosAAudioRate ? 
-        sc_clip(in(CyclePosA)[nSamples - 1], 0.0f, 1.0f) : 
-        slopedCyclePosA.value;
-
-    cyclePosBPast = isCyclePosBAAudioRate ? 
-        sc_clip(in(CyclePosB)[nSamples - 1], 0.0f, 1.0f) : 
-        slopedCyclePosB.value;
-
-    pmIndexAPast = isPMIndexAAudioRate ? 
-        sc_clip(in(PMIndexA)[nSamples - 1], 0.0f, 10.0f) : 
-        slopedPMIndexA.value;
-
-    pmIndexBPast = isPMIndexBAudioRate ? 
-        sc_clip(in(PMIndexB)[nSamples - 1], 0.0f, 10.0f) : 
-        slopedPMIndexB.value;
-
-    pmFilterRatioAPast = isPMFilterRatioAAudioRate ? 
-        sc_clip(in(PMFilterRatioA)[nSamples - 1], 1.0f, 10.0f) : 
-        slopedPMFilterRatioA.value;
-
-    pmFilterRatioBPast = isPMFilterRatioBAudioRate ? 
-        sc_clip(in(PMFilterRatioB)[nSamples - 1], 1.0f, 10.0f) : 
-        slopedPMFilterRatioB.value;
 }
 
 // ===== PULSAR OSCILLATOR =====
@@ -465,37 +320,20 @@ PulsarOS::PulsarOS() :
     m_oversampleIndex(sc_clip(static_cast<int>(in0(Oversample)), 0, 4)),
     m_osRatio(1 << m_oversampleIndex)
 {
-    // Initialize parameter cache
-    oscCyclePosPast = sc_clip(in0(OscCyclePos), 0.0f, 1.0f);
-    envCyclePosPast = sc_clip(in0(EnvCyclePos), 0.0f, 1.0f);
-    modCyclePosPast = sc_clip(in0(ModCyclePos), 0.0f, 1.0f);
-    
     // Check which inputs are audio-rate
     isTriggerAudioRate = isAudioRateIn(Trigger);
     isTriggerFreqAudioRate = isAudioRateIn(TriggerFreq);
     isSubSampleOffsetAudioRate = isAudioRateIn(SubSampleOffset);
     isOscFreqAudioRate = isAudioRateIn(OscFreq);
     isModFreqAudioRate = isAudioRateIn(ModFreq);
-    isModIndexAudioRate = isAudioRateIn(ModIndex);
+    isPmIndexAudioRate = isAudioRateIn(PmIndex);
     isOscCyclePosAudioRate = isAudioRateIn(OscCyclePos);
     isEnvCyclePosAudioRate = isAudioRateIn(EnvCyclePos);
     isModCyclePosAudioRate = isAudioRateIn(ModCyclePos);
     
-    // Initialize oversampling
+    // Allocate oversampling buffer
     if (m_oversampleIndex > 0) {
-        auto unit = this;
-
-        // Allocate oversampling buffers
-        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_outputOSBuffer);
-        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_oscCyclePosOSBuffer);
-        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_envCyclePosOSBuffer);
-        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_modCyclePosOSBuffer);
-
-        // Setup oversampling filters
-        m_outputOversampling.init(m_osRatio, m_sampleRate, m_outputOSBuffer);
-        m_oscCyclePosOversampling.init(m_osRatio, m_sampleRate, m_oscCyclePosOSBuffer);
-        m_envCyclePosOversampling.init(m_osRatio, m_sampleRate, m_envCyclePosOSBuffer);
-        m_modCyclePosOversampling.init(m_osRatio, m_sampleRate, m_modCyclePosOSBuffer);
+        BufferUtils::allocBuffer(this, mWorld, m_osRatio, m_outputOSBuffer);
     }
     
     // Set calc function & compute initial sample
@@ -508,42 +346,31 @@ PulsarOS::PulsarOS() :
  
 PulsarOS::~PulsarOS() {
     RTFree(mWorld, m_outputOSBuffer);
-    RTFree(mWorld, m_oscCyclePosOSBuffer);
-    RTFree(mWorld, m_envCyclePosOSBuffer);
-    RTFree(mWorld, m_modCyclePosOSBuffer);
 }
  
 void PulsarOS::next(int nSamples) {
     
     // Control-rate parameters with smooth interpolation
-    auto slopedOscCyclePos = makeSlope(sc_clip(in0(OscCyclePos), 0.0f, 1.0f), oscCyclePosPast);
-    auto slopedEnvCyclePos = makeSlope(sc_clip(in0(EnvCyclePos), 0.0f, 1.0f), envCyclePosPast);
-    auto slopedModCyclePos = makeSlope(sc_clip(in0(ModCyclePos), 0.0f, 1.0f), modCyclePosPast);
+    m_oscCyclePosInterp.update(sc_clip(in0(OscCyclePos), 0.0f, 1.0f), nSamples);
+    m_envCyclePosInterp.update(sc_clip(in0(EnvCyclePos), 0.0f, 1.0f), nSamples);
+    m_modCyclePosInterp.update(sc_clip(in0(ModCyclePos), 0.0f, 1.0f), nSamples);
     
     // Control-rate parameters (settings, no interpolation)
-    float oscBufNum = in0(OscBuffer);
-    float envBufNum = in0(EnvBuffer);
-    float modBufNum = in0(ModBuffer);
+    float oscBufNum = in0(OscBufNum);
+    float modBufNum = in0(ModBufNum);
+    float envBufNum = in0(EnvBufNum);
     int oscNumCycles = sc_max(static_cast<int>(in0(OscNumCycles)), 1);
-    int envNumCycles = sc_max(static_cast<int>(in0(EnvNumCycles)), 1);
     int modNumCycles = sc_max(static_cast<int>(in0(ModNumCycles)), 1);
+    int envNumCycles = sc_max(static_cast<int>(in0(EnvNumCycles)), 1);
     
     // Output pointer
     float* output = out(Out);
 
     // Get wavetable data
-    auto oscTable = m_oscBufUnit.GetTable(this, oscBufNum, "PulsarOS osc");
-    auto envTable = m_envBufUnit.GetTable(this, envBufNum, "PulsarOS env");
-    auto modTable = m_modBufUnit.GetTable(this, modBufNum, "PulsarOS mod");
-    if (!oscTable.valid || !envTable.valid || !modTable.valid) {
-        ClearUnitOutputs(this, nSamples);
-        return;
-    }
-
-    // Calculate samples per cycle
-    int oscCycleSamples = oscTable.size / oscNumCycles;
-    int envCycleSamples = envTable.size / envNumCycles;
-    int modCycleSamples = modTable.size / modNumCycles;
+    auto oscTable = m_oscWavetable.update(this, mWorld, nSamples, oscBufNum, oscNumCycles, "PulsarOS osc");
+    auto modTable = m_modWavetable.update(this, mWorld, nSamples, modBufNum, modNumCycles, "PulsarOS mod");
+    auto envTable = m_envWavetable.update(this, mWorld, nSamples, envBufNum, envNumCycles, "PulsarOS env");
+    if (!oscTable.data || !modTable.data || !envTable.data) return;
     
     if (m_oversampleIndex == 0) {
  
@@ -559,7 +386,7 @@ void PulsarOS::next(int nSamples) {
                 sc_clip(in(TriggerFreq)[i], 0.0f, m_sampleRate * 0.49f) : 
                 sc_clip(in0(TriggerFreq), 0.0f, m_sampleRate * 0.49f);
             
-            float offset = isSubSampleOffsetAudioRate ? 
+            float subSampleOffset = isSubSampleOffsetAudioRate ? 
                 in(SubSampleOffset)[i] : 
                 in0(SubSampleOffset);
  
@@ -571,118 +398,80 @@ void PulsarOS::next(int nSamples) {
                 sc_clip(in(ModFreq)[i], m_sampleRate * -0.49f, m_sampleRate * 0.49f) : 
                 sc_clip(in0(ModFreq), m_sampleRate * -0.49f, m_sampleRate * 0.49f);
  
-            float modIndex = isModIndexAudioRate ? 
-                sc_clip(in(ModIndex)[i], 0.0f, 10.0f) : 
-                sc_clip(in0(ModIndex), 0.0f, 10.0f);
+            float pmIndex = isPmIndexAudioRate ? 
+                sc_clip(in(PmIndex)[i], 0.0f, 10.0f) : 
+                sc_clip(in0(PmIndex), 0.0f, 10.0f);
             
             // Get current parameter values (audio-rate or interpolated control-rate)            
-            float oscCyclePosVal = isOscCyclePosAudioRate ?
+            float oscCyclePos = isOscCyclePosAudioRate ?
                 sc_clip(in(OscCyclePos)[i], 0.0f, 1.0f) :
-                slopedOscCyclePos.consume();
+                m_oscCyclePosInterp.process();
             
-            float envCyclePosVal = isEnvCyclePosAudioRate ?
+            float envCyclePos = isEnvCyclePosAudioRate ?
                 sc_clip(in(EnvCyclePos)[i], 0.0f, 1.0f) :
-                slopedEnvCyclePos.consume();
+                m_envCyclePosInterp.process();
  
-            float modCyclePosVal = isModCyclePosAudioRate ?
+            float modCyclePos = isModCyclePosAudioRate ?
                 sc_clip(in(ModCyclePos)[i], 0.0f, 1.0f) :
-                slopedModCyclePos.consume();
+                m_modCyclePosInterp.process();
             
             // 1. Process voice allocator
             auto voices = m_allocator.process(
                 NUM_VOICES,
                 trigger,
                 triggerFreq,
-                offset,
+                subSampleOffset,
                 m_sampleRate
             );
             
             // 2. Process all grains
             float sum = 0.0f;
             for (int g = 0; g < NUM_VOICES; ++g) {
-                
+
                 // Trigger new grain if needed and store graindata
                 if (voices.triggers[g]) {
                     m_grainData[g].oscFreq = oscFreq;
                     m_grainData[g].modFreq = modFreq;
-                    m_grainData[g].modIndex = modIndex;
-                    m_grainData[g].sampleCount = offset;
-                    m_pmFilters[g].reset();
+                    m_grainData[g].pmIndex = pmIndex;
+                    m_grainData[g].sampleCount = subSampleOffset;
+                    m_pmOscs[g].reset();
                 }
                 
                 // Process grain if voice is active
                 if (voices.gates[g]) {
-                    
+
                     // Calculate slopes
-                    float oscSlope = m_grainData[g].oscFreq / m_sampleRate;
                     float modSlope = m_grainData[g].modFreq / m_sampleRate;
-                    float envSlope = voices.slopes[g];
- 
+                    float oscSlope = m_grainData[g].oscFreq / m_sampleRate;
+
                     // Calculate phases
-                    float oscPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * oscSlope));
                     float modPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * modSlope));
+                    float oscPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * oscSlope));
                     float envPhase = voices.phases[g];
- 
-                    // Calculate mipmap parameters for mod (use ceil for no oversampling)
-                    float modSamplesPerFrame = sc_abs(modSlope) * static_cast<float>(modCycleSamples);
-                    float modOctave = sc_max(0.0f, sc_log2(modSamplesPerFrame));
-                    int modLayer = static_cast<int>(sc_ceil(modOctave));
-                    
-                    // Calculate spacings for adjacent mipmap levels for mod
-                    int modSpacing1 = 1 << modLayer;
-                    int modSpacing2 = modSpacing1 << 1;
-                    float modCrossfade = sc_frac(modOctave);
-                    
-                    // Process mod wavetable oscillator
-                    float modOsc = OscUtils::wavetableOsc(
-                        modPhase, modTable.data, 
-                        modCycleSamples, modNumCycles, modCyclePosVal,
-                        modSpacing1, modSpacing2, modCrossfade
-                    );
- 
-                    // Calculate mipmap parameters for osc (use ceil for no oversampling)
-                    float oscSamplesPerFrame = sc_abs(oscSlope) * static_cast<float>(oscCycleSamples);
-                    float oscOctave = sc_max(0.0f, sc_log2(oscSamplesPerFrame));
-                    int oscLayer = static_cast<int>(sc_ceil(oscOctave));
-                    
-                    // Calculate spacings for adjacent mipmap levels for osc
-                    int oscSpacing1 = 1 << oscLayer;
-                    int oscSpacing2 = oscSpacing1 << 1;
-                    float oscCrossfade = sc_frac(oscOctave);
- 
-                    // Calculate mod scale ratio for PM
-                    float modScaleRatio = 0.0f;
+
+                    // Phase-modulation index scaling: normalize by modulator, scale by carrier
+                    float pmScaleRatio = 0.0f;
                     if (sc_abs(modSlope) > Utils::SAFE_DENOM_EPSILON) {
-                        modScaleRatio = sc_abs(oscSlope / modSlope);
+                        pmScaleRatio = sc_abs(oscSlope / modSlope);
                     }
- 
-                    // Apply Phase Modulation
-                    float modFiltered = m_pmFilters[g].processLowpass(modOsc, modSlope);
-                    float modScaled = modFiltered / Utils::TWO_PI * modScaleRatio;
-                    float modulatedOscPhase = sc_frac(oscPhase + (modScaled * m_grainData[g].modIndex));
-                    
-                    // Process osc wavetable oscillator
-                    float grainOsc = OscUtils::wavetableOsc(
-                        modulatedOscPhase, oscTable.data, 
-                        oscCycleSamples, oscNumCycles, oscCyclePosVal,
-                        oscSpacing1, oscSpacing2, oscCrossfade
+
+                    // Scale phase-modulation index
+                    float pmIndexScaled = m_grainData[g].pmIndex * pmScaleRatio;
+
+                    // Process wavetable oscillator with phase modulation
+                    float grainOsc = m_pmOscs[g].process(
+                        oscPhase, modPhase,
+                        oscSlope, modSlope,
+                        pmIndexScaled,
+                        oscCyclePos, modCyclePos,
+                        oscTable, modTable,
+                        m_sampleRate
                     );
-                    
-                    // Calculate mipmap parameters for env (use ceil for no oversampling)
-                    float envSamplesPerFrame = sc_abs(envSlope) * static_cast<float>(envCycleSamples);
-                    float envOctave = sc_max(0.0f, sc_log2(envSamplesPerFrame));
-                    int envLayer = static_cast<int>(sc_ceil(envOctave));
-                    
-                    // Calculate spacings for adjacent mipmap levels for env
-                    int envSpacing1 = 1 << envLayer;
-                    int envSpacing2 = envSpacing1 << 1;
-                    float envCrossfade = sc_frac(envOctave);
-                    
-                    // Process env wavetable oscillator
+
+                    // Process wavetable oscillator for grain envelope
                     float grainWindow = OscUtils::wavetableOsc(
-                        envPhase, envTable.data, 
-                        envCycleSamples, envNumCycles, envCyclePosVal,
-                        envSpacing1, envSpacing2, envCrossfade
+                        envPhase, voices.slopes[g], 
+                        envTable, envCyclePos
                     );
                     
                     // Accumulate grain output
@@ -694,7 +483,7 @@ void PulsarOS::next(int nSamples) {
             }
             
             // 3. DC block output
-            output[i] = m_dcBlocker.processHighpass(sum, 3.0f, m_sampleRate);
+            output[i] = m_dcBlocker.process(sum, m_sampleRate);
         }
     } else {
  
@@ -710,7 +499,7 @@ void PulsarOS::next(int nSamples) {
                 sc_clip(in(TriggerFreq)[i], 0.0f, m_sampleRate * 0.49f) : 
                 sc_clip(in0(TriggerFreq), 0.0f, m_sampleRate * 0.49f);
             
-            float offset = isSubSampleOffsetAudioRate ? 
+            float subSampleOffset = isSubSampleOffsetAudioRate ? 
                 in(SubSampleOffset)[i] : 
                 in0(SubSampleOffset);
  
@@ -722,149 +511,111 @@ void PulsarOS::next(int nSamples) {
                 sc_clip(in(ModFreq)[i], m_sampleRate * -0.49f, m_sampleRate * 0.49f) : 
                 sc_clip(in0(ModFreq), m_sampleRate * -0.49f, m_sampleRate * 0.49f);
  
-            float modIndex = isModIndexAudioRate ? 
-                sc_clip(in(ModIndex)[i], 0.0f, 10.0f) : 
-                sc_clip(in0(ModIndex), 0.0f, 10.0f);
+            float pmIndex = isPmIndexAudioRate ? 
+                sc_clip(in(PmIndex)[i], 0.0f, 10.0f) : 
+                sc_clip(in0(PmIndex), 0.0f, 10.0f);
             
             // Get current parameter values (audio-rate or interpolated control-rate)            
-            float oscCyclePosVal = isOscCyclePosAudioRate ?
+            float oscCyclePos = isOscCyclePosAudioRate ?
                 sc_clip(in(OscCyclePos)[i], 0.0f, 1.0f) :
-                slopedOscCyclePos.consume();
+                m_oscCyclePosInterp.process();
             
-            float envCyclePosVal = isEnvCyclePosAudioRate ?
+            float envCyclePos = isEnvCyclePosAudioRate ?
                 sc_clip(in(EnvCyclePos)[i], 0.0f, 1.0f) :
-                slopedEnvCyclePos.consume();
+                m_envCyclePosInterp.process();
  
-            float modCyclePosVal = isModCyclePosAudioRate ?
+            float modCyclePos = isModCyclePosAudioRate ?
                 sc_clip(in(ModCyclePos)[i], 0.0f, 1.0f) :
-                slopedModCyclePos.consume();
+                m_modCyclePosInterp.process();
         
             // 1. Process voice allocator
             auto voices = m_allocator.process(
                 NUM_VOICES,
                 trigger,
                 triggerFreq,
-                offset,
+                subSampleOffset,
                 m_sampleRate
             );
             
-            // 2. Upsample parameter values
-            m_oscCyclePosOversampling.upsample(oscCyclePosVal);
-            m_envCyclePosOversampling.upsample(envCyclePosVal);
-            m_modCyclePosOversampling.upsample(modCyclePosVal);
+            // 2. Store parameter values for oversampling
+            m_osOscCyclePosInterp.update(oscCyclePos);
+            m_osEnvCyclePosInterp.update(envCyclePos);
+            m_osModCyclePosInterp.update(modCyclePos);
             
             // 3. Clear OS buffer
             memset(m_outputOSBuffer, 0, m_osRatio * sizeof(float));
             
             // 4. Process all grains
             for (int g = 0; g < NUM_VOICES; ++g) {
-                
+
                 // Trigger new grain if needed and store graindata
                 if (voices.triggers[g]) {
                     m_grainData[g].oscFreq = oscFreq;
                     m_grainData[g].modFreq = modFreq;
-                    m_grainData[g].modIndex = modIndex;
-                    m_grainData[g].sampleCount = offset;
-                    m_pmFilters[g].reset();
+                    m_grainData[g].pmIndex = pmIndex;
+                    m_grainData[g].sampleCount = subSampleOffset;
+                    m_pmOscs[g].reset();
                 }
                 
                 // Process grain if voice is active
                 if (voices.gates[g]) {
-                    
+
                     // Calculate slopes
-                    float oscSlope = m_grainData[g].oscFreq / m_sampleRate;
                     float modSlope = m_grainData[g].modFreq / m_sampleRate;
+                    float oscSlope = m_grainData[g].oscFreq / m_sampleRate;
                     float envSlope = voices.slopes[g];
- 
+
                     // Calculate phases
-                    float oscPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * oscSlope));
                     float modPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * modSlope));
+                    float oscPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * oscSlope));
                     float envPhase = voices.phases[g];
- 
-                    // Calculate mipmap parameters for mod (use floor for oversampling)
-                    float modSamplesPerFrame = sc_abs(modSlope) * static_cast<float>(modCycleSamples);
-                    float modOctave = sc_max(0.0f, sc_log2(modSamplesPerFrame));
-                    int modLayer = static_cast<int>(sc_floor(modOctave));
-                    
-                    // Calculate spacings for adjacent mipmap levels for mod
-                    int modSpacing1 = 1 << modLayer;
-                    int modSpacing2 = modSpacing1 << 1;
-                    float modCrossfade = sc_frac(modOctave);
- 
-                    // Calculate mipmap parameters for osc (use floor for oversampling)
-                    float oscSamplesPerFrame = sc_abs(oscSlope) * static_cast<float>(oscCycleSamples);
-                    float oscOctave = sc_max(0.0f, sc_log2(oscSamplesPerFrame));
-                    int oscLayer = static_cast<int>(sc_floor(oscOctave));
-                    
-                    // Calculate spacings for adjacent mipmap levels for osc
-                    int oscSpacing1 = 1 << oscLayer;
-                    int oscSpacing2 = oscSpacing1 << 1;
-                    float oscCrossfade = sc_frac(oscOctave);
-                    
-                    // Initialize mod phase and slope for oversampling
-                    float osModSlope = modSlope / static_cast<float>(m_osRatio);
-                    float osModPhase = modPhase - modSlope;
-                    
-                    // Initialize osc phase and slope for oversampling
-                    float osOscSlope = oscSlope / static_cast<float>(m_osRatio);
-                    float osOscPhase = oscPhase - oscSlope;
-                    
-                    // Initialize env phase and slope for oversampling
-                    float osEnvSlope = envSlope / static_cast<float>(m_osRatio);
-                    float osEnvPhase = envPhase - envSlope;
-                    
-                    // Calculate mipmap parameters for env (use floor for oversampling)
-                    float envSamplesPerFrame = sc_abs(envSlope) * static_cast<float>(envCycleSamples);
-                    float envOctave = sc_max(0.0f, sc_log2(envSamplesPerFrame));
-                    int envLayer = static_cast<int>(sc_floor(envOctave));
-                    
-                    // Calculate spacings for adjacent mipmap levels for env
-                    int envSpacing1 = 1 << envLayer;
-                    int envSpacing2 = envSpacing1 << 1;
-                    float envCrossfade = sc_frac(envOctave);
- 
-                    // Calculate mod scale ratio for PM
-                    float modScaleRatio = 0.0f;
+
+                    // Phase-modulation index scaling: normalize by modulator, scale by carrier
+                    float pmScaleRatio = 0.0f;
                     if (sc_abs(modSlope) > Utils::SAFE_DENOM_EPSILON) {
-                        modScaleRatio = sc_abs(oscSlope / modSlope);
+                        pmScaleRatio = sc_abs(oscSlope / modSlope);
                     }
+
+                    // Scale phase-modulation index
+                    float pmIndexScaled = m_grainData[g].pmIndex * pmScaleRatio;
+
+                    // Prepare phases and slopes for oversampling
+                    float osModSlope = modSlope / static_cast<float>(m_osRatio);
+                    float osOscSlope = oscSlope / static_cast<float>(m_osRatio);
+                    float osEnvSlope = envSlope / static_cast<float>(m_osRatio);
+                    float osModPhase = modPhase - modSlope;
+                    float osOscPhase = oscPhase - oscSlope;
+                    float osEnvPhase = envPhase - envSlope;
                     
                     for (int k = 0; k < m_osRatio; k++) {
                         
-                        // Clamp upsampled values
-                        m_oscCyclePosOSBuffer[k] = sc_clip(m_oscCyclePosOSBuffer[k], 0.0f, 1.0f);
-                        m_envCyclePosOSBuffer[k] = sc_clip(m_envCyclePosOSBuffer[k], 0.0f, 1.0f);
-                        m_modCyclePosOSBuffer[k] = sc_clip(m_modCyclePosOSBuffer[k], 0.0f, 1.0f);
+                        // Calculate fractional position for interpolation
+                        float frac = static_cast<float>(k + 1) / static_cast<float>(m_osRatio);
                         
-                        // Increment oversampled phases
+                        // Interpolate parameter values
+                        float osOscCyclePos = m_osOscCyclePosInterp.process(frac);
+                        float osEnvCyclePos = m_osEnvCyclePosInterp.process(frac);
+                        float osModCyclePos = m_osModCyclePosInterp.process(frac);
+
+                        // Increment phases
                         osModPhase += osModSlope;
                         osOscPhase += osOscSlope;
                         osEnvPhase += osEnvSlope;
                         
-                        // Process mod wavetable oscillator
-                        float modOsc = OscUtils::wavetableOsc(
-                            sc_frac(osModPhase), modTable.data, 
-                            modCycleSamples, modNumCycles, m_modCyclePosOSBuffer[k],
-                            modSpacing1, modSpacing2, modCrossfade
+                        // Process wavetable oscillator with phase modulation
+                        float grainOsc = m_pmOscs[g].process(
+                            sc_frac(osOscPhase), sc_frac(osModPhase),
+                            osOscSlope, osModSlope,
+                            pmIndexScaled,
+                            osOscCyclePos, osModCyclePos,
+                            oscTable, modTable,
+                            m_sampleRate
                         );
                         
-                        // Apply Phase Modulation
-                        float modFiltered = m_pmFilters[g].processLowpass(modOsc, osModSlope);
-                        float modScaled = modFiltered / Utils::TWO_PI * modScaleRatio;
-                        float modulatedOscPhase = sc_frac(osOscPhase + (modScaled * m_grainData[g].modIndex));
-                        
-                        // Process osc wavetable oscillator
-                        float grainOsc = OscUtils::wavetableOsc(
-                            modulatedOscPhase, oscTable.data, 
-                            oscCycleSamples, oscNumCycles, m_oscCyclePosOSBuffer[k],
-                            oscSpacing1, oscSpacing2, oscCrossfade
-                        );
-                        
-                        // Process env wavetable oscillator
+                        // Process wavetable oscillator for grain envelope
                         float grainWindow = OscUtils::wavetableOsc(
-                            osEnvPhase, envTable.data, 
-                            envCycleSamples, envNumCycles, m_envCyclePosOSBuffer[k],
-                            envSpacing1, envSpacing2, envCrossfade
+                            osEnvPhase, osEnvSlope, 
+                            envTable, osEnvCyclePos
                         );
                         
                         // Accumulate grain output
@@ -875,21 +626,12 @@ void PulsarOS::next(int nSamples) {
                     m_grainData[g].sampleCount++;
                 }
             }
-            
+
             // 5. Downsample and DC block output
-            output[i] = m_dcBlocker.processHighpass(m_outputOversampling.downsample(), 3.0f, m_sampleRate);
+            float downsampled = m_outputOversampling.downsample(m_outputOSBuffer, m_osRatio);
+            output[i] = m_dcBlocker.process(downsampled, m_sampleRate);
         }
     }
-    
-    // Update parameter cache (use last value if audio-rate, otherwise slope value)
-    oscCyclePosPast = isOscCyclePosAudioRate ? 
-        sc_clip(in(OscCyclePos)[nSamples - 1], 0.0f, 1.0f) : slopedOscCyclePos.value;
-        
-    envCyclePosPast = isEnvCyclePosAudioRate ? 
-        sc_clip(in(EnvCyclePos)[nSamples - 1], 0.0f, 1.0f) : slopedEnvCyclePos.value;
- 
-    modCyclePosPast = isModCyclePosAudioRate ? 
-        sc_clip(in(ModCyclePos)[nSamples - 1], 0.0f, 1.0f) : slopedModCyclePos.value;
 }
 
 // ===== DUAL PULSAR OSCILLATOR =====
@@ -899,46 +641,26 @@ DualPulsarOS::DualPulsarOS() :
     m_oversampleIndex(sc_clip(static_cast<int>(in0(Oversample)), 0, 4)),
     m_osRatio(1 << m_oversampleIndex)
 {
-    // Initialize parameter cache (sloped params)
-    oscCyclePosPast = sc_clip(in0(OscCyclePos), 0.0f, 1.0f);
-    modCyclePosPast = sc_clip(in0(ModCyclePos), 0.0f, 1.0f);
-    envSkewPast = sc_clip(in0(EnvSkew), 0.0f, 1.0f);
-    envIndexPast = sc_clip(in0(EnvIndex), 0.0f, 10.0f);
- 
     // Check which inputs are audio-rate
     isTriggerAudioRate = isAudioRateIn(Trigger);
     isTriggerFreqAudioRate = isAudioRateIn(TriggerFreq);
     isSubSampleOffsetAudioRate = isAudioRateIn(SubSampleOffset);
     isOscFreqAudioRate = isAudioRateIn(OscFreq);
     isModFreqAudioRate = isAudioRateIn(ModFreq);
-    isPmIndexOscAudioRate = isAudioRateIn(PmIndexOsc);
-    isPmIndexModAudioRate = isAudioRateIn(PmIndexMod);
-    isPmFilterRatioOscAudioRate = isAudioRateIn(PmFilterRatioOsc);
-    isPmFilterRatioModAudioRate = isAudioRateIn(PmFilterRatioMod);
-    isWarpOscAudioRate = isAudioRateIn(WarpOsc);
-    isWarpModAudioRate = isAudioRateIn(WarpMod);
+    isOscXmIndexAudioRate = isAudioRateIn(OscXmIndex);
+    isModXmIndexAudioRate = isAudioRateIn(ModXmIndex);
+    isOscXmFltRatioAudioRate = isAudioRateIn(OscXmFltRatio);
+    isModXmFltRatioAudioRate = isAudioRateIn(ModXmFltRatio);
+    isOscWarpAudioRate = isAudioRateIn(OscWarp);
+    isModWarpAudioRate = isAudioRateIn(ModWarp);
     isOscCyclePosAudioRate = isAudioRateIn(OscCyclePos);
     isModCyclePosAudioRate = isAudioRateIn(ModCyclePos);
     isEnvSkewAudioRate = isAudioRateIn(EnvSkew);
     isEnvIndexAudioRate = isAudioRateIn(EnvIndex);
  
-    // Initialize oversampling
+    // Allocate oversampling buffer
     if (m_oversampleIndex > 0) {
-        auto unit = this;
-
-        // Allocate oversampling buffers
-        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_outputOSBuffer);
-        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_oscCyclePosOSBuffer);
-        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_modCyclePosOSBuffer);
-        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_skewOSBuffer);
-        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_indexOSBuffer);
-
-        // Setup oversampling filters
-        m_outputOversampling.init(m_osRatio, m_sampleRate, m_outputOSBuffer);
-        m_oscCyclePosOversampling.init(m_osRatio, m_sampleRate, m_oscCyclePosOSBuffer);
-        m_modCyclePosOversampling.init(m_osRatio, m_sampleRate, m_modCyclePosOSBuffer);
-        m_envSkewOversampling.init(m_osRatio, m_sampleRate, m_skewOSBuffer);
-        m_envIndexOversampling.init(m_osRatio, m_sampleRate, m_indexOSBuffer);
+        BufferUtils::allocBuffer(this, mWorld, m_osRatio, m_outputOSBuffer);
     }
  
     // Set calc function & compute initial sample
@@ -951,23 +673,19 @@ DualPulsarOS::DualPulsarOS() :
  
 DualPulsarOS::~DualPulsarOS() {
     RTFree(mWorld, m_outputOSBuffer);
-    RTFree(mWorld, m_oscCyclePosOSBuffer);
-    RTFree(mWorld, m_modCyclePosOSBuffer);
-    RTFree(mWorld, m_skewOSBuffer);
-    RTFree(mWorld, m_indexOSBuffer);
 }
  
 void DualPulsarOS::next(int nSamples) {
  
-    // Control-rate parameters with smooth interpolation (sloped params)
-    auto slopedOscCyclePos = makeSlope(sc_clip(in0(OscCyclePos), 0.0f, 1.0f), oscCyclePosPast);
-    auto slopedModCyclePos = makeSlope(sc_clip(in0(ModCyclePos), 0.0f, 1.0f), modCyclePosPast);
-    auto slopedEnvSkew = makeSlope(sc_clip(in0(EnvSkew), 0.0f, 1.0f), envSkewPast);
-    auto slopedEnvIndex = makeSlope(sc_clip(in0(EnvIndex), 0.0f, 10.0f), envIndexPast);
+    // Control-rate parameters with smooth interpolation
+    m_oscCyclePosInterp.update(sc_clip(in0(OscCyclePos), 0.0f, 1.0f), nSamples);
+    m_modCyclePosInterp.update(sc_clip(in0(ModCyclePos), 0.0f, 1.0f), nSamples);
+    m_envSkewInterp.update(sc_clip(in0(EnvSkew), 0.0f, 1.0f), nSamples);
+    m_envIndexInterp.update(sc_clip(in0(EnvIndex), 0.0f, 10.0f), nSamples);
  
     // Control-rate parameters (settings, no interpolation)
-    float oscBufNum = in0(OscBuffer);
-    float modBufNum = in0(ModBuffer);
+    float oscBufNum = in0(OscBufNum);
+    float modBufNum = in0(ModBufNum);
     int oscNumCycles = sc_max(static_cast<int>(in0(OscNumCycles)), 1);
     int modNumCycles = sc_max(static_cast<int>(in0(ModNumCycles)), 1);
  
@@ -975,17 +693,10 @@ void DualPulsarOS::next(int nSamples) {
     float* output = out(Out);
 
     // Get wavetable data
-    auto oscTable = m_oscBufUnit.GetTable(this, oscBufNum, "DualPulsarOS osc");
-    auto modTable = m_modBufUnit.GetTable(this, modBufNum, "DualPulsarOS mod");
-    if (!oscTable.valid || !modTable.valid) {
-        ClearUnitOutputs(this, nSamples);
-        return;
-    }
- 
-    // Calculate samples per cycle
-    int oscCycleSamples = oscTable.size / oscNumCycles;
-    int modCycleSamples = modTable.size / modNumCycles;
- 
+    auto oscTable = m_oscWavetable.update(this, mWorld, nSamples, oscBufNum, oscNumCycles, "DualPulsarOS osc");
+    auto modTable = m_modWavetable.update(this, mWorld, nSamples, modBufNum, modNumCycles, "DualPulsarOS mod");
+    if (!oscTable.data || !modTable.data) return;
+
     if (m_oversampleIndex == 0) {
  
         for (int i = 0; i < nSamples; ++i) {
@@ -1000,7 +711,7 @@ void DualPulsarOS::next(int nSamples) {
                 sc_clip(in(TriggerFreq)[i], 0.0f, m_sampleRate * 0.49f) :
                 sc_clip(in0(TriggerFreq), 0.0f, m_sampleRate * 0.49f);
  
-            float offset = isSubSampleOffsetAudioRate ?
+            float subSampleOffset = isSubSampleOffsetAudioRate ?
                 in(SubSampleOffset)[i] :
                 in0(SubSampleOffset);
  
@@ -1012,152 +723,131 @@ void DualPulsarOS::next(int nSamples) {
                 sc_clip(in(ModFreq)[i], m_sampleRate * -0.49f, m_sampleRate * 0.49f) :
                 sc_clip(in0(ModFreq), m_sampleRate * -0.49f, m_sampleRate * 0.49f);
  
-            float pmIndexOsc = isPmIndexOscAudioRate ?
-                sc_clip(in(PmIndexOsc)[i], 0.0f, 10.0f) :
-                sc_clip(in0(PmIndexOsc), 0.0f, 10.0f);
+            float oscXmIndex = isOscXmIndexAudioRate ?
+                sc_clip(in(OscXmIndex)[i], 0.0f, 10.0f) :
+                sc_clip(in0(OscXmIndex), 0.0f, 10.0f);
  
-            float pmIndexMod = isPmIndexModAudioRate ?
-                sc_clip(in(PmIndexMod)[i], 0.0f, 10.0f) :
-                sc_clip(in0(PmIndexMod), 0.0f, 10.0f);
+            float modXmIndex = isModXmIndexAudioRate ?
+                sc_clip(in(ModXmIndex)[i], 0.0f, 10.0f) :
+                sc_clip(in0(ModXmIndex), 0.0f, 10.0f);
  
-            float pmFilterRatioOsc = isPmFilterRatioOscAudioRate ?
-                sc_clip(in(PmFilterRatioOsc)[i], 1.0f, 10.0f) :
-                sc_clip(in0(PmFilterRatioOsc), 1.0f, 10.0f);
+            float oscXmFltRatio = isOscXmFltRatioAudioRate ?
+                sc_clip(in(OscXmFltRatio)[i], 1.0f, 10.0f) :
+                sc_clip(in0(OscXmFltRatio), 1.0f, 10.0f);
  
-            float pmFilterRatioMod = isPmFilterRatioModAudioRate ?
-                sc_clip(in(PmFilterRatioMod)[i], 1.0f, 10.0f) :
-                sc_clip(in0(PmFilterRatioMod), 1.0f, 10.0f);
+            float modXmFltRatio = isModXmFltRatioAudioRate ?
+                sc_clip(in(ModXmFltRatio)[i], 1.0f, 10.0f) :
+                sc_clip(in0(ModXmFltRatio), 1.0f, 10.0f);
  
-            float warpOsc = isWarpOscAudioRate ?
-                sc_clip(in(WarpOsc)[i], 0.0f, 1.0f) :
-                sc_clip(in0(WarpOsc), 0.0f, 1.0f);
+            float oscWarp = isOscWarpAudioRate ?
+                sc_clip(in(OscWarp)[i], 0.0f, 1.0f) :
+                sc_clip(in0(OscWarp), 0.0f, 1.0f);
  
-            float warpMod = isWarpModAudioRate ?
-                sc_clip(in(WarpMod)[i], 0.0f, 1.0f) :
-                sc_clip(in0(WarpMod), 0.0f, 1.0f);
+            float modWarp = isModWarpAudioRate ?
+                sc_clip(in(ModWarp)[i], 0.0f, 1.0f) :
+                sc_clip(in0(ModWarp), 0.0f, 1.0f);
  
             // Get current parameter values (audio-rate or interpolated control-rate)
-            float oscCyclePosVal = isOscCyclePosAudioRate ?
+            float oscCyclePos = isOscCyclePosAudioRate ?
                 sc_clip(in(OscCyclePos)[i], 0.0f, 1.0f) :
-                slopedOscCyclePos.consume();
+                m_oscCyclePosInterp.process();
  
-            float modCyclePosVal = isModCyclePosAudioRate ?
+            float modCyclePos = isModCyclePosAudioRate ?
                 sc_clip(in(ModCyclePos)[i], 0.0f, 1.0f) :
-                slopedModCyclePos.consume();
+                m_modCyclePosInterp.process();
  
-            float envSkewVal = isEnvSkewAudioRate ?
+            float envSkew = isEnvSkewAudioRate ?
                 sc_clip(in(EnvSkew)[i], 0.0f, 1.0f) :
-                slopedEnvSkew.consume();
+                m_envSkewInterp.process();
  
-            float envIndexVal = isEnvIndexAudioRate ?
+            float envIndex = isEnvIndexAudioRate ?
                 sc_clip(in(EnvIndex)[i], 0.0f, 10.0f) :
-                slopedEnvIndex.consume();
+                m_envIndexInterp.process();
  
             // 1. Process voice allocator
             auto voices = m_allocator.process(
                 NUM_VOICES,
                 trigger,
                 triggerFreq,
-                offset,
+                subSampleOffset,
                 m_sampleRate
             );
  
             // 2. Process all grains
             float sum = 0.0f;
             for (int g = 0; g < NUM_VOICES; ++g) {
- 
+
                 // Trigger new grain if needed and store graindata
                 if (voices.triggers[g]) {
                     m_grainData[g].oscFreq = oscFreq;
                     m_grainData[g].modFreq = modFreq;
-                    m_grainData[g].pmIndexOsc = pmIndexOsc;
-                    m_grainData[g].pmIndexMod = pmIndexMod;
-                    m_grainData[g].pmFilterRatioOsc = pmFilterRatioOsc;
-                    m_grainData[g].pmFilterRatioMod = pmFilterRatioMod;
-                    m_grainData[g].warpOsc = warpOsc;
-                    m_grainData[g].warpMod = warpMod;
-                    m_grainData[g].sampleCount = offset;
+                    m_grainData[g].oscXmIndex = oscXmIndex;
+                    m_grainData[g].modXmIndex = modXmIndex;
+                    m_grainData[g].oscXmFltRatio = oscXmFltRatio;
+                    m_grainData[g].modXmFltRatio = modXmFltRatio;
+                    m_grainData[g].oscWarp = oscWarp;
+                    m_grainData[g].modWarp = modWarp;
+                    m_grainData[g].sampleCount = subSampleOffset;
                     m_dualOscs[g].reset();
                 }
  
                 // Process grain if voice is active
                 if (voices.gates[g]) {
- 
+
                     // Calculate slopes
                     float oscSlope = m_grainData[g].oscFreq / m_sampleRate;
                     float modSlope = m_grainData[g].modFreq / m_sampleRate;
                     float envSlope = voices.slopes[g];
- 
+
                     // Calculate phases
-                    float oscPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * oscSlope));
                     float modPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * modSlope));
+                    float oscPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * oscSlope));
                     float envPhase = voices.phases[g];
- 
-                    // Phase increment distortion ratios
-                    float phsIncRatioOsc = 0.0f;
-                    float phsIncRatioMod = 0.0f;
-                    if (sc_abs(envSlope) > Utils::SAFE_DENOM_EPSILON) {
-                        phsIncRatioOsc = sc_abs(oscSlope / envSlope);
-                        phsIncRatioMod = sc_abs(modSlope / envSlope);
-                    }
 
-                    // Apply Phase increment distortion
-                    float phsIncDistOsc = Easing::Interp::jCurve(envPhase, m_grainData[g].warpOsc, Easing::Cores::cubic) - envPhase;
-                    float oscPhaseDistorted = sc_frac(oscPhase + (phsIncDistOsc * phsIncRatioOsc));
- 
-                    float phsIncDistMod = Easing::Interp::jCurve(envPhase, m_grainData[g].warpMod, Easing::Cores::cubic) - envPhase;
-                    float modPhaseDistorted = sc_frac(modPhase + (phsIncDistMod * phsIncRatioMod));
- 
-                    // Calculate mipmap parameters for osc (use ceil for no oversampling)
-                    float oscSamplesPerFrame = sc_abs(oscSlope) * static_cast<float>(oscCycleSamples);
-                    float oscOctave = sc_max(0.0f, sc_log2(oscSamplesPerFrame));
-                    int oscLayer = static_cast<int>(sc_ceil(oscOctave));
- 
-                    // Calculate spacings for adjacent mipmap levels for osc
-                    int oscSpacing1 = 1 << oscLayer;
-                    int oscSpacing2 = oscSpacing1 << 1;
-                    float oscCrossfade = sc_frac(oscOctave);
- 
-                    // Calculate mipmap parameters for mod (use ceil for no oversampling)
-                    float modSamplesPerFrame = sc_abs(modSlope) * static_cast<float>(modCycleSamples);
-                    float modOctave = sc_max(0.0f, sc_log2(modSamplesPerFrame));
-                    int modLayer = static_cast<int>(sc_ceil(modOctave));
- 
-                    // Calculate spacings for adjacent mipmap levels for mod
-                    int modSpacing1 = 1 << modLayer;
-                    int modSpacing2 = modSpacing1 << 1;
-                    float modCrossfade = sc_frac(modOctave);
-
-                    // PM index scaling: normalize by modulator, scale by carrier
-                    float pmScaleRatioOsc = 0.0f;
+                    // Cross-modulation index scaling: normalize by modulator, scale by carrier
+                    float oscXmScaleRatio = 0.0f;
                     if (sc_abs(modSlope) > Utils::SAFE_DENOM_EPSILON) {
-                        pmScaleRatioOsc = sc_abs(oscSlope / modSlope);
+                        oscXmScaleRatio = sc_abs(oscSlope / modSlope);
                     }
-                    float pmScaleRatioMod = 0.0f;
+                    float modXmScaleRatio = 0.0f;
                     if (sc_abs(oscSlope) > Utils::SAFE_DENOM_EPSILON) {
-                        pmScaleRatioMod = sc_abs(modSlope / oscSlope);
+                        modXmScaleRatio = sc_abs(modSlope / oscSlope);
                     }
 
-                    // Scale PM indices
-                    float pmIndexOscScaled = m_grainData[g].pmIndexOsc * pmScaleRatioOsc;
-                    float pmIndexModScaled = m_grainData[g].pmIndexMod * pmScaleRatioMod;
+                    // Scale cross-modulation indices
+                    float oscXmIndexScaled = m_grainData[g].oscXmIndex * oscXmScaleRatio;
+                    float modXmIndexScaled = m_grainData[g].modXmIndex * modXmScaleRatio;
 
-                    // Process cross-modulated dual oscillator
+                    // Phase Increment Distortion ratios
+                    float oscPhsIncRatio = 0.0f;
+                    float modPhsIncRatio = 0.0f;
+                    if (sc_abs(envSlope) > Utils::SAFE_DENOM_EPSILON) {
+                        oscPhsIncRatio = sc_abs(oscSlope / envSlope);
+                        modPhsIncRatio = sc_abs(modSlope / envSlope);
+                    }
+
+                    // Apply Phase Increment Distortion
+                    float oscPhsIncDist = Easing::Interp::jCurve(envPhase, m_grainData[g].oscWarp, Easing::Cores::cubic) - envPhase;
+                    float oscPhaseDistorted = sc_frac(oscPhase + (oscPhsIncDist * oscPhsIncRatio));
+ 
+                    float modPhsIncDist = Easing::Interp::jCurve(envPhase, m_grainData[g].modWarp, Easing::Cores::cubic) - envPhase;
+                    float modPhaseDistorted = sc_frac(modPhase + (modPhsIncDist * modPhsIncRatio));
+
+                    // Process wavetable oscillator with cross modulation
                     auto result = m_dualOscs[g].process(
                         oscPhaseDistorted, modPhaseDistorted,
-                        oscCyclePosVal, modCyclePosVal,
                         oscSlope, modSlope,
-                        pmIndexOscScaled, pmIndexModScaled,
-                        m_grainData[g].pmFilterRatioOsc, m_grainData[g].pmFilterRatioMod,
-                        oscSpacing1, oscSpacing2, oscCrossfade,
-                        modSpacing1, modSpacing2, modCrossfade,
-                        oscTable.data, oscCycleSamples, oscNumCycles,
-                        modTable.data, modCycleSamples, modNumCycles
+                        oscXmIndexScaled, modXmIndexScaled,
+                        m_grainData[g].oscXmFltRatio, m_grainData[g].modXmFltRatio,
+                        oscCyclePos, modCyclePos,
+                        oscTable, modTable,
+                        m_sampleRate
                     );
  
                     // Process gaussian window
                     float grainWindow = WindowFunctions::gaussianWindow(
-                        envPhase, envSkewVal, envIndexVal);
+                        envPhase, envSkew, envIndex
+                    );
  
                     // Accumulate grain output
                     sum += result.oscA * grainWindow;
@@ -1168,7 +858,7 @@ void DualPulsarOS::next(int nSamples) {
             }
  
             // 3. DC block output
-            output[i] = m_dcBlocker.processHighpass(sum, 3.0f, m_sampleRate);
+            output[i] = m_dcBlocker.process(sum, m_sampleRate);
         }
     } else {
  
@@ -1184,7 +874,7 @@ void DualPulsarOS::next(int nSamples) {
                 sc_clip(in(TriggerFreq)[i], 0.0f, m_sampleRate * 0.49f) :
                 sc_clip(in0(TriggerFreq), 0.0f, m_sampleRate * 0.49f);
  
-            float offset = isSubSampleOffsetAudioRate ?
+            float subSampleOffset = isSubSampleOffsetAudioRate ?
                 in(SubSampleOffset)[i] :
                 in0(SubSampleOffset);
  
@@ -1196,185 +886,163 @@ void DualPulsarOS::next(int nSamples) {
                 sc_clip(in(ModFreq)[i], m_sampleRate * -0.49f, m_sampleRate * 0.49f) :
                 sc_clip(in0(ModFreq), m_sampleRate * -0.49f, m_sampleRate * 0.49f);
  
-            float pmIndexOsc = isPmIndexOscAudioRate ?
-                sc_clip(in(PmIndexOsc)[i], 0.0f, 10.0f) :
-                sc_clip(in0(PmIndexOsc), 0.0f, 10.0f);
+            float oscXmIndex = isOscXmIndexAudioRate ?
+                sc_clip(in(OscXmIndex)[i], 0.0f, 10.0f) :
+                sc_clip(in0(OscXmIndex), 0.0f, 10.0f);
  
-            float pmIndexMod = isPmIndexModAudioRate ?
-                sc_clip(in(PmIndexMod)[i], 0.0f, 10.0f) :
-                sc_clip(in0(PmIndexMod), 0.0f, 10.0f);
+            float modXmIndex = isModXmIndexAudioRate ?
+                sc_clip(in(ModXmIndex)[i], 0.0f, 10.0f) :
+                sc_clip(in0(ModXmIndex), 0.0f, 10.0f);
  
-            float pmFilterRatioOsc = isPmFilterRatioOscAudioRate ?
-                sc_clip(in(PmFilterRatioOsc)[i], 1.0f, 10.0f) :
-                sc_clip(in0(PmFilterRatioOsc), 1.0f, 10.0f);
+            float oscXmFltRatio = isOscXmFltRatioAudioRate ?
+                sc_clip(in(OscXmFltRatio)[i], 1.0f, 10.0f) :
+                sc_clip(in0(OscXmFltRatio), 1.0f, 10.0f);
  
-            float pmFilterRatioMod = isPmFilterRatioModAudioRate ?
-                sc_clip(in(PmFilterRatioMod)[i], 1.0f, 10.0f) :
-                sc_clip(in0(PmFilterRatioMod), 1.0f, 10.0f);
+            float modXmFltRatio = isModXmFltRatioAudioRate ?
+                sc_clip(in(ModXmFltRatio)[i], 1.0f, 10.0f) :
+                sc_clip(in0(ModXmFltRatio), 1.0f, 10.0f);
  
-            float warpOsc = isWarpOscAudioRate ?
-                sc_clip(in(WarpOsc)[i], 0.0f, 1.0f) :
-                sc_clip(in0(WarpOsc), 0.0f, 1.0f);
+            float oscWarp = isOscWarpAudioRate ?
+                sc_clip(in(OscWarp)[i], 0.0f, 1.0f) :
+                sc_clip(in0(OscWarp), 0.0f, 1.0f);
  
-            float warpMod = isWarpModAudioRate ?
-                sc_clip(in(WarpMod)[i], 0.0f, 1.0f) :
-                sc_clip(in0(WarpMod), 0.0f, 1.0f);
+            float modWarp = isModWarpAudioRate ?
+                sc_clip(in(ModWarp)[i], 0.0f, 1.0f) :
+                sc_clip(in0(ModWarp), 0.0f, 1.0f);
  
             // Get current parameter values (audio-rate or interpolated control-rate)
-            float oscCyclePosVal = isOscCyclePosAudioRate ?
+            float oscCyclePos = isOscCyclePosAudioRate ?
                 sc_clip(in(OscCyclePos)[i], 0.0f, 1.0f) :
-                slopedOscCyclePos.consume();
+                m_oscCyclePosInterp.process();
  
-            float modCyclePosVal = isModCyclePosAudioRate ?
+            float modCyclePos = isModCyclePosAudioRate ?
                 sc_clip(in(ModCyclePos)[i], 0.0f, 1.0f) :
-                slopedModCyclePos.consume();
+                m_modCyclePosInterp.process();
  
-            float envSkewVal = isEnvSkewAudioRate ?
+            float envSkew = isEnvSkewAudioRate ?
                 sc_clip(in(EnvSkew)[i], 0.0f, 1.0f) :
-                slopedEnvSkew.consume();
+                m_envSkewInterp.process();
  
-            float envIndexVal = isEnvIndexAudioRate ?
+            float envIndex = isEnvIndexAudioRate ?
                 sc_clip(in(EnvIndex)[i], 0.0f, 10.0f) :
-                slopedEnvIndex.consume();
+                m_envIndexInterp.process();
  
             // 1. Process voice allocator
             auto voices = m_allocator.process(
                 NUM_VOICES,
                 trigger,
                 triggerFreq,
-                offset,
+                subSampleOffset,
                 m_sampleRate
             );
  
-            // 2. Upsample parameter values
-            m_oscCyclePosOversampling.upsample(oscCyclePosVal);
-            m_modCyclePosOversampling.upsample(modCyclePosVal);
-            m_envSkewOversampling.upsample(envSkewVal);
-            m_envIndexOversampling.upsample(envIndexVal);
+            // 2. Store parameter values for oversampling
+            m_osOscCyclePosInterp.update(oscCyclePos);
+            m_osModCyclePosInterp.update(modCyclePos);
+            m_osEnvSkewInterp.update(envSkew);
+            m_osEnvIndexInterp.update(envIndex);
  
             // 3. Clear OS buffer
             memset(m_outputOSBuffer, 0, m_osRatio * sizeof(float));
  
             // 4. Process all grains
             for (int g = 0; g < NUM_VOICES; ++g) {
- 
+
                 // Trigger new grain if needed and store graindata
                 if (voices.triggers[g]) {
                     m_grainData[g].oscFreq = oscFreq;
                     m_grainData[g].modFreq = modFreq;
-                    m_grainData[g].pmIndexOsc = pmIndexOsc;
-                    m_grainData[g].pmIndexMod = pmIndexMod;
-                    m_grainData[g].pmFilterRatioOsc = pmFilterRatioOsc;
-                    m_grainData[g].pmFilterRatioMod = pmFilterRatioMod;
-                    m_grainData[g].warpOsc = warpOsc;
-                    m_grainData[g].warpMod = warpMod;
-                    m_grainData[g].sampleCount = offset;
+                    m_grainData[g].oscXmIndex = oscXmIndex;
+                    m_grainData[g].modXmIndex = modXmIndex;
+                    m_grainData[g].oscXmFltRatio = oscXmFltRatio;
+                    m_grainData[g].modXmFltRatio = modXmFltRatio;
+                    m_grainData[g].oscWarp = oscWarp;
+                    m_grainData[g].modWarp = modWarp;
+                    m_grainData[g].sampleCount = subSampleOffset;
                     m_dualOscs[g].reset();
                 }
- 
+
                 // Process grain if voice is active
                 if (voices.gates[g]) {
- 
+
                     // Calculate slopes
                     float oscSlope = m_grainData[g].oscFreq / m_sampleRate;
                     float modSlope = m_grainData[g].modFreq / m_sampleRate;
                     float envSlope = voices.slopes[g];
- 
+
                     // Calculate phases
-                    float oscPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * oscSlope));
                     float modPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * modSlope));
+                    float oscPhase = static_cast<float>(sc_frac(m_grainData[g].sampleCount * oscSlope));
                     float envPhase = voices.phases[g];
- 
-                    // Calculate mipmap parameters for osc (use floor for oversampling)
-                    float oscSamplesPerFrame = sc_abs(oscSlope) * static_cast<float>(oscCycleSamples);
-                    float oscOctave = sc_max(0.0f, sc_log2(oscSamplesPerFrame));
-                    int oscLayer = static_cast<int>(sc_floor(oscOctave));
- 
-                    // Calculate spacings for adjacent mipmap levels for osc
-                    int oscSpacing1 = 1 << oscLayer;
-                    int oscSpacing2 = oscSpacing1 << 1;
-                    float oscCrossfade = sc_frac(oscOctave);
- 
-                    // Calculate mipmap parameters for mod (use floor for oversampling)
-                    float modSamplesPerFrame = sc_abs(modSlope) * static_cast<float>(modCycleSamples);
-                    float modOctave = sc_max(0.0f, sc_log2(modSamplesPerFrame));
-                    int modLayer = static_cast<int>(sc_floor(modOctave));
- 
-                    // Calculate spacings for adjacent mipmap levels for mod
-                    int modSpacing1 = 1 << modLayer;
-                    int modSpacing2 = modSpacing1 << 1;
-                    float modCrossfade = sc_frac(modOctave);
- 
-                    // Initialize osc phase and slope for oversampling
-                    float osOscSlope = oscSlope / static_cast<float>(m_osRatio);
-                    float osOscPhase = oscPhase - oscSlope;
- 
-                    // Initialize mod phase and slope for oversampling
-                    float osModSlope = modSlope / static_cast<float>(m_osRatio);
-                    float osModPhase = modPhase - modSlope;
- 
-                    // Initialize env phase and slope for oversampling
-                    float osEnvSlope = envSlope / static_cast<float>(m_osRatio);
-                    float osEnvPhase = envPhase - envSlope;
- 
-                    // Phase increment distortion ratios
-                    float phsIncRatioOsc = 0.0f;
-                    float phsIncRatioMod = 0.0f;
-                    if (sc_abs(envSlope) > Utils::SAFE_DENOM_EPSILON) {
-                        phsIncRatioOsc = sc_abs(oscSlope / envSlope);
-                        phsIncRatioMod = sc_abs(modSlope / envSlope);
-                    }
 
-                    // PM index scaling: normalize by modulator, scale by carrier
-                    float pmScaleRatioOsc = 0.0f;
+                    // Cross-modulation index scaling: normalize by modulator, scale by carrier
+                    float oscXmScaleRatio = 0.0f;
                     if (sc_abs(modSlope) > Utils::SAFE_DENOM_EPSILON) {
-                        pmScaleRatioOsc = sc_abs(oscSlope / modSlope);
+                        oscXmScaleRatio = sc_abs(oscSlope / modSlope);
                     }
-                    float pmScaleRatioMod = 0.0f;
+                    float modXmScaleRatio = 0.0f;
                     if (sc_abs(oscSlope) > Utils::SAFE_DENOM_EPSILON) {
-                        pmScaleRatioMod = sc_abs(modSlope / oscSlope);
+                        modXmScaleRatio = sc_abs(modSlope / oscSlope);
                     }
 
-                    // Scale PM indices
-                    float pmIndexOscScaled = m_grainData[g].pmIndexOsc * pmScaleRatioOsc;
-                    float pmIndexModScaled = m_grainData[g].pmIndexMod * pmScaleRatioMod;
+                    // Scale cross-modulation indices
+                    float oscXmIndexScaled = m_grainData[g].oscXmIndex * oscXmScaleRatio;
+                    float modXmIndexScaled = m_grainData[g].modXmIndex * modXmScaleRatio;
+
+                    // Phase Increment Distortion ratios
+                    float oscPhsIncRatio = 0.0f;
+                    float modPhsIncRatio = 0.0f;
+                    if (sc_abs(envSlope) > Utils::SAFE_DENOM_EPSILON) {
+                        oscPhsIncRatio = sc_abs(oscSlope / envSlope);
+                        modPhsIncRatio = sc_abs(modSlope / envSlope);
+                    }
+
+                    // Prepare phases and slopes for oversampling
+                    float osModSlope = modSlope / static_cast<float>(m_osRatio);
+                    float osOscSlope = oscSlope / static_cast<float>(m_osRatio);
+                    float osEnvSlope = envSlope / static_cast<float>(m_osRatio);
+                    float osModPhase = modPhase - modSlope;
+                    float osOscPhase = oscPhase - oscSlope;
+                    float osEnvPhase = envPhase - envSlope;
  
                     for (int k = 0; k < m_osRatio; k++) {
  
-                        // Clamp upsampled values
-                        m_oscCyclePosOSBuffer[k] = sc_clip(m_oscCyclePosOSBuffer[k], 0.0f, 1.0f);
-                        m_modCyclePosOSBuffer[k] = sc_clip(m_modCyclePosOSBuffer[k], 0.0f, 1.0f);
-                        m_skewOSBuffer[k] = sc_clip(m_skewOSBuffer[k], 0.0f, 1.0f);
-                        m_indexOSBuffer[k] = sc_clip(m_indexOSBuffer[k], 0.0f, 10.0f);
- 
-                        // Increment oversampled phases
-                        osOscPhase += osOscSlope;
+                        // Calculate fractional position for interpolation
+                        float frac = static_cast<float>(k + 1) / static_cast<float>(m_osRatio);
+                        
+                        // Interpolate parameter values
+                        float osOscCyclePos = m_osOscCyclePosInterp.process(frac);
+                        float osModCyclePos = m_osModCyclePosInterp.process(frac);
+                        float osEnvSkew = m_osEnvSkewInterp.process(frac);
+                        float osEnvIndex = m_osEnvIndexInterp.process(frac);
+
+                        // Increment phases
                         osModPhase += osModSlope;
+                        osOscPhase += osOscSlope;
                         osEnvPhase += osEnvSlope;
  
-                        // Apply phase increment distortion
-                        float phsIncDistOsc = Easing::Interp::jCurve(osEnvPhase, m_grainData[g].warpOsc, Easing::Cores::cubic) - osEnvPhase;
-                        float osOscPhaseDistorted = sc_frac(osOscPhase + (phsIncDistOsc * phsIncRatioOsc));
+                        // Apply Phase Increment Distortion
+                        float oscPhsIncDist = Easing::Interp::jCurve(osEnvPhase, m_grainData[g].oscWarp, Easing::Cores::cubic) - osEnvPhase;
+                        float osOscPhaseDistorted = sc_frac(osOscPhase + (oscPhsIncDist * oscPhsIncRatio));
  
-                        float phsIncDistMod = Easing::Interp::jCurve(osEnvPhase, m_grainData[g].warpMod, Easing::Cores::cubic) - osEnvPhase;
-                        float osModPhaseDistorted = sc_frac(osModPhase + (phsIncDistMod * phsIncRatioMod));
+                        float modPhsIncDist = Easing::Interp::jCurve(osEnvPhase, m_grainData[g].modWarp, Easing::Cores::cubic) - osEnvPhase;
+                        float osModPhaseDistorted = sc_frac(osModPhase + (modPhsIncDist * modPhsIncRatio));
  
-                        // Process cross-modulated dual oscillator at oversampled rate
+                        // Process wavetable oscillator with cross modulation
                         auto result = m_dualOscs[g].process(
                             osOscPhaseDistorted, osModPhaseDistorted,
-                            m_oscCyclePosOSBuffer[k], m_modCyclePosOSBuffer[k],
                             osOscSlope, osModSlope,
-                            pmIndexOscScaled, pmIndexModScaled,
-                            m_grainData[g].pmFilterRatioOsc, m_grainData[g].pmFilterRatioMod,
-                            oscSpacing1, oscSpacing2, oscCrossfade,
-                            modSpacing1, modSpacing2, modCrossfade,
-                            oscTable.data, oscCycleSamples, oscNumCycles,
-                            modTable.data, modCycleSamples, modNumCycles
+                            oscXmIndexScaled, modXmIndexScaled,
+                            m_grainData[g].oscXmFltRatio, m_grainData[g].modXmFltRatio,
+                            osOscCyclePos, osModCyclePos,
+                            oscTable, modTable,
+                            m_sampleRate
                         );
  
-                        // Process gaussian window with upsampled skew and index
+                        // Process gaussian window
                         float grainWindow = WindowFunctions::gaussianWindow(
-                            osEnvPhase, m_skewOSBuffer[k], m_indexOSBuffer[k]);
+                            osEnvPhase, osEnvSkew, osEnvIndex
+                        );
  
                         // Accumulate grain output
                         m_outputOSBuffer[k] += result.oscA * grainWindow;
@@ -1386,28 +1054,16 @@ void DualPulsarOS::next(int nSamples) {
             }
  
             // 5. Downsample and DC block output
-            output[i] = m_dcBlocker.processHighpass(m_outputOversampling.downsample(), 3.0f, m_sampleRate);
+            float downsampled = m_outputOversampling.downsample(m_outputOSBuffer, m_osRatio);
+            output[i] = m_dcBlocker.process(downsampled, m_sampleRate);
         }
     }
- 
-    // Update parameter cache (use last value if audio-rate, otherwise slope value)
-    oscCyclePosPast = isOscCyclePosAudioRate ?
-        sc_clip(in(OscCyclePos)[nSamples - 1], 0.0f, 1.0f) : slopedOscCyclePos.value;
- 
-    modCyclePosPast = isModCyclePosAudioRate ?
-        sc_clip(in(ModCyclePos)[nSamples - 1], 0.0f, 1.0f) : slopedModCyclePos.value;
- 
-    envSkewPast = isEnvSkewAudioRate ?
-        sc_clip(in(EnvSkew)[nSamples - 1], 0.0f, 1.0f) : slopedEnvSkew.value;
- 
-    envIndexPast = isEnvIndexAudioRate ?
-        sc_clip(in(EnvIndex)[nSamples - 1], 0.0f, 10.0f) : slopedEnvIndex.value;
 }
 
 void Oscs_setup()
 {
-    registerUnit<DualOscOS>(ft, "DualOscOS", false);
     registerUnit<SingleOscOS>(ft, "SingleOscOS", false);
+    registerUnit<DualOscOS>(ft, "DualOscOS", false);
     registerUnit<PulsarOS>(ft, "PulsarOS", false);
     registerUnit<DualPulsarOS>(ft, "DualPulsarOS", false);
 }

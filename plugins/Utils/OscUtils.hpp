@@ -1,13 +1,13 @@
 #pragma once
 #include "SC_PlugIn.hpp"
 #include "Utils.hpp"
+#include "BufferUtils.hpp"
 #include "FilterUtils.hpp"
 #include <array>
-#include <cmath>
 
 namespace OscUtils {
-    
-// ===== SINC INTERPOLATION UTILITIES =====
+
+// ===== SINC INTERPOLATION TABLE =====
 
 struct SincTable {
     static constexpr int POINTS = 8;
@@ -48,7 +48,7 @@ struct SincTable {
 
     // Sinc function
     static inline double sincPi(double x, int ripples) {
-        // Handle edge case when x is exactly 0
+        // Handle edge case with safe denom
         if (sc_abs(x) < Utils::SAFE_DENOM_EPSILON) {
             return 1.0;
         }
@@ -74,35 +74,35 @@ struct SincTable {
     }();
 };
 
-// ===== HIGH-PERFORMANCE SINC INTERPOLATION =====
+// ===== SINC INTERPOLATION =====
 
 inline float sincInterp(float scaledPhase, const float* buffer, int startPos, int endPos, int sampleSpacing) {
 
-    // const pointer to sincTable data
-    const float* const sincData = SincTable::TABLE.data();
+    // Sinc-table data pointer
+    const float* sincData = SincTable::TABLE.data();
 
-    const float sampleIndex = scaledPhase / static_cast<float>(sampleSpacing);
-    const int intPart = static_cast<int>(sampleIndex);
-    const float fracPart = sampleIndex - static_cast<float>(intPart);
+    float sampleIndex = scaledPhase / static_cast<float>(sampleSpacing);
+    int intPart = static_cast<int>(sampleIndex);
+    float fracPart = sampleIndex - static_cast<float>(intPart);
 
     // Pre-calculate offsets
-    const float sincOffset = fracPart * SincTable::SPACING;
-    const int waveOffset = intPart * sampleSpacing;
+    float sincOffset = fracPart * SincTable::SPACING;
+    int waveOffset = intPart * sampleSpacing;
 
     // Pre-calculate masks
-    const int sincMask = SincTable::SIZE - 1;
-    const int waveMask = (endPos - startPos) - 1;
+    int sincMask = SincTable::SIZE - 1;
+    int waveMask = (endPos - startPos) - 1;
 
     float result = 0.0f;
     for (int i = 0; i < SincTable::POINTS; ++i) {
 
         // === WAVEFORM BUFFER ACCESS (no interpolation) ===
-        const int waveIndex = (i - SincTable::HALF_POINTS) * sampleSpacing + waveOffset;
-        const float waveSample = Utils::peekNoInterp(buffer, waveIndex, startPos, waveMask);
+        int waveIndex = (i - SincTable::HALF_POINTS) * sampleSpacing + waveOffset;
+        float waveSample = BufferUtils::peekNoInterp(buffer, waveIndex, startPos, waveMask);
         
         // === SINC TABLE ACCESS (linear interpolation) ===
-        const float sincPos = static_cast<float>(i * SincTable::SPACING) - sincOffset;
-        const float sincSample = Utils::peekLinearInterp(sincData, sincPos, sincMask);
+        float sincPos = static_cast<float>(i * SincTable::SPACING) - sincOffset;
+        float sincSample = BufferUtils::peekLinearInterp(sincData, sincPos, sincMask);
         
         result += waveSample * sincSample;
     }
@@ -110,66 +110,73 @@ inline float sincInterp(float scaledPhase, const float* buffer, int startPos, in
     return result;
 }
 
-// ===== MIPMAP UTILITIES =====
+// ===== MIPMAP INTERPOLATION =====
 
-inline float mipmapInterp(float phase, const float* buffer, int startPos, int endPos, 
-                               int spacing1, int spacing2, float crossfade) {
+inline float mipmapInterp(float phase, float slope, const float* buffer, int startPos, int endPos) {
     
     // Scale phase to cycle range
-    const float rangeSize = static_cast<float>(endPos - startPos);
-    const float scaledPhase = phase * rangeSize;
+    float rangeSize = static_cast<float>(endPos - startPos);
+    float scaledPhase = phase * rangeSize;
+
+    // Calculate mipmap parameters
+    float samplesPerFrame = sc_abs(slope) * rangeSize;
+    float octave = sc_max(0.0f, sc_log2(samplesPerFrame) + 1.0f);
+    int layer = static_cast<int>(sc_floor(octave));
     
-    // Check for sinc kernel bandwidth limit (1024)
+    // Calculate spacings for adjacent mipmap levels
+    int spacing1 = 1 << layer;
+    int spacing2 = spacing1 << 1;
+    float crossfade = sc_frac(octave);
+
+    // Early exit at maximum sinc spacing (no crossfade needed)
     if (spacing1 >= SincTable::SPACING) {
-        // no crossfade to next mipmap layer
         return sincInterp(scaledPhase, buffer, startPos, endPos, SincTable::SPACING);
-    } else {
-        // Crossfade between adjacent mipmap layers
-        const float sig1 = sincInterp(scaledPhase, buffer, startPos, endPos, spacing1);
-        const float sig2 = sincInterp(scaledPhase, buffer, startPos, endPos, spacing2);
-        return lininterp(crossfade, sig1, sig2);
     }
+    
+    // Process each mipmap layer
+    float sig1 = sincInterp(scaledPhase, buffer, startPos, endPos, spacing1);
+    float sig2 = sincInterp(scaledPhase, buffer, startPos, endPos, spacing2);
+
+    // Crossfade between the two mipmap layers
+    return lininterp(crossfade, sig1, sig2);
 }
 
-// ===== MULTI-CYCLE WAVETABLE UTILITIES =====
+// ===== MULTI-CYCLE WAVETABLE OSCILLATOR =====
 
-inline float wavetableOsc(float phase, const float* buffer, int cycleSamples, int numCycles, float cyclePos, 
-                                  int spacing1, int spacing2, float crossfade) {
+inline float wavetableOsc(float phase, float slope, const BufferUtils::Wavetable::Output& table, float cyclePos) {
 
     // Scale cyclePos and calculate frac and int part
-    const float scaledPos = cyclePos * static_cast<float>(numCycles - 1);
-    const int intPart = static_cast<int>(scaledPos);
-    const float fracPart = scaledPos - static_cast<float>(intPart);
+    float scaledPos = cyclePos * static_cast<float>(table.numCycles - 1);
+    int intPart = static_cast<int>(scaledPos);
+    float fracPart = scaledPos - static_cast<float>(intPart);
     
-    // intPart ∈ [0, numCycles-1], no wrapping needed already guaranteed < numCycles
-    const int cycleIndex1 = intPart;
-    const int startPos1 = cycleIndex1 * cycleSamples;
-    const int endPos1 = startPos1 + cycleSamples;
+    // Calculate first cycle 
+    int startPos1 = intPart * table.samplesPerCycle;
+    int endPos1 = startPos1 + table.samplesPerCycle;
     
-    // Early exit for fracPart == 0 (no crossfade needed)
+    // Early exit when positioned exactly on a single cycle (no crossfade needed)
     if (fracPart == 0.0f) {
-        return mipmapInterp(phase, buffer, startPos1, endPos1, spacing1, spacing2, crossfade);
+        return mipmapInterp(phase, slope, table.data, startPos1, endPos1);
     }
     
     // Calculate second cycle only when needed
-    const int cycleIndex2 = (intPart + 1) % numCycles;
-    const int startPos2 = cycleIndex2 * cycleSamples;
-    const int endPos2 = startPos2 + cycleSamples;
+    int startPos2 = (intPart + 1) * table.samplesPerCycle;
+    int endPos2 = startPos2 + table.samplesPerCycle;
     
     // Process each cycle
-    float sig1 = mipmapInterp(phase, buffer, startPos1, endPos1, spacing1, spacing2, crossfade);
-    float sig2 = mipmapInterp(phase, buffer, startPos2, endPos2, spacing1, spacing2, crossfade);
+    float sig1 = mipmapInterp(phase, slope, table.data, startPos1, endPos1);
+    float sig2 = mipmapInterp(phase, slope, table.data, startPos2, endPos2);
     
     // Crossfade between the two cycles
     return lininterp(fracPart, sig1, sig2);
 }
 
-// ===== DUAL OSCILLATOR WITH CROSS-MODULATION =====
+// ===== MULTI-CYCLE WAVETABLE OSCILLATOR WITH CROSS-PHASE MODULATION =====
 
 struct DualOsc {
 
-    FilterUtils::OnePoleSlope m_pmFilterA;
-    FilterUtils::OnePoleSlope m_pmFilterB;
+    FilterUtils::TrackingFilter m_xmFilterA;
+    FilterUtils::TrackingFilter m_xmFilterB;
 
     float m_prevOscA{0.0f};
     float m_prevOscB{0.0f};
@@ -181,29 +188,26 @@ struct DualOsc {
     
     Output process(
         float phaseA, float phaseB,
-        float cyclePosA, float cyclePosB,
         float slopeA, float slopeB,
-        float pmIndexA, float pmIndexB,
-        float pmFilterRatioA, float pmFilterRatioB,
-        int spacing1A, int spacing2A, float crossfadeA,
-        int spacing1B, int spacing2B, float crossfadeB,
-        const float* bufferA, int cycleSamplesA, int numCyclesA,
-        const float* bufferB, int cycleSamplesB, int numCyclesB
+        float xmIndexA, float xmIndexB,
+        float xmFltRatioA, float xmFltRatioB,
+        float cyclePosA, float cyclePosB,
+        const BufferUtils::Wavetable::Output& oscTableA,
+        const BufferUtils::Wavetable::Output& oscTableB,
+        float sampleRate
     ) {
 
-        // Filter previous outputs with tracking OnePole filter
-        float filteredB = m_pmFilterB.processLowpass(m_prevOscB, slopeB * pmFilterRatioA);
-        float filteredA = m_pmFilterA.processLowpass(m_prevOscA, slopeA * pmFilterRatioB);
+        // Filter previous outputs with slope-tracking OnePole filter
+        float filteredB = m_xmFilterB.process(m_prevOscB, slopeB * xmFltRatioA, sampleRate);
+        float filteredA = m_xmFilterA.process(m_prevOscA, slopeA * xmFltRatioB, sampleRate);
         
-        // Apply phase modulation and wrap between 0 and 1
-        float modulatedPhaseA = sc_frac(phaseA + (filteredB / Utils::TWO_PI * pmIndexA));
-        float modulatedPhaseB = sc_frac(phaseB + (filteredA / Utils::TWO_PI * pmIndexB));
+        // Apply cross-phase modulation and wrap between 0 and 1
+        float modulatedPhaseA = sc_frac(phaseA + (filteredB / Utils::TWO_PI * xmIndexA));
+        float modulatedPhaseB = sc_frac(phaseB + (filteredA / Utils::TWO_PI * xmIndexB));
 
         // Generate oscillator outputs
-        float oscA = wavetableOsc(modulatedPhaseA, bufferA, cycleSamplesA, numCyclesA, cyclePosA, 
-                                         spacing1A, spacing2A, crossfadeA);
-        float oscB = wavetableOsc(modulatedPhaseB, bufferB, cycleSamplesB, numCyclesB, cyclePosB, 
-                                         spacing1B, spacing2B, crossfadeB);
+        float oscA = wavetableOsc(modulatedPhaseA, slopeA, oscTableA, cyclePosA);
+        float oscB = wavetableOsc(modulatedPhaseB, slopeB, oscTableB, cyclePosB);
         
         // Store current outputs for next sample
         m_prevOscA = oscA;
@@ -213,11 +217,45 @@ struct DualOsc {
     }
 
     void reset() {
-        m_pmFilterA.reset();
-        m_pmFilterB.reset();
+        m_xmFilterA.reset();
+        m_xmFilterB.reset();
         m_prevOscA = 0.0f;
         m_prevOscB = 0.0f;
     }   
+};
+
+// ===== MULTI-CYCLE WAVETABLE OSCILLATOR WITH PHASE MODULATION =====
+
+struct PMOsc {
+    
+    FilterUtils::TrackingFilter m_pmFilter;
+
+    float process(
+        float oscPhase, float modPhase,
+        float oscSlope, float modSlope,
+        float pmIndex,
+        float oscCyclePos, float modCyclePos,
+        const BufferUtils::Wavetable::Output& oscTable,
+        const BufferUtils::Wavetable::Output& modTable,
+        float sampleRate
+    ) {
+
+        // Process mod wavetable oscillator
+        float modOsc = wavetableOsc(modPhase, modSlope, modTable, modCyclePos);
+
+        // Filter modulator with slope-tracking OnePole filter
+        float modFiltered = m_pmFilter.process(modOsc, modSlope, sampleRate);
+
+        // Apply phase modulation and wrap between 0 and 1
+        float modulatedOscPhase = sc_frac(oscPhase + (modFiltered / Utils::TWO_PI * pmIndex));
+
+        // Generate oscillator output
+        return wavetableOsc(modulatedOscPhase, oscSlope, oscTable, oscCyclePos);
+    }
+
+    void reset() {
+        m_pmFilter.reset();
+    }
 };
 
 } // namespace OscUtils

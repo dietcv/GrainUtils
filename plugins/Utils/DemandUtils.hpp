@@ -2,7 +2,6 @@
 #include "SC_PlugIn.hpp"
 #include "Utils.hpp"
 #include <array>
-#include <algorithm>
 
 namespace DemandUtils {
 

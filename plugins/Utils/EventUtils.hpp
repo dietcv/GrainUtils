@@ -2,8 +2,6 @@
 #include "SC_PlugIn.hpp"
 #include "Utils.hpp"
 #include <array>
-#include <cmath>  
-#include <algorithm>
 
 namespace EventUtils {
 

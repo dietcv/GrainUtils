@@ -2,8 +2,6 @@
 #include "SC_PlugIn.hpp"
 #include "Utils.hpp"
 #include "EventUtils.hpp"
-#include <cmath>
-#include <algorithm>
 
 // ===== UNIT SHAPERS =====
 
@@ -11,7 +9,7 @@ namespace UnitShapers {
 
     inline float triangle(float phase, float skew) {
 
-        // Handle edge case when skew is exactly 0
+        // Handle edge case with safe denom
         if (skew < Utils::SAFE_DENOM_EPSILON) {
             return 1.0f - phase;
         }
@@ -27,7 +25,7 @@ namespace UnitShapers {
 
     inline float kink(float phase, float skew) {
         
-        // Handle edge case when skew is exactly 0
+        // Handle edge case with safe denom
         if (skew < Utils::SAFE_DENOM_EPSILON) {
             return 0.5f * (1.0f + phase);
         }

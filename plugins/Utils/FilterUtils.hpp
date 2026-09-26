@@ -2,82 +2,222 @@
 #include "SC_PlugIn.hpp"
 #include "Utils.hpp"
 #include <array>
-#include <cmath>  
 
 namespace FilterUtils {
 
-// ===== ONE POLE FILTERS =====
+// ===== FIRST ORDER FILTERS =====
 
-namespace OnePole {
-    // Core processing functions
-    inline float lowpass(float& state, float input, float coeff) {
-        state = input * (1.0f - coeff) + state * coeff;
-        return state;
-    }
-    
-    inline float highpass(float& state, float input, float coeff) {
-        state = input * (1.0f - coeff) + state * coeff;
-        return input - state;
-    }
-}
-
-struct OnePoleDirect {
+struct LowpassOne {
+    // State variable
     float m_state{0.0f};
-    
-    float processLowpass(float input, float coeff) {
-        coeff = sc_clip(coeff, 0.0f, 1.0f);
-        return OnePole::lowpass(m_state, input, coeff);
+
+    LowpassOne() = default;
+
+    // Process audio through one pole lowpass
+    inline float process(float x, float coeff) {
+        m_state = x * (1.0f - coeff) + m_state * coeff;
+
+        // Denormal protection
+        m_state = zapgremlins(m_state);
+
+        return m_state;
     }
 
-    float processHighpass(float input, float coeff) {
-        coeff = sc_clip(coeff, 0.0f, 1.0f);
-        return OnePole::highpass(m_state, input, coeff);
-    }
-
-    void reset() { 
-        m_state = 0.0f; 
+    void reset() {
+        m_state = 0.0f;
     }
 };
 
-struct OnePoleSlope {
+struct HighpassOne {
+    // State variable
     float m_state{0.0f};
-      
-    float processLowpass(float input, float slope) {
-        float safeSlope = std::abs(sc_clip(slope, -0.5f, 0.5f));
-        float coeff = std::exp(-Utils::TWO_PI * safeSlope);
-        return OnePole::lowpass(m_state, input, coeff);
-    }
-   
-    float processHighpass(float input, float slope) {
-        float safeSlope = std::abs(sc_clip(slope, -0.5f, 0.5f));
-        float coeff = std::exp(-Utils::TWO_PI * safeSlope);
-        return OnePole::highpass(m_state, input, coeff);
+
+    HighpassOne() = default;
+
+    // Process audio through one pole highpass
+    inline float process(float x, float coeff) {
+        m_state = x * (1.0f - coeff) + m_state * coeff;
+
+        // Denormal protection
+        m_state = zapgremlins(m_state);
+
+        return x - m_state;
     }
 
-    void reset() { 
-        m_state = 0.0f; 
+    void reset() {
+        m_state = 0.0f;
     }
 };
 
-struct OnePoleHz {
-    float m_state{0.0f};
-   
-    float processLowpass(float input, float freq, float sampleRate) {
-        float slope = freq / sampleRate;
-        float safeSlope = std::abs(sc_clip(slope, -0.5f, 0.5f));
-        float coeff = std::exp(-Utils::TWO_PI * safeSlope);
-        return OnePole::lowpass(m_state, input, coeff);
-    }
-   
-    float processHighpass(float input, float freq, float sampleRate) {
-        float slope = freq / sampleRate;
-        float safeSlope = std::abs(sc_clip(slope, -0.5f, 0.5f));
-        float coeff = std::exp(-Utils::TWO_PI * safeSlope);
-        return OnePole::highpass(m_state, input, coeff);
+struct AllpassOne {
+    // State variables
+    float m_z1{0.0f};
+    float m_z2{0.0f};
+
+    AllpassOne() = default;
+
+    // Process audio through first order allpass
+    inline float process(float x, float coeff) {
+        float y = m_z1 + coeff * (x - m_z2);
+
+        // Denormal protection
+        m_z1 = zapgremlins(x);
+        m_z2 = zapgremlins(y);
+
+        return y;
     }
 
-    void reset() { 
-        m_state = 0.0f; 
+    void reset() {
+        m_z1 = 0.0f;
+        m_z2 = 0.0f;
+    }
+};
+
+// ===== ONE POLE COEFFICIENTS =====
+
+struct OnePoleCoefficients {
+    float g;
+    float gt0, gt1;
+    float m0, m1;
+ 
+    enum FilterType {
+        LOW_PASS,
+        HIGH_PASS,
+        ALL_PASS
+    };
+ 
+    static OnePoleCoefficients calculate(float cutoff, FilterType type, float sampleRate) {
+        OnePoleCoefficients coeffs;
+        
+        // Calculate base g
+        float w = (cutoff / sampleRate) * Utils::PI;
+        float g0 = std::tan(w);
+        
+        // Set g and m coefficients based on filter type
+        switch (type) {
+            case LOW_PASS:
+                coeffs.g = g0;
+                coeffs.m0 = 0.0f;
+                coeffs.m1 = 1.0f;
+                break;
+                
+            case HIGH_PASS:
+                coeffs.g = g0;
+                coeffs.m0 = 1.0f;
+                coeffs.m1 = -1.0f;
+                break;
+                
+            case ALL_PASS:
+                coeffs.g = g0;
+                coeffs.m0 = -1.0f;
+                coeffs.m1 = 2.0f;
+                break;
+        }
+        
+        // Calculate shared coefficients
+        float gInv = 1.0f / (1.0f + coeffs.g);
+        coeffs.gt0 = coeffs.g * gInv;
+        coeffs.gt1 = gInv;
+        
+        return coeffs;
+    }
+};
+
+// ===== ONE POLE FILTER =====
+
+struct OnePoleFilter {
+    // State variable
+    float m_ic1eq{0.0f};
+
+    OnePoleFilter() = default;
+    
+    // Process audio through one pole filter
+    inline float process(float vin, const OnePoleCoefficients& coeffs) {
+        float v1 = coeffs.gt0 * vin + coeffs.gt1 * m_ic1eq;
+        
+        // State update
+        m_ic1eq = 2.0f * v1 - m_ic1eq;
+        
+        // Denormal protection
+        m_ic1eq = zapgremlins(m_ic1eq);
+        
+        // Mix outputs
+        return coeffs.m0 * vin + coeffs.m1 * v1;
+    }
+    
+    void reset() {
+        m_ic1eq = 0.0f;
+    }
+};
+ 
+// ===== DC BLOCKER =====
+
+struct DCBlocker {
+    OnePoleFilter filter;
+
+    DCBlocker() = default;
+
+    // Process audio through DC blocker
+    inline float process(float x, float sampleRate) {
+
+        // Calculate coefficients
+        auto coeffs = OnePoleCoefficients::calculate(3.0f, OnePoleCoefficients::HIGH_PASS, sampleRate);
+
+        return filter.process(x, coeffs);
+    }
+
+    void reset() {
+        filter.reset();
+    }
+};
+
+// ===== DAMPING FILTER =====
+
+struct DampingFilter {
+    OnePoleFilter filter;
+
+    DampingFilter() = default;
+
+    // Process audio through damping filter
+    inline float process(float x, float damping, float sampleRate) {
+
+        // Calculate cutoff from damping
+        float safeSlope = (1.0f - sc_clip(damping, 0.0f, 1.0f)) * 0.49f;
+        float cutoff = safeSlope * sampleRate;
+
+        // Calculate coefficients
+        auto coeffs = OnePoleCoefficients::calculate(cutoff, OnePoleCoefficients::LOW_PASS, sampleRate);
+
+        return filter.process(x, coeffs);
+    }
+
+    void reset() {
+        filter.reset();
+    }
+};
+
+// ===== SLOPE-TRACKING FILTER =====
+
+struct TrackingFilter {
+    OnePoleFilter filter;
+
+    TrackingFilter() = default;
+
+    // Process audio through slope-tracking filter
+    inline float process(float x, float slope, float sampleRate) {
+
+        // Calculate cutoff from slope
+        float safeSlope = std::abs(sc_clip(slope, -0.49f, 0.49f));
+        float cutoff = safeSlope * sampleRate;
+
+        // Calculate coefficients
+        auto coeffs = OnePoleCoefficients::calculate(cutoff, OnePoleCoefficients::LOW_PASS, sampleRate);
+
+        return filter.process(x, coeffs);
+    }
+
+    void reset() {
+        filter.reset();
     }
 };
 
@@ -107,8 +247,29 @@ struct BiquadCoefficients {
         
         return coeffs;
     }
+
+    // RBJ Audio EQ Cookbook highpass
+    static BiquadCoefficients highpass(float freq, float q, float sampleRate) {
+        BiquadCoefficients coeffs;
+        
+        float w0 = Utils::TWO_PI * freq / sampleRate;
+        float cosw0 = std::cos(w0);
+        float sinw0 = std::sin(w0);
+        float alpha = sinw0 / (2.0f * q);
+        
+        float a0 = 1.0f + alpha;
+        
+        coeffs.a1 = -2.0f * cosw0 / a0;
+        coeffs.a2 = (1.0f - alpha) / a0;
+        
+        coeffs.b0 = ((1.0f + cosw0) / 2.0f) / a0;
+        coeffs.b1 = -2.0f * coeffs.b0;
+        coeffs.b2 = coeffs.b0;
+        
+        return coeffs;
+    }
     
-    // RBJ Audio EQ Cookbook bandpass
+    // RBJ Audio EQ Cookbook bandpass (constant skirt gain, peak gain = Q)
     static BiquadCoefficients bandpass(float freq, float q, float sampleRate) {
         BiquadCoefficients coeffs;
         
@@ -157,7 +318,10 @@ struct BiquadFilter {
     // State variables
     float m_z1{0.0f};
     float m_z2{0.0f};
+
+    BiquadFilter() = default;
     
+    // Process audio through biquad filter
     inline float process(float x, const BiquadCoefficients& coeffs) {
         float y = coeffs.b0 * x + m_z1;
         m_z1 = coeffs.b1 * x - coeffs.a1 * y + m_z2;
@@ -173,6 +337,68 @@ struct BiquadFilter {
     void reset() {
         m_z1 = 0.0f;
         m_z2 = 0.0f;
+    }
+};
+
+// ===== BUTTERWORTH FILTER =====
+
+template<int Order>
+struct ButterworthFilter {
+    static constexpr int NUM_BIQUADS = Order / 2;
+
+    std::array<BiquadFilter, NUM_BIQUADS> filters;
+    std::array<BiquadCoefficients, NUM_BIQUADS> coeffs;
+
+    ButterworthFilter() = default;
+
+    // Calculate Q values for Butterworth filter
+    static std::array<float, NUM_BIQUADS> calculateButterQs() {
+        std::array<float, NUM_BIQUADS> Qs{};
+
+        for (int k = 1; k <= NUM_BIQUADS; ++k) {
+            float t = static_cast<float>(2 * k + Order - 1);
+            float alpha = -2.0f * std::cos(Utils::PI * t / (2.0f * static_cast<float>(Order)));
+            Qs[NUM_BIQUADS - k] = 1.0f / alpha;
+        }
+
+        return Qs;
+    }
+
+    // Calculate coefficients for Butterworth lowpass
+    void lowpass(float cutoff, float sampleRate) {
+
+        auto Qs = calculateButterQs();
+
+        for (int i = 0; i < NUM_BIQUADS; ++i) {
+            coeffs[i] = BiquadCoefficients::lowpass(cutoff, Qs[i], sampleRate);
+        }
+    }
+
+    // Calculate coefficients for Butterworth highpass
+    void highpass(float cutoff, float sampleRate) {
+
+        auto Qs = calculateButterQs();
+
+        for (int i = 0; i < NUM_BIQUADS; ++i) {
+            coeffs[i] = BiquadCoefficients::highpass(cutoff, Qs[i], sampleRate);
+        }
+    }
+
+    // Process audio through Butterworth filter
+    inline float process(float input) {
+
+        float processed = input;
+        for (int i = 0; i < NUM_BIQUADS; ++i) {
+            processed = filters[i].process(processed, coeffs[i]);
+        }
+
+        return processed;
+    }
+
+    void reset() {
+        for (int i = 0; i < NUM_BIQUADS; ++i) {
+            filters[i].reset();
+        }
     }
 };
 
@@ -281,7 +507,10 @@ struct StateVariableFilter {
     // State variables
     float m_ic1eq{0.0f};
     float m_ic2eq{0.0f};
+
+    StateVariableFilter() = default;
     
+    // Process audio through state variable filter
     inline float process(float vin, const SVFCoefficients& coeffs) {
         float t0 = vin - m_ic2eq;
         float v0 = coeffs.gt0 * t0 - coeffs.gk0 * m_ic1eq;
@@ -309,12 +538,14 @@ struct StateVariableFilter {
     }
 };
 
-// ===== MORPHING STATE VARIABLE FILTER =====
+// ===== MORPHING FILTER =====
 
-struct MorphingStateVariableFilter {
+struct MorphingFilter {
     StateVariableFilter svf;
+
+    MorphingFilter() = default;
  
-    // Process with continuous shape morph
+    // Process audio through state variable filter
     inline float process(float input, float freq, float resonance, float shape, float sampleRate) {
  
         // Convert resonance (0 - 1) to Q (0.707 - 25.0)
@@ -334,13 +565,13 @@ struct MorphingStateVariableFilter {
     }
 };
 
-// ===== SVF ALLPASS CASCADE =====
+// ===== ALLPASS CHAIN =====
 
 template<int NumAllpasses>
-struct AllpassCascade {
+struct AllpassChain {
     std::array<StateVariableFilter, NumAllpasses> allpasses;
     
-    AllpassCascade() = default;
+    AllpassChain() = default;
     
     // Process audio through cascaded allpass filters
     inline float process(float input, float freq, float resonance, float sampleRate) {

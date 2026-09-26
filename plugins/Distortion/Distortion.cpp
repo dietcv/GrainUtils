@@ -6,27 +6,15 @@ extern InterfaceTable* ft;
 // ===== BUCHLA 259 WAVEFOLDER =====
  
 BuchlaFold::BuchlaFold() : 
-    m_sampleRate(static_cast<float>(sampleRate())),
     m_oversampleIndex(sc_clip(static_cast<int>(in0(Oversample)), 0, 4)),
     m_osRatio(1 << m_oversampleIndex)
 {
-    // Initialize parameter cache
-    drivePast = sc_clip(in0(Drive), 0.0f, 1.0f);
-    
     // Check which inputs are audio-rate
     isDriveAudioRate = isAudioRateIn(Drive);
  
-    // Initialize oversampling
+    // Allocate oversampling buffer
     if (m_oversampleIndex > 0) {
-        auto unit = this;
- 
-        // Allocate oversampling buffers
-        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_outputOSBuffer);
-        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_driveOSBuffer);
- 
-        // Setup oversampling filters
-        m_outputOversampling.init(m_osRatio, m_sampleRate, m_outputOSBuffer);
-        m_driveOversampling.init(m_osRatio, m_sampleRate, m_driveOSBuffer);
+        BufferUtils::allocBuffer(this, mWorld, m_osRatio, m_outputOSBuffer);
     }
     
     // Set calc function & compute initial sample
@@ -35,7 +23,6 @@ BuchlaFold::BuchlaFold() :
  
 BuchlaFold::~BuchlaFold() {
     RTFree(mWorld, m_outputOSBuffer);
-    RTFree(mWorld, m_driveOSBuffer);
 }
  
 void BuchlaFold::next(int nSamples) {
@@ -44,7 +31,7 @@ void BuchlaFold::next(int nSamples) {
     const float* input = in(Input);
     
     // Control-rate parameters with smooth interpolation
-    auto slopedDrive = makeSlope(sc_clip(in0(Drive), 0.0f, 1.0f), drivePast);
+    m_driveInterp.update(sc_clip(in0(Drive), 0.0f, 1.0f), nSamples);
     
     // Output pointer
     float* output = out(Out);
@@ -54,69 +41,57 @@ void BuchlaFold::next(int nSamples) {
         for (int i = 0; i < nSamples; ++i) {
             
             // Get current parameter values (audio-rate or interpolated control-rate)
-            float driveVal = isDriveAudioRate ? 
+            float drive = isDriveAudioRate ? 
                 sc_clip(in(Drive)[i], 0.0f, 1.0f) : 
-                slopedDrive.consume();
+                m_driveInterp.process();
             
-            output[i] = m_folder.process(input[i], driveVal);
+            output[i] = m_folder.process(input[i], drive);
         }
     } else {
  
         for (int i = 0; i < nSamples; ++i) {
             
             // Get current parameter values (audio-rate or interpolated control-rate)
-            float driveVal = isDriveAudioRate ? 
+            float drive = isDriveAudioRate ? 
                 sc_clip(in(Drive)[i], 0.0f, 1.0f) : 
-                slopedDrive.consume();
+                m_driveInterp.process();
             
-            // Upsample input and parameter values
-            m_outputOversampling.upsample(input[i]);
-            m_driveOversampling.upsample(driveVal);
+            // Upsample input
+            m_outputOversampling.upsample(input[i], m_outputOSBuffer, m_osRatio);
+
+            // Latch parameter values for oversampling
+            m_osDriveInterp.update(drive);
             
             for (int k = 0; k < m_osRatio; ++k) {
+
+                // Calculate fractional position for interpolation
+                float frac = static_cast<float>(k + 1) / static_cast<float>(m_osRatio);
+
+                // Interpolate parameter values
+                float osDrive = m_osDriveInterp.process(frac);
                 
-                // Clamp upsampled values
-                m_driveOSBuffer[k] = sc_clip(m_driveOSBuffer[k], 0.0f, 1.0f);
-                
-                // Process wavefolder with upsampled parameter values
-                m_outputOSBuffer[k] = m_folder.process(m_outputOSBuffer[k], m_driveOSBuffer[k]);
+                // Process wavefolder
+                m_outputOSBuffer[k] = m_folder.process(m_outputOSBuffer[k], osDrive);
             }
             
             // Downsample output
-            output[i] = m_outputOversampling.downsample();
+            output[i] = m_outputOversampling.downsample(m_outputOSBuffer, m_osRatio);
         }
     }
-    
-    // Update parameter cache (use last value if audio-rate, otherwise slope value)
-    drivePast = isDriveAudioRate ? 
-        sc_clip(in(Drive)[nSamples - 1], 0.0f, 1.0f) : 
-        slopedDrive.value;
 }
 
 // ===== SERGE WAVEFOLDER =====
  
 SergeFold::SergeFold() :
-    m_sampleRate(static_cast<float>(sampleRate())),
     m_oversampleIndex(sc_clip(static_cast<int>(in0(Oversample)), 0, 4)),
     m_osRatio(1 << m_oversampleIndex)
 {
-    // Initialize parameter cache
-    drivePast = sc_clip(in0(Drive), 0.0f, 1.0f);
- 
     // Check which inputs are audio-rate
     isDriveAudioRate = isAudioRateIn(Drive);
  
-    // Initialize oversampling
+    // Allocate oversampling buffer
     if (m_oversampleIndex > 0) {
-        auto unit = this;
- 
-        // Allocate oversampling buffers
-        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_outputOSBuffer);
-        PluginUtils::allocBuffer(unit, mWorld, m_osRatio, m_driveOSBuffer);
- 
-        // Setup oversampling filters
-        m_outputOversampling.init(m_osRatio, m_sampleRate, m_outputOSBuffer);
-        m_driveOversampling.init(m_osRatio, m_sampleRate, m_driveOSBuffer);
+        BufferUtils::allocBuffer(this, mWorld, m_osRatio, m_outputOSBuffer);
     }
  
     // Set calc function & compute initial sample
@@ -125,7 +100,6 @@ SergeFold::SergeFold() :
  
 SergeFold::~SergeFold() {
     RTFree(mWorld, m_outputOSBuffer);
-    RTFree(mWorld, m_driveOSBuffer);
 }
  
 void SergeFold::next(int nSamples) {
@@ -134,7 +108,7 @@ void SergeFold::next(int nSamples) {
     const float* input = in(Input);
  
     // Control-rate parameters with smooth interpolation
-    auto slopedDrive = makeSlope(sc_clip(in0(Drive), 0.0f, 1.0f), drivePast);
+    m_driveInterp.update(sc_clip(in0(Drive), 0.0f, 1.0f), nSamples);
  
     // Output pointer
     float* output = out(Out);
@@ -144,43 +118,43 @@ void SergeFold::next(int nSamples) {
         for (int i = 0; i < nSamples; ++i) {
  
             // Get current parameter values (audio-rate or interpolated control-rate)
-            float driveVal = isDriveAudioRate ?
+            float drive = isDriveAudioRate ?
                 sc_clip(in(Drive)[i], 0.0f, 1.0f) :
-                slopedDrive.consume();
+                m_driveInterp.process();
  
-            output[i] = m_folder.process(input[i], driveVal);
+            output[i] = m_folder.process(input[i], drive);
         }
     } else {
  
         for (int i = 0; i < nSamples; ++i) {
  
             // Get current parameter values (audio-rate or interpolated control-rate)
-            float driveVal = isDriveAudioRate ?
+            float drive = isDriveAudioRate ?
                 sc_clip(in(Drive)[i], 0.0f, 1.0f) :
-                slopedDrive.consume();
+                m_driveInterp.process();
  
-            // Upsample input and parameter values
-            m_outputOversampling.upsample(input[i]);
-            m_driveOversampling.upsample(driveVal);
+            // Upsample input
+            m_outputOversampling.upsample(input[i], m_outputOSBuffer, m_osRatio);
+
+            // Latch parameter values for oversampling
+            m_osDriveInterp.update(drive);
  
             for (int k = 0; k < m_osRatio; ++k) {
+
+                // Calculate fractional position for interpolation
+                float frac = static_cast<float>(k + 1) / static_cast<float>(m_osRatio);
+
+                // Interpolate parameter values
+                float osDrive = m_osDriveInterp.process(frac);
  
-                // Clamp upsampled values
-                m_driveOSBuffer[k] = sc_clip(m_driveOSBuffer[k], 0.0f, 1.0f);
- 
-                // Process wavefolder with upsampled parameter values
-                m_outputOSBuffer[k] = m_folder.process(m_outputOSBuffer[k], m_driveOSBuffer[k]);
+                // Process wavefolder
+                m_outputOSBuffer[k] = m_folder.process(m_outputOSBuffer[k], osDrive);
             }
  
             // Downsample output
-            output[i] = m_outputOversampling.downsample();
+            output[i] = m_outputOversampling.downsample(m_outputOSBuffer, m_osRatio);
         }
     }
- 
-    // Update parameter cache (use last value if audio-rate, otherwise slope value)
-    drivePast = isDriveAudioRate ?
-        sc_clip(in(Drive)[nSamples - 1], 0.0f, 1.0f) :
-        slopedDrive.value;
 }
 
 void Distortion_setup() 

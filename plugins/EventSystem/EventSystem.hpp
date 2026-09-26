@@ -132,9 +132,9 @@ private:
     const int m_numChannels;
     
     // Core processing
-    EventUtils::VoiceAllocator<MAX_CHANNELS> m_allocator;
     EventUtils::IsTrigger m_trigger;
-    
+    EventUtils::VoiceAllocator<MAX_CHANNELS> m_allocator;
+
     // Audio rate flags
     bool isTriggerAudioRate;
     bool isRateAudioRate;
@@ -165,11 +165,11 @@ private:
     const float m_sampleRate;
    
     // Core processing
-    EventUtils::RampIntegrator m_integrator;
     EventUtils::IsTrigger m_trigger;
-    
-    // Cache for SlopeSignal state
-    float ratePast;
+    EventUtils::RampIntegrator m_integrator;
+
+    // Control-rate interpolation
+    Utils::ParamInterp m_rateInterp;
     
     // Audio rate flags
     bool isTriggerAudioRate;
@@ -198,9 +198,9 @@ private:
     void next(int nSamples);
    
     // Core processing
-    EventUtils::RampAccumulator m_accumulator;
     EventUtils::IsTrigger m_trigger;
-    
+    EventUtils::RampAccumulator m_accumulator;
+
     // Audio rate flags
     bool isTriggerAudioRate;
     bool isSubSampleOffsetAudioRate;
@@ -229,13 +229,13 @@ private:
     const int m_mode;
 
     // Core processing
+    EventUtils::IsTrigger m_resetTrigger;
     EventUtils::RampDividerSimple m_simpleDivider;
     EventUtils::RampDividerGrid   m_gridDivider;
     EventUtils::RampDividerOffset m_offsetDivider;
-    EventUtils::IsTrigger m_resetTrigger;
-    
-    // Cache for SlopeSignal state
-    float ratioPast;
+
+    // Control-rate interpolation
+    Utils::ParamInterp m_ratioInterp;
     
     // Audio rate flags
     bool isRatioAudioRate;

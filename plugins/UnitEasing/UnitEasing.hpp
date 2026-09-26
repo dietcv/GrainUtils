@@ -1,5 +1,6 @@
 #pragma once
 #include "SC_PlugIn.hpp"
+#include "Utils.hpp"
 #include "ShaperUtils.hpp"
 
 // ===== JCURVE =====
@@ -10,9 +11,9 @@ public:
 
 private:
     void next(int nSamples);
-    
-    // Cache for SlopeSignal state
-    float shapePast;
+
+    // Control-rate interpolation
+    Utils::ParamInterp m_shapeInterp;
     
     // Audio rate flags
     bool isShapeAudioRate;
@@ -37,9 +38,10 @@ public:
 
 private:
     void next(int nSamples);
-    
-    // Cache for SlopeSignal state
-    float shapePast, inflectionPast;
+
+    // Control-rate interpolation
+    Utils::ParamInterp m_shapeInterp;
+    Utils::ParamInterp m_inflectionInterp;
     
     // Audio rate flags
     bool isShapeAudioRate;

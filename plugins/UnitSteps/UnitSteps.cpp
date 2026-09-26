@@ -5,8 +5,9 @@ extern InterfaceTable* ft;
 
 // ===== UNIT STEP =====
 
-UnitStep::UnitStep() {
-
+UnitStep::UnitStep() :
+    m_interp(in0(Interp) > 0.5f)
+{
     // Set calc function & compute initial sample
     set_calc_function<UnitStep, &UnitStep::next>();
     
@@ -20,9 +21,6 @@ void UnitStep::next(int nSamples) {
     // Audio-rate input
     const float* phaseIn = in(Phase);
     
-    // Control-rate parameters
-    bool interp = in0(Interp) > 0.5f;
-    
     // Output pointer
     float* output = out(Out);
     
@@ -31,14 +29,15 @@ void UnitStep::next(int nSamples) {
         // Wrap phase between 0 and 1
         float phase = sc_frac(phaseIn[i]);
         
-        output[i] = m_state.process(phase, interp, rgen);
+        output[i] = m_state.process(phase, m_interp, rgen);
     }
 }
 
 // ===== UNIT WALK =====
 
-UnitWalk::UnitWalk() {
-    
+UnitWalk::UnitWalk() :
+    m_interp(in0(Interp) > 0.5f)
+{
     // Check which inputs are audio-rate
     isStepAudioRate = isAudioRateIn(Step);
     
@@ -55,9 +54,6 @@ void UnitWalk::next(int nSamples) {
     // Audio-rate input
     const float* phaseIn = in(Phase);
     
-    // Control-rate parameters
-    bool interp = in0(Interp) > 0.5f;
-    
     // Output pointer
     float* output = out(Out);
     
@@ -71,18 +67,20 @@ void UnitWalk::next(int nSamples) {
             sc_clip(in(Step)[i], 0.0f, 1.0f) : 
             sc_clip(in0(Step), 0.0f, 1.0f);
         
-        output[i] = m_state.process(phase, step, interp, rgen);
+        output[i] = m_state.process(phase, step, m_interp, rgen);
     }
 }
 
 // ===== UNIT REGISTER =====
 
-UnitRegister::UnitRegister() {
-    
+UnitRegister::UnitRegister() :
+    m_interp(in0(Interp) > 0.5f)
+{
     // Check which inputs are audio-rate
     isChanceAudioRate = isAudioRateIn(Chance);
     isSizeAudioRate = isAudioRateIn(Size);
     isRotateAudioRate = isAudioRateIn(Rotate);
+    isResetAudioRate = isAudioRateIn(Reset);
     
     // Set calc function & compute initial sample
     set_calc_function<UnitRegister, &UnitRegister::next>();
@@ -97,10 +95,6 @@ void UnitRegister::next(int nSamples) {
     
     // Audio-rate input
     const float* phaseIn = in(Phase);
-    
-    // Control-rate parameters
-    bool interp = in0(Interp) > 0.5f;
-    bool reset = m_resetTrigger.process(in0(Reset));
     
     // Output pointers
     float* out3Bit = out(Out3Bit);
@@ -124,13 +118,18 @@ void UnitRegister::next(int nSamples) {
             sc_clip(static_cast<int>(in(Rotate)[i]), -MAX_LENGTH, MAX_LENGTH) : 
             sc_clip(static_cast<int>(in0(Rotate)), -MAX_LENGTH, MAX_LENGTH);
         
+        // Trigger input (audio-rate or control-rate)
+        bool reset = isResetAudioRate ? 
+            m_resetTrigger.process(in(Reset)[i]) : 
+            m_resetTrigger.process(in0(Reset));
+        
         // Process shift register
         auto output = m_register.process(
             phase, 
             chance, 
             size, 
             rotation, 
-            interp,
+            m_interp,
             reset,  
             rgen
         );

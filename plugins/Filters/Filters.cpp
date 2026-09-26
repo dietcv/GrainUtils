@@ -8,12 +8,6 @@ extern InterfaceTable* ft;
 Disperser::Disperser() : 
     m_sampleRate(static_cast<float>(sampleRate()))
 {
-    // Initialize parameter cache
-    freqPast = sc_clip(in0(Freq), 20.0f, m_sampleRate * 0.49f);
-    resonancePast = sc_clip(in0(Resonance), 0.0f, 1.0f);
-    mixPast = sc_clip(in0(Mix), 0.0f, 1.0f);
-    feedbackPast = sc_clip(in0(Feedback), 0.0f, 0.99f);
-    
     // Check which inputs are audio-rate
     isFreqAudioRate = isAudioRateIn(Freq);
     isResonanceAudioRate = isAudioRateIn(Resonance);
@@ -32,10 +26,10 @@ void Disperser::next(int nSamples) {
     const float* input = in(Input);
    
     // Control-rate parameters with smooth interpolation
-    auto slopedFreq = makeSlope(sc_clip(in0(Freq), 20.0f, m_sampleRate * 0.49f), freqPast);
-    auto slopedResonance = makeSlope(sc_clip(in0(Resonance), 0.0f, 1.0f), resonancePast);
-    auto slopedMix = makeSlope(sc_clip(in0(Mix), 0.0f, 1.0f), mixPast);
-    auto slopedFeedback = makeSlope(sc_clip(in0(Feedback), 0.0f, 0.99f), feedbackPast);
+    m_freqInterp.update(sc_clip(in0(Freq), 20.0f, m_sampleRate * 0.49f), nSamples);
+    m_resonanceInterp.update(sc_clip(in0(Resonance), 0.0f, 1.0f), nSamples);
+    m_mixInterp.update(sc_clip(in0(Mix), 0.0f, 1.0f), nSamples);
+    m_feedbackInterp.update(sc_clip(in0(Feedback), 0.0f, 0.99f), nSamples);
    
     // Output pointer
     float* outbuf = out(Out);
@@ -46,28 +40,28 @@ void Disperser::next(int nSamples) {
         // Get current parameter values (audio-rate or interpolated control-rate)
         float freq = isFreqAudioRate ? 
             sc_clip(in(Freq)[i], 20.0f, m_sampleRate * 0.49f) : 
-            slopedFreq.consume();
+            m_freqInterp.process();
             
         float resonance = isResonanceAudioRate ? 
             sc_clip(in(Resonance)[i], 0.0f, 1.0f) : 
-            slopedResonance.consume();
+            m_resonanceInterp.process();
             
         float mix = isMixAudioRate ? 
             sc_clip(in(Mix)[i], 0.0f, 1.0f) : 
-            slopedMix.consume();
+            m_mixInterp.process();
             
         float feedback = isFeedbackAudioRate ? 
             sc_clip(in(Feedback)[i], 0.0f, 0.99f) : 
-            slopedFeedback.consume();
+            m_feedbackInterp.process();
         
         // Add feedback to input
         float inputWithFeedback = input[i] + m_feedbackState;
         
         // DC block
-        float dcBlocked = m_dcBlocker.processHighpass(inputWithFeedback, 3.0f, m_sampleRate);
+        float dcBlocked = m_dcBlocker.process(inputWithFeedback, m_sampleRate);
         
-        // Process through disperser
-        float processed = disperser.process(
+        // Process audio through allpass chain
+        float processed = m_allpassChain.process(
             dcBlocked,
             freq,
             resonance,
@@ -84,35 +78,13 @@ void Disperser::next(int nSamples) {
         m_feedbackState = std::tanh(output * feedback);
         m_feedbackState = zapgremlins(m_feedbackState);
     }
-   
-    // Update parameter cache (use last value if audio-rate, otherwise slope value)
-    freqPast = isFreqAudioRate ? 
-        sc_clip(in(Freq)[nSamples - 1], 20.0f, m_sampleRate * 0.49f) : 
-        slopedFreq.value;
-        
-    resonancePast = isResonanceAudioRate ? 
-        sc_clip(in(Resonance)[nSamples - 1], 0.0f, 1.0f) : 
-        slopedResonance.value;
-        
-    mixPast = isMixAudioRate ? 
-        sc_clip(in(Mix)[nSamples - 1], 0.0f, 1.0f) : 
-        slopedMix.value;
-        
-    feedbackPast = isFeedbackAudioRate ? 
-        sc_clip(in(Feedback)[nSamples - 1], 0.0f, 0.99f) : 
-        slopedFeedback.value;
 }
 
-// ===== MORPHING STATE VARIABLE FILTER =====
+// ===== MORPHING FILTER =====
  
 MorphSVF::MorphSVF() : 
     m_sampleRate(static_cast<float>(sampleRate()))
 {
-    // Initialize parameter cache
-    freqPast = sc_clip(in0(Freq), 20.0f, m_sampleRate * 0.49f);
-    resonancePast = sc_clip(in0(Resonance), 0.0f, 1.0f);
-    shapePast = sc_clip(in0(Shape), 0.0f, 1.0f);
- 
     // Check which inputs are audio-rate
     isFreqAudioRate = isAudioRateIn(Freq);
     isResonanceAudioRate = isAudioRateIn(Resonance);
@@ -130,9 +102,9 @@ void MorphSVF::next(int nSamples) {
     const float* input = in(Input);
  
     // Control-rate parameters with smooth interpolation
-    auto slopedFreq = makeSlope(sc_clip(in0(Freq), 20.0f, m_sampleRate * 0.49f), freqPast);
-    auto slopedResonance = makeSlope(sc_clip(in0(Resonance), 0.0f, 1.0f), resonancePast);
-    auto slopedShape = makeSlope(sc_clip(in0(Shape), 0.0f, 1.0f), shapePast);
+    m_freqInterp.update(sc_clip(in0(Freq), 20.0f, m_sampleRate * 0.49f), nSamples);
+    m_resonanceInterp.update(sc_clip(in0(Resonance), 0.0f, 1.0f), nSamples);
+    m_shapeInterp.update(sc_clip(in0(Shape), 0.0f, 1.0f), nSamples);
  
     // Output pointer
     float* outbuf = out(Out);
@@ -143,32 +115,19 @@ void MorphSVF::next(int nSamples) {
         // Get current parameter values (audio-rate or interpolated control-rate)
         float freq = isFreqAudioRate ?
             sc_clip(in(Freq)[i], 20.0f, m_sampleRate * 0.49f) :
-            slopedFreq.consume();
+            m_freqInterp.process();
  
         float resonance = isResonanceAudioRate ?
             sc_clip(in(Resonance)[i], 0.0f, 1.0f) :
-            slopedResonance.consume();
+            m_resonanceInterp.process();
  
         float shape = isShapeAudioRate ?
             sc_clip(in(Shape)[i], 0.0f, 1.0f) :
-            slopedShape.consume();
+            m_shapeInterp.process();
  
-        // Process through morphing SVF
-        outbuf[i] = m_svf.process(input[i], freq, resonance, shape, m_sampleRate);
+        // Process audio through morphing filter
+        outbuf[i] = m_morphingFilter.process(input[i], freq, resonance, shape, m_sampleRate);
     }
- 
-    // Update parameter cache (use last value if audio-rate, otherwise slope value)
-    freqPast = isFreqAudioRate ?
-        sc_clip(in(Freq)[nSamples - 1], 20.0f, m_sampleRate * 0.49f) :
-        slopedFreq.value;
- 
-    resonancePast = isResonanceAudioRate ?
-        sc_clip(in(Resonance)[nSamples - 1], 0.0f, 1.0f) :
-        slopedResonance.value;
- 
-    shapePast = isShapeAudioRate ?
-        sc_clip(in(Shape)[nSamples - 1], 0.0f, 1.0f) :
-        slopedShape.value;
 }
 
 void Filters_setup()

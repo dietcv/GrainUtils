@@ -1,21 +1,25 @@
 class:: DualPulsarOS
-summary:: A subsample-accurate and bandlimited pulsar oscillator with cross-modulation, phase increment distortion, and oversampling
+summary:: A bandlimited pulsar oscillator with cross-phase modulation, phase increment distortion, and optional oversampling
 categories:: UGens>Oscillator
 
 DESCRIPTION::
-DualPulsarOS is a bandlimited pulsar oscillator with optional oversampling, supporting up to 16 simultaneously active grains with smart voice allocation.
-Subsample-accurate event scheduling of grains can be achieved by combining DualPulsarOS with SchedulerCycle or SchedulerBurst,
+DualPulsarOS is a bandlimited pulsar oscillator with cross-phase modulation, phase increment distortion, and optional oversampling. 
+It supports up to 8 simultaneously active grains with internal voice allocation.
+
+Sub-sample-accurate event scheduling of grains can be achieved by combining DualPulsarOS with SchedulerCycle or SchedulerBurst, 
 which provide the necessary timing information (trigger, rate, and subsample offset).
 
-Each grain consists of two cross-modulated wavetable oscillators (osc and mod) shaped by a gaussian window.
-The two oscillators modulate each other's phase in a single-sample feedback loop.
+Each grain consists of two cross-phase-modulated wavetable oscillators shaped by a Gaussian window. 
+The oscillators modulate each other’s phase through a single-sample feedback loop, 
+with independent modulation indices controlling the depth of each cross-modulation path. 
+Each path includes a slope-tracking one-pole filter whose cutoff follows the modulator’s fundamental frequency 
+and is scaled by the corresponding filter ratio. 
 The wavetable oscillators are bandlimited via dynamic mipmapping and sinc interpolation.
 
-Phase increment distortion (warpOsc, warpMod) redistributes the oscillator cycles per grain via a cubic easing function.
-At the center value of 0.5, cycles are evenly distributed. Values below 0.5 concentrate cycles toward the grain start (pitch glide down),
-while values above 0.5 concentrate cycles toward the grain end (pitch glide up).
+Phase increment distortion redistributes the oscillator cycles within each grain via a cubic easing function, 
+providing continuous per-grain pitch modulation over the duration of each grain.
 
-Grains can be overlapped by dividing the scheduler rate by the desired overlap amount before passing it as the trigger frequency.
+Grains can be overlapped by dividing the scheduler rate by the desired overlap amount before passing it as the trigger frequency. 
 An overlap of 1 means each grain lasts exactly one trigger period, while higher values produce longer, overlapping grains.
 
 note::
@@ -43,30 +47,30 @@ Carrier oscillator frequency in Hz. Latched per grain trigger.
 ARGUMENT:: modFreq
 Modulator oscillator frequency in Hz. Latched per grain trigger.
 
-ARGUMENT:: pmIndexOsc
-Phase modulation depth that the osc receives from the mod. Latched per grain trigger.
+ARGUMENT:: oscXmIndex
+Cross-phase modulation depth received by osc from mod. Latched per grain trigger.
 
-ARGUMENT:: pmIndexMod
-Phase modulation depth that the mod receives from the osc. Latched per grain trigger.
+ARGUMENT:: modXmIndex
+Cross-phase modulation depth received by mod from osc. Latched per grain trigger.
 
-ARGUMENT:: pmFilterRatioOsc
-Lowpass filter ratio for the cross-modulation path into the osc. A value of 1 sets the filter cutoff to the mod frequency,
-higher values raise the cutoff proportionally. Controls the harmonic content of the modulation signal before it modulates the osc phase.
+ARGUMENT:: oscXmFltRatio
+Damping filter ratio for the cross-phase modulation path from mod to osc. 
+Sets the filter cutoff as a multiple of the modulator's fundamental frequency (default: 1). 
 Latched per grain trigger.
 
-ARGUMENT:: pmFilterRatioMod
-Lowpass filter ratio for the cross-modulation path into the mod. A value of 1 sets the filter cutoff to the osc frequency,
-higher values raise the cutoff proportionally. Controls the harmonic content of the modulation signal before it modulates the mod phase.
+ARGUMENT:: modXmFltRatio
+Damping filter ratio for the cross-phase modulation path from osc to mod. 
+Sets the filter cutoff as a multiple of the oscillator's fundamental frequency (default: 1). 
 Latched per grain trigger.
 
-ARGUMENT:: warpOsc
-Phase increment distortion for the osc. Redistributes the osc cycles per grain via a cubic easing function.
-0.5 = linear (no effect), < 0.5 = cycles concentrated at grain start, > 0.5 = cycles concentrated at grain end.
+ARGUMENT:: oscWarp
+Phase increment distortion for osc. Redistributes the osc cycles within each grain via a cubic easing function.
+0.5 = linear (no effect), < 0.5 = cycles concentrated toward the grain start, > 0.5 = cycles concentrated toward the grain end.
 Latched per grain trigger.
 
-ARGUMENT:: warpMod
-Phase increment distortion for the mod. Redistributes the osc cycles per grain via a cubic easing function.
-0.5 = linear (no effect), < 0.5 = cycles concentrated at grain start, > 0.5 = cycles concentrated at grain end.
+ARGUMENT:: modWarp
+Phase increment distortion for mod. Redistributes the mod cycles within each grain via a cubic easing function.
+0.5 = linear (no effect), < 0.5 = cycles concentrated toward the grain start, > 0.5 = cycles concentrated toward the grain end.
 Latched per grain trigger.
 
 ARGUMENT:: oscBuffer
@@ -96,7 +100,7 @@ Shape index of the gaussian window (0.0 to 10.0). At 0 the window is a hanning w
 ARGUMENT:: oversample
 Oversampling factor: 0=1x, 1=2x, 2=4x, 3=8x, 4=16x.
 
-returns:: Audio rate UGen.
+returns:: Audio-rate UGen.
 
 EXAMPLES::
 
@@ -112,7 +116,7 @@ v = t.addAll(u).addAll(w).addAll(x);
 ~modBuf = Buffer.loadCollection(s, v);
 )
 
-// Basic cross-modulated pulsar
+// Basic cross-phase modulated pulsar
 (
 {
 	var events, overlap, windowRate, sig;
@@ -128,12 +132,12 @@ v = t.addAll(u).addAll(w).addAll(x);
 		subSampleOffset: events[\subSampleOffset],
 		oscFreq: \oscFreq.kr(440),
 		modFreq: \modFreq.kr(440),
-		pmIndexOsc: \pmIndexOsc.kr(1),
-		pmIndexMod: \pmIndexMod.kr(0.5),
-		pmFilterRatioOsc: 1,
-		pmFilterRatioMod: 1,
-		warpOsc: 0.5,
-		warpMod: 0.5,
+		oscXmIndex: \oscXmIndex.kr(1),
+		modXmIndex: \modXmIndex.kr(0.5),
+		oscXmFltRatio: 1,
+		modXmFltRatio: 1,
+		oscWarp: 0.5,
+		modWarp: 0.5,
 		oscBuffer: ~oscBuf,
 		oscNumCycles: 4,
 		oscCyclePos: 0,
@@ -150,7 +154,7 @@ v = t.addAll(u).addAll(w).addAll(x);
 }.play;
 )
 
-// Phase increment distortion — pitch glide within grains
+// Phase increment distortion — non-linear pitch trajectories per grain
 (
 {
 	var events, overlap, windowRate, sig;
@@ -166,10 +170,10 @@ v = t.addAll(u).addAll(w).addAll(x);
 		subSampleOffset: events[\subSampleOffset],
 		oscFreq: 800,
 		modFreq: 400,
-		pmIndexOsc: 1,
-		pmIndexMod: 0,
-		warpOsc: \warpOsc.kr(0),
-		warpMod: 0.5,
+		oscXmIndex: 1,
+		modXmIndex: 0,
+		oscWarp: \oscWarp.kr(0),
+		modWarp: 0.5,
 		oscBuffer: ~oscBuf,
 		oscNumCycles: 4,
 		oscCyclePos: 0,

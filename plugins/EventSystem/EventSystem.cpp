@@ -221,7 +221,7 @@ void VoiceAllocator::next(int nSamples) {
             sc_clip(in(Rate)[i], 0.0f, m_sampleRate * 0.49f) : 
             sc_clip(in0(Rate), 0.0f, m_sampleRate * 0.49f);
         
-        float offset = isSubSampleOffsetAudioRate ? 
+        float subSampleOffset = isSubSampleOffsetAudioRate ? 
             in(SubSampleOffset)[i] : 
             in0(SubSampleOffset);
 
@@ -230,7 +230,7 @@ void VoiceAllocator::next(int nSamples) {
             m_numChannels,
             trigger, 
             rate, 
-            offset, 
+            subSampleOffset,
             m_sampleRate
         );
 
@@ -247,9 +247,6 @@ void VoiceAllocator::next(int nSamples) {
 RampIntegrator::RampIntegrator() : 
     m_sampleRate(static_cast<float>(sampleRate()))
 {
-    // Initialize parameter cache
-    ratePast = sc_clip(in0(Rate), m_sampleRate * -0.49f, m_sampleRate * 0.49f);
-    
     // Check which inputs are audio-rate
     isTriggerAudioRate = isAudioRateIn(Trigger);
     isRateAudioRate = isAudioRateIn(Rate);
@@ -268,7 +265,7 @@ RampIntegrator::~RampIntegrator() = default;
 void RampIntegrator::next(int nSamples) {
 
     // Control-rate parameters with smooth interpolation
-    auto slopedRate = makeSlope(sc_clip(in0(Rate), m_sampleRate * -0.49f, m_sampleRate * 0.49f), ratePast);
+    m_rateInterp.update(sc_clip(in0(Rate), m_sampleRate * -0.49f, m_sampleRate * 0.49f), nSamples);
     
     // Output pointer
     float* phaseOut = out(Phase);
@@ -283,10 +280,10 @@ void RampIntegrator::next(int nSamples) {
         // Get current parameter values (audio-rate or interpolated control-rate)
         float rate = isRateAudioRate ? 
             sc_clip(in(Rate)[i], m_sampleRate * -0.49f, m_sampleRate * 0.49f) : 
-            slopedRate.consume();
+            m_rateInterp.process();
         
         // Get current parameter values (no interpolation - latched per trigger)
-        float offset = isSubSampleOffsetAudioRate ? 
+        float subSampleOffset = isSubSampleOffsetAudioRate ? 
             in(SubSampleOffset)[i] : 
             in0(SubSampleOffset);
 
@@ -294,15 +291,10 @@ void RampIntegrator::next(int nSamples) {
         phaseOut[i] = m_integrator.process(
             trigger, 
             rate, 
-            offset, 
+            subSampleOffset, 
             m_sampleRate
         );
     }
-    
-    // Update parameter cache (use last value if audio-rate, otherwise slope value)
-    ratePast = isRateAudioRate ? 
-        sc_clip(in(Rate)[nSamples - 1], m_sampleRate * -0.49f, m_sampleRate * 0.49f) : 
-        slopedRate.value;
 }
 
 // ===== RAMP ACCUMULATOR =====
@@ -336,14 +328,14 @@ void RampAccumulator::next(int nSamples) {
             m_trigger.process(in0(Trigger));
         
         // Get current parameter values (no interpolation - latched per trigger)
-        float offset = isSubSampleOffsetAudioRate ? 
+        float subSampleOffset = isSubSampleOffsetAudioRate ? 
             in(SubSampleOffset)[i] : 
             in0(SubSampleOffset);
 
         // Process accumulator
         countOut[i] = m_accumulator.process(
             trigger, 
-            offset
+            subSampleOffset
         );
     }
 }
@@ -353,9 +345,6 @@ void RampAccumulator::next(int nSamples) {
 RampDivider::RampDivider() :
     m_mode(sc_clip(static_cast<int>(in0(Mode)), 0, 2))
 {
-    // Initialize parameter cache
-    ratioPast = in0(Ratio);
-    
     // Check which inputs are audio-rate
     isRatioAudioRate = isAudioRateIn(Ratio);
     isResetAudioRate = isAudioRateIn(Reset);
@@ -378,7 +367,7 @@ void RampDivider::next(int nSamples) {
     const float* phaseIn = in(Phase);
     
     // Control-rate parameters with smooth interpolation
-    auto slopedRatio = makeSlope(in0(Ratio), ratioPast);
+    m_ratioInterp.update(in0(Ratio), nSamples);
     
     // Output pointer
     float* phaseOut = out(PhaseOut);
@@ -391,7 +380,7 @@ void RampDivider::next(int nSamples) {
         // Get current parameter values (audio-rate or interpolated control-rate)
         float ratio = isRatioAudioRate ? 
             in(Ratio)[i] : 
-            slopedRatio.consume();
+            m_ratioInterp.process();
         
         // Trigger input (audio-rate or control-rate)
         bool reset = isResetAudioRate ? 
@@ -405,11 +394,6 @@ void RampDivider::next(int nSamples) {
             case 2: phaseOut[i] = m_offsetDivider.process(phase, ratio, reset); break;
         }
     }
-    
-    // Update parameter cache (use last value if audio-rate, otherwise slope value)
-    ratioPast = isRatioAudioRate ? 
-        in(Ratio)[nSamples - 1] : 
-        slopedRatio.value;
 }
 
 void EventSystem_setup() 

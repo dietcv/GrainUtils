@@ -10,12 +10,6 @@ GrainDelay::GrainDelay() :
     m_bufFrames(static_cast<float>(m_bufSize)),
     m_bufMask(m_bufSize - 1)
 {
-    // Initialize parameter cache
-    delayTimePast = sc_clip(in0(DelayTime), m_sampleDur, MAX_DELAY_TIME);
-    mixPast = sc_clip(in0(Mix), 0.0f, 1.0f);
-    feedbackPast = sc_clip(in0(Feedback), 0.0f, 0.99f);
-    dampingPast = sc_clip(in0(Damping), 0.0f, 1.0f);
-
     // Check which inputs are audio-rate
     isTriggerRateAudioRate = isAudioRateIn(TriggerRate);
     isOverlapAudioRate = isAudioRateIn(Overlap);
@@ -28,8 +22,7 @@ GrainDelay::GrainDelay() :
     isResetAudioRate = isAudioRateIn(Reset);
 
     // Allocate audio buffer
-    auto unit = this;
-    PluginUtils::allocBuffer(unit, mWorld, m_bufSize, m_buffer);
+    BufferUtils::allocBuffer(this, mWorld, m_bufSize, m_buffer);
     
     // Set calc function & compute initial sample
     set_calc_function<GrainDelay, &GrainDelay::next>();
@@ -49,10 +42,10 @@ void GrainDelay::next(int nSamples) {
     const float* input = in(Input);
     
     // Control-rate parameters with smooth interpolation
-    auto slopedDelayTime = makeSlope(sc_clip(in0(DelayTime), m_sampleDur, MAX_DELAY_TIME), delayTimePast);
-    auto slopedMix = makeSlope(sc_clip(in0(Mix), 0.0f, 1.0f), mixPast);
-    auto slopedFeedback = makeSlope(sc_clip(in0(Feedback), 0.0f, 0.99f), feedbackPast);
-    auto slopedDamping = makeSlope(sc_clip(in0(Damping), 0.0f, 1.0f), dampingPast);
+    m_delayTimeInterp.update(sc_clip(in0(DelayTime), m_sampleDur, MAX_DELAY_TIME), nSamples);
+    m_mixInterp.update(sc_clip(in0(Mix), 0.0f, 1.0f), nSamples);
+    m_feedbackInterp.update(sc_clip(in0(Feedback), 0.0f, 0.99f), nSamples);
+    m_dampingInterp.update(sc_clip(in0(Damping), 0.0f, 1.0f), nSamples);
 
     // Output pointers
     float* output = out(Output);
@@ -75,19 +68,19 @@ void GrainDelay::next(int nSamples) {
         // Get current parameter values (audio-rate or interpolated control-rate)
         float delayTime = isDelayTimeAudioRate ? 
             sc_clip(in(DelayTime)[i], m_sampleDur, MAX_DELAY_TIME) : 
-            slopedDelayTime.consume();
+            m_delayTimeInterp.process();
 
         float mix = isMixAudioRate ? 
             sc_clip(in(Mix)[i], 0.0f, 1.0f) : 
-            slopedMix.consume();
+            m_mixInterp.process();
             
         float feedback = isFeedbackAudioRate ? 
             sc_clip(in(Feedback)[i], 0.0f, 0.99f) : 
-            slopedFeedback.consume();
+            m_feedbackInterp.process();
             
         float damping = isDampingAudioRate ? 
             sc_clip(in(Damping)[i], 0.0f, 1.0f) : 
-            slopedDamping.consume();
+            m_dampingInterp.process();
 
         // Freeze input (audio-rate or control-rate)
         bool freeze = isFreezeAudioRate ? 
@@ -136,7 +129,7 @@ void GrainDelay::next(int nSamples) {
                 float grainPos = (m_grainData[g].readPos * m_bufFrames) + (m_grainData[g].sampleCount * m_grainData[g].rate);
                 
                 // Get sample with interpolation
-                float grainSample = Utils::peekCubicInterp(
+                float grainSample = BufferUtils::peekCubicInterp(
                     m_buffer, 
                     grainPos,
                     m_bufMask
@@ -157,11 +150,11 @@ void GrainDelay::next(int nSamples) {
         delayed *= compensationGain;
         
         // 5. Apply feedback with damping filter
-        float dampedFeedback = m_dampingFilter.processLowpass(delayed, damping);
+        float dampedFeedback = m_dampingFilter.process(delayed, damping, m_sampleRate);
         dampedFeedback = zapgremlins(dampedFeedback); // Prevent feedback buildup
         
         // 6. DC block input and write to delay buffer (only when not frozen)
-        float dcBlockedInput = m_dcBlocker.processHighpass(input[i], 3.0f, m_sampleRate);
+        float dcBlockedInput = m_dcBlocker.process(input[i], m_sampleRate);
         
         if (!freeze) {
             m_buffer[m_writePos] = dcBlockedInput + dampedFeedback * feedback;
@@ -172,23 +165,6 @@ void GrainDelay::next(int nSamples) {
         // 7. Output with wet/dry mix
         output[i] = lininterp(mix, input[i], delayed);
     }
-    
-    // Update parameter cache (use last value if audio-rate, otherwise slope value)
-    delayTimePast = isDelayTimeAudioRate ? 
-        sc_clip(in(DelayTime)[nSamples - 1], m_sampleDur, MAX_DELAY_TIME) : 
-        slopedDelayTime.value;
-
-    mixPast = isMixAudioRate ? 
-        sc_clip(in(Mix)[nSamples - 1], 0.0f, 1.0f) : 
-        slopedMix.value;
-        
-    feedbackPast = isFeedbackAudioRate ? 
-        sc_clip(in(Feedback)[nSamples - 1], 0.0f, 0.99f) : 
-        slopedFeedback.value;
-        
-    dampingPast = isDampingAudioRate ? 
-        sc_clip(in(Damping)[nSamples - 1], 0.0f, 1.0f) : 
-        slopedDamping.value;
 }
 
 void Delays_setup()

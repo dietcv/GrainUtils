@@ -1,5 +1,5 @@
 class:: SingleOscOS
-summary:: bandlimited wavetable oscillator with oversampling
+summary:: A bandlimited wavetable oscillator with optional oversampling
 categories:: UGens>Oscillator
 
 DESCRIPTION::
@@ -25,7 +25,7 @@ Position within multi-cycle wavetable (0.0 to 1.0).
 ARGUMENT:: oversample
 Oversampling factor: 0=1x, 1=2x, 2=4x, 3=8x, 4=16x (default: 0).
 
-returns:: Audio rate UGen.
+returns:: Audio-rate UGen.
 
 EXAMPLES::
 
