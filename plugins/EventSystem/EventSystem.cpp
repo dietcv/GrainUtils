@@ -236,7 +236,7 @@ void VoiceAllocator::next(int nSamples) {
 
         // Output phases and triggers
         for (int ch = 0; ch < m_numChannels; ++ch) {
-            out(ch)[i] = voices.phases[ch];
+            out(ch)[i] = static_cast<float>(voices.phases[ch]);
             out(m_numChannels + ch)[i] = voices.triggers[ch];
         }
     }

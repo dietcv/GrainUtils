@@ -84,7 +84,7 @@ SECTION::2) Examples - Audio
 subsection::2.1) Coupled Pulsars
 
 code::
-// load multi-cycle wavetable
+// Create multi-cycle wavetable
 (
 t = Signal.sineFill(2048, [1], [0]);
 u = Signal.sineFill(2048, 1.0/((1..512)**2)*([1,0,-1,0]!128).flatten);
@@ -92,6 +92,12 @@ w = Signal.sineFill(2048, 1.0/(1..512)*([1,0]!256).flatten);
 x = Signal.sineFill(2048, 1.0/(1..512));
 v = t.addAll(u).addAll(w).addAll(x);
 b = Buffer.loadCollection(s, v);
+)
+
+// Create single-cycle envelope
+(
+e = Buffer.alloc(s, 2048);
+e.loadCollection(Signal.hanningWindow(2048));
 )
 
 (
@@ -107,33 +113,31 @@ b = Buffer.loadCollection(s, v);
 		bias: MouseY.kr(-1, 1)
 	);
 
-	sig = DualPulsarOS.ar(
+	sig = PulsarXPM.ar(
 
 		trig: events[\triggers],
 		triggerFreq: events[\rates] / \overlap.kr(1),
 		subSampleOffset: events[\subSampleOffsets],
 
-		oscFreq: \oscFreq.kr(440),
-		modFreq: \modFreq.kr(440),
+		oscFreq: 440,
+		modFreq: 440,
 
-		pmIndexOsc: \pmIndexOsc.kr(0),
-		pmIndexMod: \pmIndexMod.kr(0),
-		pmFilterRatioOsc: 1,
-		pmFilterRatioMod: 1,
+		oscPmIndex: 0,
+		modPmIndex: 0,
+		oscPmFltRatio: 1,
+		modPmFltRatio: 1,
 
-		warpOsc: 0.5,
-		warpMod: 0.5,
+        oscBufNum: b,
+        oscNumCycles: 4,
+        oscCyclePos: 0,
 
-		oscBuffer: b,
-		oscNumCycles: 4,
-		oscCyclePos: 0,
+        modBufNum: b,
+        modNumCycles: 4,
+        modCyclePos: 0,
 
-		modBuffer: b,
-		modNumCycles: 4,
-		modCyclePos: 0,
-
-		envSkew: 0.5,
-		envIndex: 0,
+        envBufNum: e,
+		envNumCycles: 1,
+		envCyclePos: 0,
 
 		oversample: 1,
 	);

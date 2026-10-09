@@ -105,10 +105,8 @@ set(GrainUtils_schelp_files
     plugins/Filters/HelpSource/MorphSVF.schelp
 
     # Oscs
-    plugins/Oscs/HelpSource/SingleOscOS.schelp
-    plugins/Oscs/HelpSource/DualOscOS.schelp
-    plugins/Oscs/HelpSource/PulsarOS.schelp
-    plugins/Oscs/HelpSource/DualPulsarOS.schelp
+    plugins/Oscs/HelpSource/OscXPM.schelp
+    plugins/Oscs/HelpSource/PulsarXPM.schelp
 
     # UnitEasing
     plugins/UnitEasing/HelpSource/JCurve.schelp

@@ -2,6 +2,7 @@
 #include "SC_PlugIn.hpp"
 #include "Utils.hpp"
 #include <array>
+#include <algorithm>
 
 namespace EventUtils {
 
@@ -144,36 +145,6 @@ struct RampToSlope {
     }
 };
 
-// ===== PHASE UTILITIES =====
-
-struct MeanField {
-    double coherence = 0.0;
-    double meanPhase = 0.0;
-};
- 
-inline MeanField meanField(const double* phases, int numChannels) {
-    MeanField output;
- 
-    // 1. Sum phases as unit vectors on the circle
-    double meanCos = 0.0;
-    double meanSin = 0.0;
-    for (int ch = 0; ch < numChannels; ++ch) {
-        double theta = Utils::TWO_PI * phases[ch];
-        meanCos += std::cos(theta);
-        meanSin += std::sin(theta);
-    }
- 
-    // 2. Average to the centre of mass
-    meanCos /= static_cast<double>(numChannels);
-    meanSin /= static_cast<double>(numChannels);
- 
-    // 3. Convert to polar form
-    output.coherence = std::sqrt(meanCos * meanCos + meanSin * meanSin);
-    output.meanPhase = std::atan2(meanSin, meanCos);
- 
-    return output;
-}
-
 // ===== SCHEDULER CYCLE =====
 
 struct SchedulerCycle {
@@ -265,7 +236,7 @@ struct SchedulerBurst {
         double safeDuration = sc_max(static_cast<double>(duration), 1.0 / sampleRate);
         m_slope = 1.0 / (safeDuration * sampleRate);
 
-        // Process only if we have been triggered
+        // Process event if triggered
         if (m_hasTriggered) {
 
             // 1. Clip scaled phase between 0 and cycles
@@ -332,18 +303,25 @@ struct SchedulerBank {
             phases[ch] = m_schedulers[ch].m_phase;
         }
  
-        // 3. Derive mean field from phases
-        auto field = meanField(phases.data(), numChannels);
-
+        // 3. Derive mean field as the average of all phases as unit vectors on the circle
+        double fieldCos = 0.0;
+        double fieldSin = 0.0;
+        for (int ch = 0; ch < numChannels; ++ch) {
+            fieldCos += std::cos(Utils::TWO_PI * phases[ch]);
+            fieldSin += std::sin(Utils::TWO_PI * phases[ch]);
+        }
+        fieldCos /= static_cast<double>(numChannels);
+        fieldSin /= static_cast<double>(numChannels);
+ 
         // 4. Calculate reference critical coupling
         double criticalCoupling = static_cast<double>(spread) * 2.0 / Utils::PI;
  
         // 5. Calculate coupling strength
         double k = (static_cast<double>(couple) * 2.0) * criticalCoupling;
-
+ 
         // 6. Calculate Sakaguchi phase lag
         double alpha = static_cast<double>(bias) * Utils::HALF_PI;
-
+ 
         for (int ch = 0; ch < numChannels; ++ch) {
  
             // 7. Spread natural rates uniformly in log2 space
@@ -351,9 +329,9 @@ struct SchedulerBank {
             double rateNatural = static_cast<double>(rate) * std::exp2(static_cast<double>(spread) * position);
  
             // 8. Calculate mean-field interaction with phase lag
-            double theta = Utils::TWO_PI * phases[ch];
-            double pull = field.coherence * std::sin(field.meanPhase - theta + alpha);
-
+            double theta = Utils::TWO_PI * phases[ch] - alpha;
+            double pull = fieldSin * std::cos(theta) - fieldCos * std::sin(theta);
+ 
             // 9. Apply coupling in log2 rate space
             double rateCoupled = rateNatural * std::exp2(k * pull);
             float rateClipped = sc_clip(static_cast<float>(rateCoupled), 0.0f, sampleRate * 0.49f);
@@ -388,7 +366,7 @@ struct VoiceAllocator {
 
     struct Output {
         std::array<bool,  MaxChannels> gates{};
-        std::array<float, MaxChannels> phases{};
+        std::array<double, MaxChannels> phases{};
         std::array<float, MaxChannels> slopes{};
         std::array<bool,  MaxChannels> triggers{};
     };
@@ -422,7 +400,7 @@ struct VoiceAllocator {
 
             // Prepare outputs
             output.gates[ch] = m_active[ch];
-            output.phases[ch] = static_cast<float>(m_phases[ch]);
+            output.phases[ch] = m_phases[ch];
             output.slopes[ch] = static_cast<float>(m_slopes[ch]);
 
             // Increment active phases

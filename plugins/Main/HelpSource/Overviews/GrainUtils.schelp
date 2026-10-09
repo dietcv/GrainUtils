@@ -17,6 +17,7 @@ SUBSECTION:: Event System
 LIST::
 ## LINK::Classes/SchedulerCycle::
 ## LINK::Classes/SchedulerBurst::
+## LINK::Classes/SchedulerBank::
 ## LINK::Classes/VoiceAllocator::
 ## LINK::Classes/RampAccumulator::
 ## LINK::Classes/RampIntegrator::
@@ -49,10 +50,8 @@ LIST::
 ::
 SUBSECTION:: Oscillators
 LIST::
-## LINK::Classes/SingleOscOS::
-## LINK::Classes/DualOscOS::
-## LINK::Classes/PulsarOS::
-## LINK::Classes/DualPulsarOS::
+## LINK::Classes/OscXPM::
+## LINK::Classes/PulsarXPM::
 ::
 SUBSECTION:: Delays
 LIST::

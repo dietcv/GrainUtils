@@ -4,6 +4,7 @@
 #include "BufferUtils.hpp"
 #include "FilterUtils.hpp"
 #include <array>
+#include <algorithm>
 
 namespace OscUtils {
 
@@ -173,89 +174,54 @@ inline float wavetableOsc(float phase, float slope, const BufferUtils::Wavetable
 
 // ===== MULTI-CYCLE WAVETABLE OSCILLATOR WITH CROSS-PHASE MODULATION =====
 
-struct DualOsc {
+struct WavetableOscXPM {
 
-    FilterUtils::TrackingFilter m_xmFilterA;
-    FilterUtils::TrackingFilter m_xmFilterB;
+    FilterUtils::TrackingLowpass m_oscPmFilter;
+    FilterUtils::TrackingLowpass m_modPmFilter;
 
-    float m_prevOscA{0.0f};
-    float m_prevOscB{0.0f};
+    float m_prevOsc{0.0f};
+    float m_prevMod{0.0f};
     
-    struct Output {
-        float oscA;
-        float oscB;
-    };
-    
-    Output process(
-        float phaseA, float phaseB,
-        float slopeA, float slopeB,
-        float xmIndexA, float xmIndexB,
-        float xmFltRatioA, float xmFltRatioB,
-        float cyclePosA, float cyclePosB,
-        const BufferUtils::Wavetable::Output& oscTableA,
-        const BufferUtils::Wavetable::Output& oscTableB,
-        float sampleRate
-    ) {
-
-        // Filter previous outputs with slope-tracking OnePole filter
-        float filteredB = m_xmFilterB.process(m_prevOscB, slopeB * xmFltRatioA, sampleRate);
-        float filteredA = m_xmFilterA.process(m_prevOscA, slopeA * xmFltRatioB, sampleRate);
-        
-        // Apply cross-phase modulation and wrap between 0 and 1
-        float modulatedPhaseA = sc_frac(phaseA + (filteredB / Utils::TWO_PI * xmIndexA));
-        float modulatedPhaseB = sc_frac(phaseB + (filteredA / Utils::TWO_PI * xmIndexB));
-
-        // Generate oscillator outputs
-        float oscA = wavetableOsc(modulatedPhaseA, slopeA, oscTableA, cyclePosA);
-        float oscB = wavetableOsc(modulatedPhaseB, slopeB, oscTableB, cyclePosB);
-        
-        // Store current outputs for next sample
-        m_prevOscA = oscA;
-        m_prevOscB = oscB;
-        
-        return {oscA, oscB};
-    }
-
-    void reset() {
-        m_xmFilterA.reset();
-        m_xmFilterB.reset();
-        m_prevOscA = 0.0f;
-        m_prevOscB = 0.0f;
-    }   
-};
-
-// ===== MULTI-CYCLE WAVETABLE OSCILLATOR WITH PHASE MODULATION =====
-
-struct PMOsc {
-    
-    FilterUtils::TrackingFilter m_pmFilter;
-
     float process(
         float oscPhase, float modPhase,
         float oscSlope, float modSlope,
-        float pmIndex,
+        float oscPmIndex, float modPmIndex,
+        float oscPmDamping, float modPmDamping,
         float oscCyclePos, float modCyclePos,
         const BufferUtils::Wavetable::Output& oscTable,
         const BufferUtils::Wavetable::Output& modTable,
         float sampleRate
     ) {
 
-        // Process mod wavetable oscillator
-        float modOsc = wavetableOsc(modPhase, modSlope, modTable, modCyclePos);
+        // Convert damping (0 - 1) to filter ratio (4 - 1)
+        float oscPmFltRatio = std::exp2((1.0f - oscPmDamping) * 2.0f);
+        float modPmFltRatio = std::exp2((1.0f - modPmDamping) * 2.0f);
 
-        // Filter modulator with slope-tracking OnePole filter
-        float modFiltered = m_pmFilter.process(modOsc, modSlope, sampleRate);
+        // Filter previous outputs with slope-tracking lowpass filters
+        float modFiltered = m_modPmFilter.process(m_prevMod, modSlope * oscPmFltRatio, sampleRate);
+        float oscFiltered = m_oscPmFilter.process(m_prevOsc, oscSlope * modPmFltRatio, sampleRate);
+        
+        // Apply cross-phase modulation and wrap between 0 and 1
+        float modulatedOscPhase = sc_frac(oscPhase + (modFiltered / Utils::TWO_PI * oscPmIndex));
+        float modulatedModPhase = sc_frac(modPhase + (oscFiltered / Utils::TWO_PI * modPmIndex));
 
-        // Apply phase modulation and wrap between 0 and 1
-        float modulatedOscPhase = sc_frac(oscPhase + (modFiltered / Utils::TWO_PI * pmIndex));
-
-        // Generate oscillator output
-        return wavetableOsc(modulatedOscPhase, oscSlope, oscTable, oscCyclePos);
+        // Generate wavetable oscillators
+        float osc = wavetableOsc(modulatedOscPhase, oscSlope, oscTable, oscCyclePos);
+        float mod = wavetableOsc(modulatedModPhase, modSlope, modTable, modCyclePos);
+        
+        // Store current outputs for next sample
+        m_prevOsc = osc;
+        m_prevMod = mod;
+        
+        return osc;
     }
 
     void reset() {
-        m_pmFilter.reset();
-    }
+        m_oscPmFilter.reset();
+        m_modPmFilter.reset();
+        m_prevOsc = 0.0f;
+        m_prevMod = 0.0f;
+    }   
 };
 
 } // namespace OscUtils

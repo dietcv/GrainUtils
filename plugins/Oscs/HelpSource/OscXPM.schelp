@@ -1,0 +1,195 @@
+class:: OscXPM
+summary:: A bandlimited wavetable oscillator with cross-phase modulation and oversampling
+categories:: UGens>Oscillator
+
+DESCRIPTION::
+OscXPM is a bandlimited wavetable oscillator with cross-phase modulation and optional oversampling. 
+The two oscillators modulate each other’s phase through a single-sample feedback loop, 
+with independent modulation indices controlling the depth of each cross-modulation path. 
+Each path includes a slope-tracking lowpass filter whose cutoff follows the modulator’s fundamental frequency 
+and is controlled by the corresponding damping parameter.
+The wavetable oscillators are bandlimited via dynamic mipmapping and sinc interpolation.
+
+CLASSMETHODS::
+
+METHOD:: ar
+
+ARGUMENT:: oscPhase
+Phase input for osc.
+
+ARGUMENT:: modPhase
+Phase input for mod.
+
+ARGUMENT:: oscPmIndex
+Phase modulation depth received by osc from mod.
+
+ARGUMENT:: modPmIndex
+Phase modulation depth received by mod from osc.
+
+ARGUMENT:: oscPmDamping
+Damping of the phase modulation path from mod to osc.
+
+ARGUMENT:: modPmDamping
+Damping of the phase modulation path from osc to mod.
+
+ARGUMENT:: oscBufNum
+Buffer containing carrier wavetable data (the size has to be a power-of-2).
+
+ARGUMENT:: oscNumCycles
+Number of cycles in the carrier wavetable buffer.
+
+ARGUMENT:: oscCyclePos
+Position within the carrier multi-cycle wavetable.
+
+ARGUMENT:: modBufNum
+Buffer containing modulator wavetable data (the size has to be a power-of-2).
+
+ARGUMENT:: modNumCycles
+Number of cycles in the modulator wavetable buffer.
+
+ARGUMENT:: modCyclePos
+Position within the modulator multi-cycle wavetable.
+
+ARGUMENT:: oversample
+Oversampling factor: 0=1x, 1=2x, 2=4x, 3=8x, 4=16x.
+
+returns:: Audio-rate UGen
+
+EXAMPLES::
+
+code::
+(
+// scale modulation depth of modulators between 0 and 1
+var modScaleBipolarUp = { |modulator, value, amount|
+	value + (modulator.max(0) * (1 - value) * amount);
+};
+
+SynthDef(\oscXPM, {
+
+    var param, calcWavetableData;
+    var oscData, modData;
+    var sig;
+
+    // Global parameter function
+    param = { |chainID, name, default, spec|
+        var paramName = "%_%".format(chainID, name).asSymbol;
+        NamedControl.kr(paramName, default, spec: spec);
+    };
+
+    // Function to calculate wavetable data
+    calcWavetableData = { |chainID, phaseOffset|
+
+        var freq, phase;
+        var tableIndexMF, tableIndexMod, tableIndex;
+        var wavetable, sizeOfTable, pmIndex, pmDamping;
+
+        // Generate phase
+        freq = param.(chainID, \freq, 440, spec: ControlSpec(1, 1000, \exp));
+        phase = Phasor.ar(DC.ar(0), freq * SampleDur.ir);
+
+        // Cross-phase modulation parameters
+        pmIndex = param.(chainID, \pmIndex, 0, ControlSpec(0, 5));
+        pmDamping = param.(chainID, \pmDamping, 1, ControlSpec(0, 1));
+
+        // Wavetable parameters
+        wavetable = param.(chainID, \sndBuf, 0);
+        sizeOfTable = BufFrames.kr(wavetable) / 2048;
+
+        // Create table index modulation
+        tableIndexMF = param.(chainID, \tableIndexMF, 0.1, ControlSpec(0.1, 1));
+        tableIndexMod = { |phase|
+            SinOsc.ar(tableIndexMF, phase + phaseOffset * pi)
+        };
+
+        tableIndex = modScaleBipolarUp.(
+            modulator: tableIndexMod.(0.5),
+            value: param.(chainID, \tableIndex, 0, ControlSpec(0, 1)),
+            amount: param.(chainID, \tableIndexMD, 1, ControlSpec(0, 1))
+        );
+
+        (
+            phase: phase,
+            pmIndex: pmIndex,
+            pmDamping: pmDamping,
+            wavetable: wavetable,
+            sizeOfTable: sizeOfTable,
+            tableIndex: tableIndex
+        );
+    };
+
+    oscData = calcWavetableData.(\osc, 0);
+    modData = calcWavetableData.(\mod, 1);
+
+    sig = OscXPM.ar(
+
+        oscPhase: oscData[\phase],
+        modPhase: modData[\phase],
+
+        oscPmIndex: oscData[\pmIndex],
+        modPmIndex: modData[\pmIndex],
+        oscPmDamping: oscData[\pmDamping],
+        modPmDamping: modData[\pmDamping],
+
+        oscBufNum: oscData[\wavetable],
+        oscNumCycles: oscData[\sizeOfTable],
+        oscCyclePos: oscData[\tableIndex],
+
+        modBufNum: modData[\wavetable],
+        modNumCycles: modData[\sizeOfTable],
+        modCyclePos: modData[\tableIndex],
+
+        oversample: 1
+    );
+
+    sig = Pan2.ar(sig, \pan.kr(0));
+    sig = sig * \amp.kr(-25, spec: ControlSpec(-35, -5)).dbamp;
+    sig = sig * Env.asr(0.001, 1, 0.001).ar(Done.freeSelf, \gate.kr(1));
+
+    sig = LeakDC.ar(sig);
+    sig = Limiter.ar(sig);
+    Out.ar(\out.kr(0), sig);
+}).add;
+)
+
+// Create multi-cycle wavetable
+(
+t = Signal.sineFill(2048, [1], [0]);
+u = Signal.sineFill(2048, 1.0/((1..512)**2)*([1,0,-1,0]!128).flatten);
+w = Signal.sineFill(2048, 1.0/(1..512)*([1,0]!256).flatten);
+x = Signal.sineFill(2048, 1.0/(1..512));
+v = t.addAll(u).addAll(w).addAll(x);
+b = Buffer.loadCollection(s, v);
+)
+
+(
+x = Synth(\oscXPM, [
+
+    \osc_sndBuf, b,
+    \osc_freq, 440,
+
+    \osc_tableIndexMF, 0.1,
+    \osc_tableIndexMD, 0,
+    \osc_tableIndex, 0,
+
+    \osc_pmDamping, 0.5,
+    \osc_pmIndex, 5,
+
+    \mod_sndBuf, b,
+    \mod_freq, 550,
+
+    \mod_tableIndexMF, 0.1,
+    \mod_tableIndexMD, 0,
+    \mod_tableIndex, 0,
+
+    \mod_pmDamping, 1,
+    \mod_pmIndex, 3,
+
+    \pan, 0,
+    \amp, -25,
+    \out, 0,
+
+]);
+)
+
+x.free;
+::

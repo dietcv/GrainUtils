@@ -46,7 +46,7 @@ private:
     struct GrainData {
         float readPos = 0.0f;
         float rate = 1.0f;
-        float sampleCount = 0.0f;
+        double sampleCount = 0.0;
     };
     std::array<GrainData, NUM_VOICES> m_grainData;
     

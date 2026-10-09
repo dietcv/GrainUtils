@@ -99,8 +99,8 @@ struct BuchlaFold {
     // Transfer function: F(x) = [SLOPE*x + Σ(mix * cell(x))] / SLOPE
     static inline double nlFunc(double x) {
         double y = SLOPE * x;
-        for (const auto& cell : CELLS) {
-            y += cell.mix * cell.func(x);
+        for (int i = 0; i < NUM_CELLS; ++i) {
+            y += CELLS[i].mix * CELLS[i].func(x);
         }
         return y * (1.0 / SLOPE);
     }
@@ -108,8 +108,8 @@ struct BuchlaFold {
     // First antiderivative: F1(x) = [SLOPE*x²/2 + Σ(mix * cell_AD1(x))] / SLOPE
     static inline double nlFunc_AD1(double x) {
         double y = 0.5 * SLOPE * x * x;
-        for (const auto& cell : CELLS) {
-            y += cell.mix * cell.AD1(x);
+        for (int i = 0; i < NUM_CELLS; ++i) {
+            y += CELLS[i].mix * CELLS[i].AD1(x);
         }
         return y * (1.0 / SLOPE);
     }

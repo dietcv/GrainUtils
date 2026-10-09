@@ -17,9 +17,9 @@ private:
     const float m_sampleRate;
     
     // Core processing
-    EventUtils::SchedulerCycle m_scheduler;
     EventUtils::IsTrigger m_resetTrigger;
-    
+    EventUtils::SchedulerCycle m_scheduler;
+
     // Audio rate flags
     bool isRateAudioRate;
     bool isResetAudioRate;
@@ -51,9 +51,9 @@ private:
     const float m_sampleRate;
     
     // Core processing
-    EventUtils::SchedulerBurst m_scheduler;
     EventUtils::IsTrigger m_initTrigger;
-    
+    EventUtils::SchedulerBurst m_scheduler;
+
     // Audio rate flags
     bool isInitTriggerAudioRate;
     bool isDurationAudioRate;
@@ -91,8 +91,8 @@ private:
     const int m_numChannels;
 
     // Core processing
-    EventUtils::SchedulerBank<MAX_CHANNELS> m_bank;
     EventUtils::IsTrigger m_resetTrigger;
+    EventUtils::SchedulerBank<MAX_CHANNELS> m_bank;
 
     // Audio rate flags
     bool isRateAudioRate;

@@ -4,29 +4,58 @@
 
 namespace OversamplingUtils {
 
-// ===== PARAMETER INTERPOLATION =====
+// ===== LINEAR PARAMETER INTERPOLATION =====
 
 struct OSParamInterp {
     float m_lastValue{0.0f};
     float m_currentValue{0.0f};
+    float m_delta{0.0f};
 
     // Latch parameter value for oversampling
     void update(float value) {
         m_lastValue = m_currentValue;
         m_currentValue = value;
+        m_delta = m_currentValue - m_lastValue;
     }
 
     // Interpolate parameter value at fractional position
     float process(float frac) const {
-        return lininterp(frac, m_lastValue, m_currentValue);
+        return m_lastValue + (m_delta * frac);
     }
 
     void reset(float value) {
         m_lastValue = value;
         m_currentValue = value;
+        m_delta = 0.0f;
     }
 };
 
+// ===== CIRCULAR PARAMETER INTERPOLATION =====
+
+struct OSPhaseInterp {
+    float m_lastValue{0.0f};
+    float m_currentValue{0.0f};
+    float m_delta{0.0f};
+ 
+    // Latch phase value for oversampling
+    void update(float value) {
+        m_lastValue = m_currentValue;
+        m_currentValue = value;
+        m_delta = sc_wrap(m_currentValue - m_lastValue, -0.5f, 0.5f);
+    }
+ 
+    // Interpolate phase at fractional position
+    float process(float frac) const {
+        return sc_frac(m_lastValue + (m_delta * frac));
+    }
+ 
+    void reset(float value) {
+        m_lastValue = value;
+        m_currentValue = value;
+        m_delta = 0.0f;
+    }
+};
+ 
 // ===== POLYPHASE HALFBAND FILTER =====
 
 struct PolyphaseHalfband {
@@ -41,20 +70,6 @@ struct PolyphaseHalfband {
 
     PolyphaseHalfband() = default;
 
-    // Decimate two samples into one
-    inline float downsample(float x0, float x1) {
-
-        float a = x1;
-        float b = x0;
-
-        for (int i = 0; i < NUM_SECTIONS; ++i) {
-            a = branchA[i].process(a, COEFFS_A[i]);
-            b = branchB[i].process(b, COEFFS_B[i]);
-        }
-
-        return 0.5f * (a + b);
-    }
-
     // Interpolate one sample into two
     inline void upsample(float x, float& y0, float& y1) {
 
@@ -68,6 +83,20 @@ struct PolyphaseHalfband {
 
         y0 = a;
         y1 = b;
+    }
+
+    // Decimate two samples into one
+    inline float downsample(float x0, float x1) {
+
+        float a = x1;
+        float b = x0;
+
+        for (int i = 0; i < NUM_SECTIONS; ++i) {
+            a = branchA[i].process(a, COEFFS_A[i]);
+            b = branchB[i].process(b, COEFFS_B[i]);
+        }
+
+        return 0.5f * (a + b);
     }
 
     void reset() {

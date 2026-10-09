@@ -13,7 +13,7 @@ struct LowpassOne {
 
     LowpassOne() = default;
 
-    // Process audio through one pole lowpass
+    // Process audio through first order lowpass
     inline float process(float x, float coeff) {
         m_state = x * (1.0f - coeff) + m_state * coeff;
 
@@ -34,7 +34,7 @@ struct HighpassOne {
 
     HighpassOne() = default;
 
-    // Process audio through one pole highpass
+    // Process audio through first order highpass
     inline float process(float x, float coeff) {
         m_state = x * (1.0f - coeff) + m_state * coeff;
 
@@ -196,14 +196,14 @@ struct DampingFilter {
     }
 };
 
-// ===== SLOPE-TRACKING FILTER =====
+// ===== SLOPE-TRACKING LOWPASS FILTER =====
 
-struct TrackingFilter {
+struct TrackingLowpass {
     OnePoleFilter filter;
 
-    TrackingFilter() = default;
+    TrackingLowpass() = default;
 
-    // Process audio through slope-tracking filter
+    // Process audio through slope-tracking lowpass filter
     inline float process(float x, float slope, float sampleRate) {
 
         // Calculate cutoff from slope
@@ -344,6 +344,7 @@ struct BiquadFilter {
 
 template<int Order>
 struct ButterworthFilter {
+    static_assert(Order % 2 == 0, "ButterworthFilter requires an even order");
     static constexpr int NUM_BIQUADS = Order / 2;
 
     std::array<BiquadFilter, NUM_BIQUADS> filters;
@@ -538,6 +539,32 @@ struct StateVariableFilter {
     }
 };
 
+// ===== SLOPE-TRACKING BANDPASS FILTER =====
+
+struct TrackingBandpass {
+    StateVariableFilter svf;
+
+    TrackingBandpass() = default;
+
+    // Process audio through slope-tracking bandpass filter
+    inline float process(float x, float slope, float q, float sampleRate) {
+
+        // Calculate cutoff from slope
+        float safeSlope = std::abs(sc_clip(slope, -0.49f, 0.49f));
+        float cutoff = safeSlope * sampleRate;
+
+        // Calculate coefficients
+        auto coeffs = SVFCoefficients::calculate(cutoff, q, SVFCoefficients::BAND_PASS, sampleRate);
+
+        // Normalize bandpass output (peak gain q) to unity at centre
+        return svf.process(x, coeffs) / q;
+    }
+
+    void reset() {
+        svf.reset();
+    }
+};
+
 // ===== MORPHING FILTER =====
 
 struct MorphingFilter {
@@ -565,7 +592,7 @@ struct MorphingFilter {
     }
 };
 
-// ===== ALLPASS CHAIN =====
+// ===== ALLPASS FILTER CHAIN =====
 
 template<int NumAllpasses>
 struct AllpassChain {

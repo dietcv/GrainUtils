@@ -75,7 +75,7 @@ namespace UnitShapers {
     inline float trapezoid(float phase, float width, float duty) {
         float sustain = 1.0f - width;
         
-        // Handle edge case when sustain is exactly 0
+        // Handle edge case with safe denom
         if (sustain < Utils::SAFE_DENOM_EPSILON) {
             float offset = phase - (1.0f - duty);
             return offset > 0.0f ? 1.0f : 0.0f;
@@ -239,6 +239,21 @@ namespace WindowFunctions {
     inline float exponentialWindow(float phase, float skew, float shape) {
         float warpedPhase = UnitShapers::triangle(phase, skew);
         return Easing::Interp::jCurve(warpedPhase, 1.0f - shape, Easing::Cores::pseudoExp);
+    }
+
+    inline float universalWindow(float phase, float skew, float shape) {
+        float warpedPhase = UnitShapers::triangle(phase, skew);
+        if (shape <= 0.5f) {
+            float mix = shape * 2.0f;
+            float index = (1.0f - mix) * 5.0f;
+            float gaussian = UnitShapers::gaussian(warpedPhase, index);
+            float hanning = UnitShapers::hanning(warpedPhase);
+            return gaussian * hanning;
+        } else {
+            float mix = (shape - 0.5f) * 2.0f;
+            float trapezoid = UnitShapers::trapezoid(warpedPhase, mix, 1.0f);
+            return UnitShapers::hanning(trapezoid);
+        }
     }
 
 } // namespace WindowFunctions

@@ -1,0 +1,149 @@
+class:: PulsarXPM
+summary:: A bandlimited pulsar oscillator with cross-phase modulation and oversampling
+categories:: UGens>Oscillator
+
+DESCRIPTION::
+PulsarXPM is a bandlimited pulsar oscillator with cross-phase modulation and optional oversampling. 
+It supports up to 8 simultaneously active grains with internal voice allocation.
+
+Sub-sample-accurate event scheduling of grains can be achieved by combining PulsarXPM with SchedulerCycle, SchedulerBurst or SchedulerBank, 
+which provide the necessary timing information (trigger, rate, and subsample offset).
+
+Each grain consists of two cross-phase-modulated wavetable oscillators shaped by an envelope wavetable oscillator. 
+The oscillators modulate each other’s phase through a single-sample feedback loop, 
+with independent modulation indices controlling the depth of each cross-modulation path. 
+Each path includes a slope-tracking lowpass filter whose cutoff follows the modulator’s fundamental frequency 
+and is controlled by the corresponding damping parameter.
+The wavetable oscillators are bandlimited via dynamic mipmapping and sinc interpolation.
+
+Grains can be overlapped by dividing the scheduler rate by the desired overlap amount before passing it as the trigger frequency. 
+An overlap of 1 means each grain lasts exactly one trigger period, while higher values produce longer, overlapping grains.
+
+note::
+High overlap values require more CPU as more grains are active simultaneously.
+::
+
+CLASSMETHODS::
+
+METHOD:: ar
+
+ARGUMENT:: trig
+Trigger signal, for example derived from SchedulerCycle, SchedulerBurst or SchedulerBank.
+
+ARGUMENT:: triggerFreq
+Trigger frequency in Hz, for example derived from SchedulerCycle, SchedulerBurst or SchedulerBank.
+Used by the internal voice allocator to calculate the grain duration.
+Typically the scheduler rate divided by the overlap amount.
+
+ARGUMENT:: subSampleOffset
+Subsample offset for accurate grain timing, for example derived from SchedulerCycle, SchedulerBurst or SchedulerBank.
+
+ARGUMENT:: oscFreq
+Carrier oscillator frequency in Hz. Latched per grain trigger.
+
+ARGUMENT:: modFreq
+Modulator oscillator frequency in Hz. Latched per grain trigger.
+
+ARGUMENT:: oscPmIndex
+Phase modulation depth received by osc from mod.
+
+ARGUMENT:: modPmIndex
+Phase modulation depth received by mod from osc.
+
+ARGUMENT:: oscPmDamping
+Damping of the phase modulation path from mod to osc.
+
+ARGUMENT:: modPmDamping
+Damping of the phase modulation path from osc to mod.
+
+ARGUMENT:: oscBufNum
+Buffer containing carrier wavetable data (the size has to be a power-of-2).
+
+ARGUMENT:: oscNumCycles
+Number of cycles in the carrier wavetable buffer.
+
+ARGUMENT:: oscCyclePos
+Position within the carrier multi-cycle wavetable.
+
+ARGUMENT:: modBufNum
+Buffer containing modulator wavetable data (the size has to be a power-of-2).
+
+ARGUMENT:: modNumCycles
+Number of cycles in the modulator wavetable buffer.
+
+ARGUMENT:: modCyclePos
+Position within the modulator multi-cycle wavetable.
+
+ARGUMENT:: envBufNum
+Buffer containing envelope wavetable data (the size has to be a power-of-2).
+
+ARGUMENT:: envNumCycles
+Number of cycles in the envelope wavetable buffer.
+
+ARGUMENT:: envCyclePos
+Position within the envelope multi-cycle wavetable.
+
+ARGUMENT:: oversample
+Oversampling factor: 0=1x, 1=2x, 2=4x, 3=8x, 4=16x.
+
+returns:: Audio-rate UGen.
+
+EXAMPLES::
+
+code::
+// Create multi-cycle wavetable
+(
+t = Signal.sineFill(2048, [1], [0]);
+u = Signal.sineFill(2048, 1.0/((1..512)**2)*([1,0,-1,0]!128).flatten);
+w = Signal.sineFill(2048, 1.0/(1..512)*([1,0]!256).flatten);
+x = Signal.sineFill(2048, 1.0/(1..512));
+v = t.addAll(u).addAll(w).addAll(x);
+b = Buffer.loadCollection(s, v);
+)
+
+// Create single-cycle envelope
+(
+e = Buffer.alloc(s, 2048);
+e.loadCollection(Signal.hanningWindow(2048));
+)
+
+(
+{
+	var events, sig;
+
+	events = SchedulerCycle.ar(\tFreq.kr(100));
+
+	sig = PulsarXPM.ar(
+
+		trig: events[\trigger],
+		triggerFreq: events[\rate] / \overlap.kr(1),
+		subSampleOffset: events[\subSampleOffset],
+
+		oscFreq: 440,
+		modFreq: 440,
+
+		oscPmIndex: 5,
+		modPmIndex: 2,
+		oscPmDamping: 0.5,
+		modPmDamping: 1,
+
+        oscBufNum: b,
+        oscNumCycles: 4,
+        oscCyclePos: 0,
+
+        modBufNum: b,
+        modNumCycles: 4,
+        modCyclePos: 0,
+
+        envBufNum: e,
+		envNumCycles: 1,
+		envCyclePos: 0,
+
+		oversample: 1,
+	);
+
+	sig = LeakDC.ar(sig);
+	sig! 2 * 0.1;
+}.play;
+)
+::

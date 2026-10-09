@@ -126,17 +126,17 @@ void GrainDelay::next(int nSamples) {
             if (voices.gates[g]) {
 
                 // Calculate grain position: readPos + (accumulator * grainRate)
-                float grainPos = (m_grainData[g].readPos * m_bufFrames) + (m_grainData[g].sampleCount * m_grainData[g].rate);
+                double grainPos = (m_grainData[g].readPos * m_bufFrames) + (m_grainData[g].sampleCount * m_grainData[g].rate);
                 
                 // Get sample with interpolation
                 float grainSample = BufferUtils::peekCubicInterp(
                     m_buffer, 
-                    grainPos,
+                    static_cast<float>(grainPos),
                     m_bufMask
                 );
                 
                 // Apply Hanning window
-                grainSample *= sc_hanwindow(voices.phases[g]);
+                grainSample *= sc_hanwindow(static_cast<float>(voices.phases[g]));
                 delayed += grainSample;
 
                 // Increment sample count
