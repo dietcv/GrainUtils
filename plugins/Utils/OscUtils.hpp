@@ -3,6 +3,7 @@
 #include "Utils.hpp"
 #include "BufferUtils.hpp"
 #include "FilterUtils.hpp"
+#include "StepUtils.hpp"
 #include <array>
 #include <algorithm>
 
@@ -201,9 +202,9 @@ struct WavetableOscXPM {
         float modFiltered = m_modPmFilter.process(m_prevMod, modSlope * oscPmFltRatio, sampleRate);
         float oscFiltered = m_oscPmFilter.process(m_prevOsc, oscSlope * modPmFltRatio, sampleRate);
         
-        // Apply cross-phase modulation and wrap between 0 and 1
-        float modulatedOscPhase = sc_frac(oscPhase + (modFiltered / Utils::TWO_PI * oscPmIndex));
-        float modulatedModPhase = sc_frac(modPhase + (oscFiltered / Utils::TWO_PI * modPmIndex));
+        // Apply cross-phase modulation and wrap between 0 and 1 (indices implicitly scaled to 2pi)
+        float modulatedOscPhase = sc_frac(oscPhase + (modFiltered * oscPmIndex));
+        float modulatedModPhase = sc_frac(modPhase + (oscFiltered * modPmIndex));
 
         // Generate wavetable oscillators
         float osc = wavetableOsc(modulatedOscPhase, oscSlope, oscTable, oscCyclePos);
@@ -222,6 +223,134 @@ struct WavetableOscXPM {
         m_prevOsc = 0.0f;
         m_prevMod = 0.0f;
     }   
+};
+
+// ===== HARMONIC OSCILLATOR =====
+ 
+inline float harmonicOsc(float phase, float shift, float pmod) {
+ 
+    float harmEven = sc_floor(shift);
+    float harmOdd = harmEven + 1.0f;
+    float fracPart = shift - harmEven;
+ 
+    float sigEven = std::sin(phase * harmEven * Utils::TWO_PI + pmod);
+    float sigOdd = std::sin(phase * harmOdd * Utils::TWO_PI + pmod);
+ 
+    return lininterp(fracPart, sigEven, sigOdd);
+}
+ 
+// ===== COUPLING INTERPOLATION =====
+ 
+template<std::size_t Size, std::size_t NumStations>
+inline std::array<float, Size> couplingInterp(
+    float position,
+    const std::array<std::array<float, Size>, NumStations>& table
+) {
+    std::array<float, Size> weights{};
+ 
+    // Scale position and calculate frac and int part
+    float scaledPos = sc_frac(position) * static_cast<float>(NumStations);
+    int intPart = static_cast<int>(scaledPos);
+    float fracPart = scaledPos - static_cast<float>(intPart);
+ 
+    // Calculate neighbouring stations
+    const auto& stationA = table[intPart % NumStations];
+    const auto& stationB = table[(intPart + 1) % NumStations];
+ 
+    // Crossfade between neighbouring stations
+    for (std::size_t k = 0; k < Size; ++k) {
+        weights[k] = lininterp(fracPart, stationA[k], stationB[k]);
+    }
+ 
+    return weights;
+}
+ 
+// ===== HARMONIC OSCILLATOR WITH PHASE MODULATION FEEDBACK NETWORK =====
+
+struct HarmonicOscPM {
+ 
+    static constexpr int NUM_ROUTES = 4;
+    static constexpr int NUM_STATIONS = 4;
+ 
+    static constexpr float OSC_Q_MIN = 1.0f / 3.0f;
+    static constexpr float MOD_Q_MAX = 5.0f;
+    static constexpr float CRUSH_STEPS = 3.0f;
+    static constexpr float CRUSH_MAX = 0.875f;
+ 
+    // Ring stations (oscFb, oscPm, modPm, modFb)
+    static constexpr std::array<std::array<float, NUM_ROUTES>, NUM_STATIONS> STATIONS{{
+        {1.0f, 0.0f, 0.0f, 0.0f},  // FBPM (carrier feedback)
+        {0.0f, 1.0f, 0.0f, 0.0f},  // 2OP  (no feedback)
+        {0.0f, 1.0f, 1.0f, 0.0f},  // XPM  (cross feedback)
+        {0.0f, 1.0f, 0.0f, 1.0f}   // 2OP2 (modulator feedback)
+    }};
+ 
+    FilterUtils::TrackingBandpass m_oscFbFilter;
+    FilterUtils::TrackingBandpass m_oscPmFilter;
+    FilterUtils::TrackingBandpass m_modPmFilter;
+    FilterUtils::TrackingBandpass m_modFbFilter;
+ 
+    float m_prevOsc{0.0f};
+    float m_prevMod{0.0f};
+ 
+    float process(
+        float oscPhase, float modPhase,
+        float oscSlope, float modSlope,
+        float oscShift, float modShift,
+        float damping, float depth, float morph,
+        float extPm,
+        float sampleRate
+    ) {
+        // Look up route indices from the ring and scale by normalized depth
+        auto routes = couplingInterp(morph, STATIONS);
+        float oscFbIndex = routes[0] * depth;
+        float oscPmIndex = routes[1] * depth;
+        float modPmIndex = routes[2] * depth;
+        float modFbIndex = routes[3] * depth;
+ 
+        // Calculate bit-crushing amount for self-feedback routes
+        float oscFbCrush = (1.0f - damping) * CRUSH_MAX;
+        float modFbCrush = modFbIndex * CRUSH_MAX;
+ 
+        // Convert damping to Q per osc route
+        float oscFbQ = std::pow(OSC_Q_MIN, 1.0f - damping);
+        float oscPmQ = std::pow(OSC_Q_MIN, 1.0f - damping);
+ 
+        // Convert index to Q per mod route
+        float modPmQ = 1.0f + modPmIndex * (MOD_Q_MAX - 1.0f);
+        float modFbQ = 1.0f + modFbIndex * (MOD_Q_MAX - 1.0f);
+ 
+        // Filter previous outputs with slope-tracking bandpass filters per route
+        float oscFb = m_oscFbFilter.process(m_prevOsc, oscSlope, oscFbQ, sampleRate);
+        float oscPm = m_oscPmFilter.process(m_prevMod, modSlope, oscPmQ, sampleRate);
+        float modPm = m_modPmFilter.process(m_prevOsc, oscSlope, modPmQ, sampleRate);
+        float modFb = m_modFbFilter.process(m_prevMod, modSlope, modFbQ, sampleRate);
+ 
+        // Apply bit-crusher to self-feedback routes
+        oscFb = UnitSteps::smoothQuantize(oscFb, CRUSH_STEPS, 0.0f, oscFbCrush);
+        modFb = UnitSteps::smoothQuantize(modFb, CRUSH_STEPS, 0.0f, modFbCrush);
+ 
+        // Generate carrier and modulator with self-feedback and phase modulation
+        float oscPmod = ((oscFb * oscFbIndex) + (oscPm * oscPmIndex)) * Utils::TWO_PI + extPm;
+        float modPmod = ((modPm * modPmIndex) + (modFb * modFbIndex)) * Utils::TWO_PI;
+        float osc = harmonicOsc(oscPhase, oscShift, oscPmod);
+        float mod = harmonicOsc(modPhase, modShift, modPmod);
+ 
+        // Store current outputs for next sample
+        m_prevOsc = osc;
+        m_prevMod = mod;
+ 
+        return osc;
+    }
+ 
+    void reset() {
+        m_oscFbFilter.reset();
+        m_oscPmFilter.reset();
+        m_modPmFilter.reset();
+        m_modFbFilter.reset();
+        m_prevOsc = 0.0f;
+        m_prevMod = 0.0f;
+    }
 };
 
 } // namespace OscUtils

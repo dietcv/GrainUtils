@@ -152,3 +152,33 @@ private:
         Out
     };
 };
+
+// ===== UNIVERSAL WINDOW =====
+ 
+class UniversalWindow : public SCUnit {
+public:
+    UniversalWindow();
+ 
+private:
+    void next(int nSamples);
+ 
+    // Control-rate interpolation
+    Utils::ParamInterp m_skewInterp;
+    Utils::ParamInterp m_shapeInterp;
+    
+    // Audio rate flags
+    bool isSkewAudioRate;
+    bool isShapeAudioRate;
+    
+    // Input parameter indices
+    enum Inputs {
+        Phase,
+        Skew,
+        Shape
+    };
+    
+    // Output indices
+    enum Outputs {
+        Out
+    };
+};

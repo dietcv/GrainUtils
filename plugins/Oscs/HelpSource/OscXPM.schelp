@@ -60,8 +60,8 @@ EXAMPLES::
 code::
 (
 // scale modulation depth of modulators between 0 and 1
-var modScaleBipolarUp = { |modulator, value, amount|
-	value + (modulator.max(0) * (1 - value) * amount);
+var modScaleBipolar = { |mod, value, amount|
+    value + (((mod.max(0) * (1 - value)) + (mod.min(0) * value)) * amount);
 };
 
 SynthDef(\oscXPM, {
@@ -88,7 +88,7 @@ SynthDef(\oscXPM, {
         phase = Phasor.ar(DC.ar(0), freq * SampleDur.ir);
 
         // Cross-phase modulation parameters
-        pmIndex = param.(chainID, \pmIndex, 0, ControlSpec(0, 5));
+        pmIndex = param.(chainID, \pmIndex, 0, ControlSpec(0, 1));
         pmDamping = param.(chainID, \pmDamping, 1, ControlSpec(0, 1));
 
         // Wavetable parameters
@@ -101,10 +101,10 @@ SynthDef(\oscXPM, {
             SinOsc.ar(tableIndexMF, phase + phaseOffset * pi)
         };
 
-        tableIndex = modScaleBipolarUp.(
+        tableIndex = modScaleBipolar.(
             modulator: tableIndexMod.(0.5),
             value: param.(chainID, \tableIndex, 0, ControlSpec(0, 1)),
-            amount: param.(chainID, \tableIndexMD, 1, ControlSpec(0, 1))
+            amount: param.(chainID, \tableIndexMD, 0, ControlSpec(0, 1))
         );
 
         (
@@ -164,25 +164,24 @@ b = Buffer.loadCollection(s, v);
 (
 x = Synth(\oscXPM, [
 
-    \osc_sndBuf, b,
     \osc_freq, 440,
+    \mod_freq, 550,
+
+    \osc_pmIndex, 1,
+    \mod_pmIndex, 0.25,
+    \osc_pmDamping, 1,
+    \mod_pmDamping, 1,
 
     \osc_tableIndexMF, 0.1,
     \osc_tableIndexMD, 0,
     \osc_tableIndex, 0,
 
-    \osc_pmDamping, 0.5,
-    \osc_pmIndex, 5,
-
-    \mod_sndBuf, b,
-    \mod_freq, 550,
-
     \mod_tableIndexMF, 0.1,
     \mod_tableIndexMD, 0,
     \mod_tableIndex, 0,
 
-    \mod_pmDamping, 1,
-    \mod_pmIndex, 3,
+    \osc_sndBuf, b,
+    \mod_sndBuf, b,
 
     \pan, 0,
     \amp, -25,

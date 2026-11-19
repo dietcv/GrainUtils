@@ -3,18 +3,18 @@
 #include "Utils.hpp"
 #include "FilterUtils.hpp"
 
-// ===== DISPERSER =====
+// ===== PHASER =====
 
-class Disperser : public SCUnit {
+class PhaserSVF : public SCUnit {
 public:
-    Disperser();
-    ~Disperser();
+    PhaserSVF();
+    ~PhaserSVF();
 
 private:
     void next(int nSamples);
    
     // Constants
-    static constexpr int NUM_ALLPASSES = 8;
+    static constexpr int NUM_ALLPASSES = 4;
     
     // Constants cached at construction
     const float m_sampleRate;
@@ -41,9 +41,9 @@ private:
     enum InputParams {
         Input,     
         Freq,    
-        Resonance, 
-        Mix,        
-        Feedback  
+        Resonance,        
+        Feedback,
+        Mix,   
     };
    
     enum Outputs {
@@ -52,7 +52,7 @@ private:
 
 };
 
-// ===== MORPHING FILTER =====
+// ===== MORPHING STATE VARIABLE FILTER =====
  
 class MorphSVF : public SCUnit {
 public:

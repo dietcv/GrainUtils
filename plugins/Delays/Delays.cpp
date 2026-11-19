@@ -99,7 +99,7 @@ void GrainDelay::next(int nSamples) {
         auto voices = m_allocator.process(
             NUM_VOICES,
             scheduler.trigger, 
-            scheduler.rate / overlap, 
+            scheduler.slope * m_sampleRate / overlap, 
             scheduler.subSampleOffset,
             m_sampleRate
         );
@@ -111,10 +111,8 @@ void GrainDelay::next(int nSamples) {
             // Trigger new grain if needed
             if (voices.triggers[g]) {
 
-                // Calculate read position
-                float normalizedWritePos = static_cast<float>(m_writePos) / m_bufFrames;
-                float normalizedDelay = sc_max(m_sampleDur, delayTime * m_sampleRate / m_bufFrames);
-                float readPos = sc_frac(normalizedWritePos - normalizedDelay);
+                // Calculate normalized read position
+                float readPos = sc_frac((static_cast<float>(m_writePos) - delayTime * m_sampleRate) / m_bufFrames);
                 
                 // Store grain data
                 m_grainData[g].readPos = readPos;

@@ -98,7 +98,6 @@ private:
     bool isRateAudioRate;
     bool isSpreadAudioRate;
     bool isCoupleAudioRate;
-    bool isBiasAudioRate;
     bool isResetAudioRate;
 
     enum InputParams {
@@ -106,7 +105,6 @@ private:
         Rate,
         Spread,
         Couple,
-        Bias,
         Reset
     };
 

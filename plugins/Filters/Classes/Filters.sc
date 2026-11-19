@@ -1,8 +1,8 @@
-// ===== DISPERSER =====
+// ===== PHASER =====
 
-Disperser : UGen {
-	*ar { |input, freq = 440, resonance = 0, mix = 0.5, feedback = 0|
-		^this.multiNew('audio', input, freq, resonance, mix, feedback)
+PhaserSVF : UGen {
+	*ar { |input, freq = 440, resonance = 0, feedback = 0, mix = 0.5|
+		^this.multiNew('audio', input, freq, resonance, feedback, mix)
 	}
 
 	checkInputs {

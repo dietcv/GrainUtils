@@ -27,3 +27,9 @@ ExponentialWindow : UGen {
 		^this.multiNew('audio', phase, skew, shape)
 	}
 }
+
+UniversalWindow : UGen {
+    *ar { |phase, skew = 0.5, shape = 0.5|
+        ^this.multiNew('audio', phase, skew, shape)
+    }
+}

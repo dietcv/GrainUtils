@@ -156,7 +156,7 @@ struct SchedulerCycle {
     struct Output {
         bool trigger = false;
         float phase = 0.0f;
-        float rate = 0.0f;
+        float slope = 0.0f;
         float subSampleOffset = 0.0f;
     };
    
@@ -191,7 +191,7 @@ struct SchedulerCycle {
         // 5. Prepare output
         output.trigger = trigger;
         output.phase = static_cast<float>(m_phase);
-        output.rate = static_cast<float>(m_slope * sampleRate);
+        output.slope = static_cast<float>(m_slope);
         output.subSampleOffset = static_cast<float>(subSampleOffset);
 
         // 6. Increment phase
@@ -219,15 +219,15 @@ struct SchedulerBurst {
     struct Output {
         bool trigger = false;
         float phase = 0.0f;
-        float rate = 0.0f;
+        float slope = 0.0f;
         float subSampleOffset = 0.0f;
     };
    
-    Output process(bool trigger, float duration, int cycles, float sampleRate) {
+    Output process(bool initTrigger, float duration, int cycles, float sampleRate) {
         Output output;
     
         // Reset on new trigger
-        if (trigger && duration > 0.0f) {
+        if (initTrigger && duration > 0.0f) {
             reset();
             m_hasTriggered = true;
         }
@@ -257,7 +257,7 @@ struct SchedulerBurst {
             // 5. Prepare output
             output.trigger = trigger;
             output.phase = static_cast<float>(phase);
-            output.rate = static_cast<float>(m_slope * sampleRate);
+            output.slope = static_cast<float>(m_slope);
             output.subSampleOffset = static_cast<float>(subSampleOffset);
             
             // 6. Increment phase
@@ -284,12 +284,11 @@ struct SchedulerBank {
     struct Output {
         std::array<bool,  MaxChannels> triggers{};
         std::array<float, MaxChannels> phases{};
-        std::array<float, MaxChannels> rates{};
+        std::array<float, MaxChannels> slopes{};
         std::array<float, MaxChannels> subSampleOffsets{};
     };
  
-    Output process(int numChannels, float rate, float spread, float couple, float bias,
-                   bool resetTrigger, float sampleRate) {
+    Output process(int numChannels, float rate, float spread, float couple, bool resetTrigger, float sampleRate) {
         Output output;
  
         // 1. Handle reset
@@ -303,7 +302,7 @@ struct SchedulerBank {
             phases[ch] = m_schedulers[ch].m_phase;
         }
  
-        // 3. Derive mean field as the average of all phases as unit vectors on the circle
+        // 3. Derive mean field from the average of all phases
         double fieldCos = 0.0;
         double fieldSin = 0.0;
         for (int ch = 0; ch < numChannels; ++ch) {
@@ -319,30 +318,27 @@ struct SchedulerBank {
         // 5. Calculate coupling strength
         double k = (static_cast<double>(couple) * 2.0) * criticalCoupling;
  
-        // 6. Calculate Sakaguchi phase lag
-        double alpha = static_cast<double>(bias) * Utils::HALF_PI;
- 
         for (int ch = 0; ch < numChannels; ++ch) {
  
-            // 7. Spread natural rates uniformly in log2 space
+            // 6. Spread natural rates uniformly in log2 space
             double position = static_cast<double>(ch) / static_cast<double>(numChannels - 1) - 0.5;
             double rateNatural = static_cast<double>(rate) * std::exp2(static_cast<double>(spread) * position);
  
-            // 8. Calculate mean-field interaction with phase lag
-            double theta = Utils::TWO_PI * phases[ch] - alpha;
+            // 7. Calculate mean-field interaction
+            double theta = Utils::TWO_PI * phases[ch];
             double pull = fieldSin * std::cos(theta) - fieldCos * std::sin(theta);
  
-            // 9. Apply coupling in log2 rate space
+            // 8. Apply coupling in log2 rate space
             double rateCoupled = rateNatural * std::exp2(k * pull);
             float rateClipped = sc_clip(static_cast<float>(rateCoupled), 0.0f, sampleRate * 0.49f);
  
-            // 10. Process scheduler
+            // 9. Process scheduler
             auto event = m_schedulers[ch].process(rateClipped, false, sampleRate);
  
-            // 11. Prepare outputs
+            // 10. Prepare outputs
             output.triggers[ch] = event.trigger;
             output.phases[ch] = event.phase;
-            output.rates[ch] = event.rate;
+            output.slopes[ch] = event.slope;
             output.subSampleOffsets[ch] = event.subSampleOffset;
         }
  
@@ -546,8 +542,10 @@ struct RampDividerGrid {
         // 4. Latch sync request on ratio change, release on wrap
         bool syncTrigger = m_syncLatch.process(ratioChanged, wrapTrigger);
 
-        // 5. Update phase: sync to grid on request or reset, otherwise free-running increment
-        if (syncTrigger || resetTrigger) {
+        // 5. Update phase: restart on reset, sync to grid on request, otherwise free-running increment
+        if (resetTrigger) {
+            m_phase = phase / safeRatio;
+        } else if (syncTrigger) {
             double scaledPhase = phase / safeRatio;
             double nextPhase = m_phase + scaledSlope;
             double offset = nextPhase - scaledPhase;
@@ -604,8 +602,10 @@ struct RampDividerOffset {
         // 4. Calculate next phase (needed for target sync and switch decision)
         double nextPhase = m_phase + m_latchedSlope;
         
-        // 5. Update target: sync to grid on ratio change or reset, otherwise free-running increment
-        if (ratioChanged || resetTrigger) {
+        // 5. Update target: restart on reset, sync to grid on ratio change, otherwise free-running increment
+        if (resetTrigger) {
+            m_target = phase / safeRatio;
+        } else if (ratioChanged) {
             double scaledPhase = phase / safeRatio;
             double offset = nextPhase - scaledPhase;
             double quantized = std::trunc(offset * safeRatio) / safeRatio;

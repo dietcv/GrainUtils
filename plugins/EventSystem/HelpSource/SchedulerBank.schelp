@@ -4,12 +4,11 @@ related:: Classes/Phasor
 categories:: UGens>Granular
 
 description::
-You can use SchedulerBank to generate multiple sub-sample accurate event streams which are coupled through a Kuramoto-Sakaguchi mean field.
+You can use SchedulerBank to generate multiple sub-sample accurate event streams which are coupled through a Kuramoto mean field.
 SchedulerBank distributes the natural rates uniformly in log2 space around a base rate. 
-A mean field is derived from the current scheduler phases and used to couple their rates in log2 space. 
-The coupling strength is scaled relative to the spread of natural rates, while a phase lag can be used to bias the interaction.
+A mean field is derived from the current scheduler phases and used to couple their rates in log2 space.
 
-SchedulerBank needs numChannels, a rate, spread, couple, bias and reset and outputs multichannel triggers, phases, rates and subSampleOffsets.
+SchedulerBank needs numChannels, a rate, spread, couple and reset and outputs multichannel triggers, phases, rates and subSampleOffsets.
 You can access the different outputs via their key from a dictionary.
 SchedulerBank can be used for server side sub-sample accurate granulation.
 
@@ -31,10 +30,6 @@ argument::couple
 coupling strength between the schedulers.
 The coupling is scaled relative to the reference critical coupling derived from spread
 
-argument::bias
-Sakaguchi phase lag controlling the offset of the mean-field interaction.
-A value of 0 gives no phase lag, while -1 and 1 correspond to -pi/2 and pi/2
-
 argument::reset
 trigger to reset all schedulers
 
@@ -53,8 +48,7 @@ code::
         numChannels: numSchedulers,
         rate: \rate.kr(100),
         spread: \spread.kr(1),
-        couple: \couple.kr(0),
-        bias: \bias.kr(0)
+        couple: \couple.kr(0)
     );
     events[\phases];
 }.plot(0.041);
@@ -71,8 +65,7 @@ code::
         numChannels: numSchedulers,
         rate: \rate.kr(100),
         spread: \spread.kr(0.6),
-        couple: \couple.kr(0.75),
-        bias: \bias.kr(0)
+        couple: \couple.kr(0.75)
     );
     events[\phases];
 }.plot(0.041);
@@ -109,8 +102,7 @@ e.loadCollection(Signal.hanningWindow(2048));
 		numChannels: numSchedulers,
 		rate: \rate.kr(110),
 		spread: \spread.kr(0.6),
-		couple: MouseX.kr(0, 1),
-		bias: MouseY.kr(-1, 1)
+		couple: MouseX.kr(0, 1)
 	);
 
 	sig = PulsarXPM.ar(
@@ -124,8 +116,8 @@ e.loadCollection(Signal.hanningWindow(2048));
 
 		oscPmIndex: 0,
 		modPmIndex: 0,
-		oscPmFltRatio: 1,
-		modPmFltRatio: 1,
+		oscPmDamping: 1,
+		modPmDamping: 1,
 
         oscBufNum: b,
         oscNumCycles: 4,
@@ -168,7 +160,6 @@ code::
         rate: \rate.kr(30),
         spread: \spread.kr(0.6),
         couple: \couple.kr(0.3),
-        bias: \bias.kr(0),
         reset: reset
     );
 

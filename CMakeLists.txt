@@ -101,12 +101,13 @@ set(GrainUtils_schelp_files
     plugins/EventSystem/HelpSource/VoiceAllocator.schelp
 
     # Filters
-    plugins/Filters/HelpSource/Disperser.schelp
+    plugins/Filters/HelpSource/PhaserSVF.schelp
     plugins/Filters/HelpSource/MorphSVF.schelp
 
     # Oscs
     plugins/Oscs/HelpSource/OscXPM.schelp
     plugins/Oscs/HelpSource/PulsarXPM.schelp
+    plugins/Oscs/HelpSource/HarmonicOscPM.schelp
 
     # UnitEasing
     plugins/UnitEasing/HelpSource/JCurve.schelp
@@ -128,6 +129,7 @@ set(GrainUtils_schelp_files
     plugins/UnitWindows/HelpSource/HanningWindow.schelp
     plugins/UnitWindows/HelpSource/TrapezoidalWindow.schelp
     plugins/UnitWindows/HelpSource/TukeyWindow.schelp
+    plugins/UnitWindows/HelpSource/UniversalWindow.schelp
 )
 
 sc_add_server_plugin(

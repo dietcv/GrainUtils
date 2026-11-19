@@ -59,8 +59,8 @@ SchedulerBurst {
 // ===== SCHEDULER BANK =====
 
 SchedulerBankUGen : MultiOutUGen {
-    *ar { |numChannels, rate, spread = 0, couple = 0, bias = 0, reset = 0|
-        ^this.multiNew(\audio, numChannels, rate, spread, couple, bias, reset);
+    *ar { |numChannels, rate, spread = 0, couple = 0, reset = 0|
+        ^this.multiNew(\audio, numChannels, rate, spread, couple, reset);
     }
 
     init { |...theInputs|
@@ -74,8 +74,8 @@ SchedulerBankUGen : MultiOutUGen {
 }
 
 SchedulerBank {
-    *ar { |numChannels, rate, spread = 0, couple = 0, bias = 0, reset = 0|
-        var events = SchedulerBankUGen.ar(numChannels, rate, spread, couple, bias, reset);
+    *ar { |numChannels, rate, spread = 0, couple = 0, reset = 0|
+        var events = SchedulerBankUGen.ar(numChannels, rate, spread, couple, reset);
         ^(
 			triggers:         events[0..numChannels - 1],
             rates:            events[numChannels..(2 * numChannels) - 1],
@@ -94,7 +94,7 @@ VoiceAllocatorUGen : MultiOutUGen {
 
 	init { arg ... theInputs;
 		inputs = theInputs;
-		^this.initOutputs(inputs[0] * 2, rate);
+		^this.initOutputs(inputs[0] * 3, rate);
 	}
 
 	checkInputs {
@@ -107,7 +107,8 @@ VoiceAllocator {
 		var voices = VoiceAllocatorUGen.ar(numChannels, trig, rate, subSampleOffset);
 		^(
 			phases:   voices[0..numChannels - 1],
-			triggers: voices[numChannels..numChannels * 2 - 1]
+			triggers: voices[numChannels..(2 * numChannels) - 1],
+			rates:    voices[(2 * numChannels)..(3 * numChannels) - 1]
 		);
 	}
 }

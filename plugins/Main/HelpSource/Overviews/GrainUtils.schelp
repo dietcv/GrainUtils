@@ -47,11 +47,13 @@ LIST::
 ## LINK::Classes/TrapezoidalWindow::
 ## LINK::Classes/TukeyWindow::
 ## LINK::Classes/ExponentialWindow::
+## LINK::Classes/UniversalWindow::
 ::
 SUBSECTION:: Oscillators
 LIST::
 ## LINK::Classes/OscXPM::
 ## LINK::Classes/PulsarXPM::
+## LINK::Classes/HarmonicOscPM::
 ::
 SUBSECTION:: Delays
 LIST::
@@ -59,7 +61,7 @@ LIST::
 ::
 SUBSECTION:: Filters
 LIST::
-## LINK::Classes/Disperser::
+## LINK::Classes/PhaserSVF::
 ## LINK::Classes/MorphSVF::
 ::
 SUBSECTION:: Distortion

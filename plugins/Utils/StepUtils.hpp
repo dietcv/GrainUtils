@@ -79,6 +79,34 @@ namespace UnitSteps {
         return lininterp(mix, a, b);
     }
 
+    // ===== POWER INTERPOLATION =====
+
+    inline float powInterp(float x, float a, float b, float shape) {
+        float curve = std::tan(sc_clip(shape, 0.0f, 0.99f) * Utils::HALF_PI);
+        float mix = std::pow(x, curve);
+        return lininterp(mix, a, b);
+    }
+
+    // ===== SMOOTH QUANTIZER =====
+
+    inline float smoothQuantize(float x, float steps, float bias, float shape) {
+
+        // Project into K space
+        float safeSteps = sc_max(steps, 0.5f);
+        float scaled = x * safeSteps;
+
+        // Shift and quantize in K space
+        float shifted = scaled + bias;
+        float quantized = sc_round(shifted, 1.0f);
+        float distance = std::abs(quantized - shifted) * 2.0f;
+
+        // Interpolate between quantized and unquantized based on K-space distance
+        float result = powInterp(distance, quantized, shifted, shape);
+
+        // Remove bias and unproject from K space
+        return (result - bias) / safeSteps;
+    }
+
     // ===== UNIT STEP =====
 
     struct UnitStep {

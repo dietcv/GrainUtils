@@ -48,3 +48,18 @@ PulsarXPM : UGen {
 			oversample)
 	}
 }
+
+// ===== HARMONIC OSCILLATOR WITH PHASE MODULATION FEEDBACK NETWORK =====
+
+HarmonicOscPM : UGen {
+	*ar { |oscPhase, modPhase, oscShift = 1, modShift = 1,
+		  depth = 0, damping = 1, morph = 0, extPm = 0,
+		  oversample = 0|
+
+		^this.multiNew('audio',
+			oscPhase, modPhase,
+			oscShift, modShift,
+			depth, damping, morph, extPm,
+			oversample)
+	}
+}

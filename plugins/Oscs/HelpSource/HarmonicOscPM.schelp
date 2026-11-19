@@ -1,0 +1,119 @@
+class:: HarmonicOscPM
+summary:: A harmonic oscillator with a morphable phase modulation feedback network and oversampling
+categories:: UGens>Oscillator
+
+DESCRIPTION::
+HarmonicOscPM is a pair of sine oscillators, a carrier and a modulator, coupled through a phase modulation feedback network with optional oversampling.
+Each oscillator performs blended harmonic frequency shifting by crossfading between the two nearest integer harmonics.
+
+The network consists of four single-sample feedback routes: carrier self-feedback, modulator to carrier, carrier to modulator and modulator self-feedback.
+
+The route indices are arranged as four stations on a circular topology:
+
+table::
+## strong::morph:: || strong::station:: || strong::active routes::
+## 0 || FBPM || carrier self-feedback
+## 0.25 || 2OP || modulator to carrier
+## 0.5 || XPM || modulator to carrier, carrier to modulator
+## 0.75 || 2OP2 || modulator to carrier, modulator self-feedback
+::
+
+The cyclic morph parameter moves continuously along this ring, linearly crossfading the route indices of neighbouring stations 
+with different handover states in between, so a ramp continuously reads through the whole ring.
+All four routes are traversed with a single depth control.
+
+Each route is damped by a slope-tracking bandpass filter centred on the fundamental of its source oscillator.
+For the routes received by the carrier, the filter bandwidth is controlled by damping. For the routes received by the modulator, 
+it is bound to the route index, so a higher index results in stronger damping.
+Both self-feedback routes additionally pass through a bit-crusher.
+
+CLASSMETHODS::
+
+METHOD:: ar
+
+ARGUMENT:: oscPhase
+Phase input for osc.
+
+ARGUMENT:: modPhase
+Phase input for mod.
+
+ARGUMENT:: oscShift
+Harmonic shift of osc.
+
+ARGUMENT:: modShift
+Harmonic shift of mod.
+
+ARGUMENT:: depth
+Phase modulation depth of the network, damping of the routes received by mod and bit-crushing amount of the modulator self-feedback.
+
+ARGUMENT:: damping
+Damping of the routes received by osc and inverse bit-crushing amount of the carrier self-feedback.
+
+ARGUMENT:: morph
+Position on the ring of network topologies.
+
+ARGUMENT:: extPm
+External phase modulation of osc in radians.
+
+ARGUMENT:: oversample
+Oversampling factor: 0=1x, 1=2x, 2=4x, 3=8x, 4=16x.
+
+returns:: Audio-rate UGen
+
+EXAMPLES::
+
+code::
+(
+var quadratureMod = { |rate|
+	var phase, x, y;
+	phase = Phasor.ar(DC.ar(0), rate * SampleDur.ir);
+	x = cos(phase * 2pi);
+	y = sin(phase * 2pi);
+	[x, y];
+};
+
+x = {
+	var oscFreq, modFreq;
+	var oscPhase, modPhase;
+	var oscShift, modShift;
+	var sigs, lfo;
+
+	oscFreq = \freq.kr(110);
+	modFreq = oscFreq * \modRatio.kr(1);
+
+	oscPhase = Phasor.ar(DC.ar(0), oscFreq * SampleDur.ir);
+	modPhase = Phasor.ar(DC.ar(0), modFreq * SampleDur.ir);
+
+	lfo = quadratureMod.(0.1);
+
+	oscShift = lfo[0].linlin(-1, 1, 1, 5);
+	modShift = lfo[1].linlin(-1, 1, 1, 5);
+
+	sigs = HarmonicOscPM.ar(
+		oscPhase: oscPhase,
+		modPhase: modPhase,
+		oscShift: oscShift,
+		modShift: modShift,
+		depth: 1,
+		damping: MouseY.kr(0, 1),
+		morph: MouseX.kr(0, 1),
+		extPm: [0, 0.5pi],
+		oversample: 2,
+	);
+
+	sigs = LeakDC.ar(sigs);
+	sigs * 0.1;
+}.play;
+)
+
+// change frequency ratios!
+x.set(\modRatio, 1.50);
+x.set(\modRatio, 2.37);
+
+// open the scope in X/Y mode!
+(
+c = s.scope;
+c.numChannels = 2;
+c.style = 2;
+)
+::

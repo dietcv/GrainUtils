@@ -122,9 +122,9 @@ e.loadCollection(Signal.hanningWindow(2048));
 		oscFreq: 440,
 		modFreq: 440,
 
-		oscPmIndex: 5,
-		modPmIndex: 2,
-		oscPmDamping: 0.5,
+		oscPmIndex: 1,
+		modPmIndex: 0.25,
+		oscPmDamping: 1,
 		modPmDamping: 1,
 
         oscBufNum: b,

@@ -52,7 +52,7 @@ void SchedulerCycle::next(int nSamples) {
         // Output values
         triggerOut[i] = event.trigger;
         phaseOut[i] = event.phase;
-        rateOut[i] = event.rate;
+        rateOut[i] = event.slope * m_sampleRate;
         offsetOut[i] = event.subSampleOffset;
     }
 }
@@ -112,7 +112,7 @@ void SchedulerBurst::next(int nSamples) {
         // Output values
         triggerOut[i] = event.trigger;
         phaseOut[i] = event.phase;
-        rateOut[i] = event.rate;
+        rateOut[i] = event.slope * m_sampleRate;
         offsetOut[i] = event.subSampleOffset;
     }
 }
@@ -127,7 +127,6 @@ SchedulerBank::SchedulerBank() :
     isRateAudioRate = isAudioRateIn(Rate);
     isSpreadAudioRate = isAudioRateIn(Spread);
     isCoupleAudioRate = isAudioRateIn(Couple);
-    isBiasAudioRate = isAudioRateIn(Bias);
     isResetAudioRate = isAudioRateIn(Reset);
 
     // Set calc function & compute initial sample
@@ -157,10 +156,6 @@ void SchedulerBank::next(int nSamples) {
             sc_clip(in(Couple)[i], 0.0f, 1.0f) :
             sc_clip(in0(Couple), 0.0f, 1.0f);
  
-        float bias = isBiasAudioRate ?
-            sc_clip(in(Bias)[i], -1.0f, 1.0f) :
-            sc_clip(in0(Bias), -1.0f, 1.0f);
- 
         // Trigger input (audio-rate or control-rate)
         bool reset = isResetAudioRate ?
             m_resetTrigger.process(in(Reset)[i]) :
@@ -172,7 +167,6 @@ void SchedulerBank::next(int nSamples) {
             rate,
             spread,
             couple,
-            bias,
             reset,
             m_sampleRate
         );
@@ -180,7 +174,7 @@ void SchedulerBank::next(int nSamples) {
         // Output triggers, rates, offsets and phases
         for (int ch = 0; ch < m_numChannels; ++ch) {
             out(ch)[i] = events.triggers[ch];
-            out(m_numChannels + ch)[i] = events.rates[ch];
+            out(m_numChannels + ch)[i] = events.slopes[ch] * m_sampleRate;
             out(2 * m_numChannels + ch)[i] = events.subSampleOffsets[ch];
             out(3 * m_numChannels + ch)[i] = events.phases[ch];
         }
@@ -234,10 +228,11 @@ void VoiceAllocator::next(int nSamples) {
             m_sampleRate
         );
 
-        // Output phases and triggers
+        // Output phases, triggers and rates
         for (int ch = 0; ch < m_numChannels; ++ch) {
             out(ch)[i] = static_cast<float>(voices.phases[ch]);
             out(m_numChannels + ch)[i] = voices.triggers[ch];
+            out(2 * m_numChannels + ch)[i] = voices.slopes[ch] * m_sampleRate;
         }
     }
 }

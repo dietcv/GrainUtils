@@ -3,24 +3,24 @@
 
 extern InterfaceTable* ft;
 
-// ===== DISPERSER =====
+// ===== PHASER =====
 
-Disperser::Disperser() : 
+PhaserSVF::PhaserSVF() : 
     m_sampleRate(static_cast<float>(sampleRate()))
 {
     // Check which inputs are audio-rate
     isFreqAudioRate = isAudioRateIn(Freq);
     isResonanceAudioRate = isAudioRateIn(Resonance);
-    isMixAudioRate = isAudioRateIn(Mix);
     isFeedbackAudioRate = isAudioRateIn(Feedback);
+    isMixAudioRate = isAudioRateIn(Mix);
    
     // Set calc function & compute initial sample
-    set_calc_function<Disperser, &Disperser::next>();
+    set_calc_function<PhaserSVF, &PhaserSVF::next>();
 }
 
-Disperser::~Disperser() = default;
+PhaserSVF::~PhaserSVF() = default;
 
-void Disperser::next(int nSamples) {
+void PhaserSVF::next(int nSamples) {
     
     // Audio-rate input
     const float* input = in(Input);
@@ -28,8 +28,8 @@ void Disperser::next(int nSamples) {
     // Control-rate parameters with smooth interpolation
     m_freqInterp.update(sc_clip(in0(Freq), 20.0f, m_sampleRate * 0.49f), nSamples);
     m_resonanceInterp.update(sc_clip(in0(Resonance), 0.0f, 1.0f), nSamples);
-    m_mixInterp.update(sc_clip(in0(Mix), 0.0f, 1.0f), nSamples);
     m_feedbackInterp.update(sc_clip(in0(Feedback), 0.0f, 0.99f), nSamples);
+    m_mixInterp.update(sc_clip(in0(Mix), 0.0f, 1.0f), nSamples);
    
     // Output pointer
     float* outbuf = out(Out);
@@ -45,14 +45,14 @@ void Disperser::next(int nSamples) {
         float resonance = isResonanceAudioRate ? 
             sc_clip(in(Resonance)[i], 0.0f, 1.0f) : 
             m_resonanceInterp.process();
-            
-        float mix = isMixAudioRate ? 
-            sc_clip(in(Mix)[i], 0.0f, 1.0f) : 
-            m_mixInterp.process();
-            
+                        
         float feedback = isFeedbackAudioRate ? 
             sc_clip(in(Feedback)[i], 0.0f, 0.99f) : 
             m_feedbackInterp.process();
+
+        float mix = isMixAudioRate ? 
+            sc_clip(in(Mix)[i], 0.0f, 1.0f) : 
+            m_mixInterp.process();
         
         // Add feedback to input
         float inputWithFeedback = input[i] + m_feedbackState;
@@ -80,7 +80,7 @@ void Disperser::next(int nSamples) {
     }
 }
 
-// ===== MORPHING FILTER =====
+// ===== MORPHING STATE VARIABLE FILTER =====
  
 MorphSVF::MorphSVF() : 
     m_sampleRate(static_cast<float>(sampleRate()))
@@ -132,6 +132,6 @@ void MorphSVF::next(int nSamples) {
 
 void Filters_setup()
 {
-    registerUnit<Disperser>(ft, "Disperser", false);
+    registerUnit<PhaserSVF>(ft, "PhaserSVF", false);
     registerUnit<MorphSVF>(ft, "MorphSVF", false);
 }

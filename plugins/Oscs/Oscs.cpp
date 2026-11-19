@@ -38,8 +38,8 @@ void OscXPM::next(int nSamples) {
     const float* modPhaseIn = in(ModPhase);
     
     // Control-rate parameters with smooth interpolation
-    m_oscPmIndexInterp.update(sc_clip(in0(OscPmIndex), 0.0f, 10.0f), nSamples);
-    m_modPmIndexInterp.update(sc_clip(in0(ModPmIndex), 0.0f, 10.0f), nSamples);
+    m_oscPmIndexInterp.update(sc_clip(in0(OscPmIndex), 0.0f, 1.0f), nSamples);
+    m_modPmIndexInterp.update(sc_clip(in0(ModPmIndex), 0.0f, 1.0f), nSamples);
     m_oscPmDampingInterp.update(sc_clip(in0(OscPmDamping), 0.0f, 1.0f), nSamples);
     m_modPmDampingInterp.update(sc_clip(in0(ModPmDamping), 0.0f, 1.0f), nSamples);
     m_oscCyclePosInterp.update(sc_clip(in0(OscCyclePos), 0.0f, 1.0f), nSamples);
@@ -69,11 +69,11 @@ void OscXPM::next(int nSamples) {
 
             // Get current parameter values (audio-rate or interpolated control-rate)
             float oscPmIndex = isOscPmIndexAudioRate ? 
-                sc_clip(in(OscPmIndex)[i], 0.0f, 10.0f) : 
+                sc_clip(in(OscPmIndex)[i], 0.0f, 1.0f) : 
                 m_oscPmIndexInterp.process();
 
             float modPmIndex = isModPmIndexAudioRate ? 
-                sc_clip(in(ModPmIndex)[i], 0.0f, 10.0f) : 
+                sc_clip(in(ModPmIndex)[i], 0.0f, 1.0f) : 
                 m_modPmIndexInterp.process();
 
             float oscPmDamping = isOscPmDampingAudioRate ? 
@@ -96,11 +96,25 @@ void OscXPM::next(int nSamples) {
             float oscSlope = static_cast<float>(m_oscRampToSlope.process(static_cast<double>(oscPhase)));
             float modSlope = static_cast<float>(m_modRampToSlope.process(static_cast<double>(modPhase)));
 
+            // Calculate frequency ratios for cross-phase modulation indices
+            float oscModRatio = 0.0f;
+            if (sc_abs(modSlope) > Utils::SAFE_DENOM_EPSILON) {
+                oscModRatio = sc_abs(oscSlope / modSlope);
+            }
+            float modOscRatio = 0.0f;
+            if (sc_abs(oscSlope) > Utils::SAFE_DENOM_EPSILON) {
+                modOscRatio = sc_abs(modSlope / oscSlope);
+            }
+ 
+            // Scale cross-phase modulation indices
+            float oscPmIndexScaled = oscPmIndex * oscModRatio;
+            float modPmIndexScaled = modPmIndex * modOscRatio;
+
             // Process wavetable oscillator with cross-phase modulation
             output[i] = m_xpmOsc.process(
                 oscPhase, modPhase,
                 oscSlope, modSlope,
-                oscPmIndex, modPmIndex,
+                oscPmIndexScaled, modPmIndexScaled,
                 oscPmDamping, modPmDamping,
                 oscCyclePos, modCyclePos,
                 oscTable, modTable,
@@ -117,11 +131,11 @@ void OscXPM::next(int nSamples) {
 
             // Get current parameter values (audio-rate or interpolated control-rate)
             float oscPmIndex = isOscPmIndexAudioRate ? 
-                sc_clip(in(OscPmIndex)[i], 0.0f, 10.0f) : 
+                sc_clip(in(OscPmIndex)[i], 0.0f, 1.0f) : 
                 m_oscPmIndexInterp.process();
 
             float modPmIndex = isModPmIndexAudioRate ? 
-                sc_clip(in(ModPmIndex)[i], 0.0f, 10.0f) : 
+                sc_clip(in(ModPmIndex)[i], 0.0f, 1.0f) : 
                 m_modPmIndexInterp.process();
 
             float oscPmDamping = isOscPmDampingAudioRate ? 
@@ -144,6 +158,16 @@ void OscXPM::next(int nSamples) {
             float oscSlope = static_cast<float>(m_oscRampToSlope.process(static_cast<double>(oscPhase)));
             float modSlope = static_cast<float>(m_modRampToSlope.process(static_cast<double>(modPhase)));
 
+            // Calculate frequency ratios for cross-phase modulation indices
+            float oscModRatio = 0.0f;
+            if (sc_abs(modSlope) > Utils::SAFE_DENOM_EPSILON) {
+                oscModRatio = sc_abs(oscSlope / modSlope);
+            }
+            float modOscRatio = 0.0f;
+            if (sc_abs(oscSlope) > Utils::SAFE_DENOM_EPSILON) {
+                modOscRatio = sc_abs(modSlope / oscSlope);
+            }
+            
             // Prepare phases and slopes for oversampling
             float osOscSlope = oscSlope / static_cast<float>(m_osRatio);
             float osModSlope = modSlope / static_cast<float>(m_osRatio);
@@ -171,6 +195,10 @@ void OscXPM::next(int nSamples) {
                 float osOscCyclePos = m_osOscCyclePosInterp.process(frac);
                 float osModCyclePos = m_osModCyclePosInterp.process(frac);
 
+                // Scale cross-phase modulation indices
+                float osOscPmIndexScaled = osOscPmIndex * oscModRatio;
+                float osModPmIndexScaled = osModPmIndex * modOscRatio;
+
                 // Increment phases
                 osOscPhase += osOscSlope;
                 osModPhase += osModSlope;
@@ -179,7 +207,7 @@ void OscXPM::next(int nSamples) {
                 m_outputOSBuffer[k] = m_xpmOsc.process(
                     sc_frac(osOscPhase), sc_frac(osModPhase),
                     osOscSlope, osModSlope,
-                    osOscPmIndex, osModPmIndex,
+                    osOscPmIndexScaled, osModPmIndexScaled,
                     osOscPmDamping, osModPmDamping,
                     osOscCyclePos, osModCyclePos,
                     oscTable, modTable,
@@ -235,8 +263,8 @@ PulsarXPM::~PulsarXPM() {
 void PulsarXPM::next(int nSamples) {
  
     // Control-rate parameters with smooth interpolation
-    m_oscPmIndexInterp.update(sc_clip(in0(OscPmIndex), 0.0f, 10.0f), nSamples);
-    m_modPmIndexInterp.update(sc_clip(in0(ModPmIndex), 0.0f, 10.0f), nSamples);
+    m_oscPmIndexInterp.update(sc_clip(in0(OscPmIndex), 0.0f, 1.0f), nSamples);
+    m_modPmIndexInterp.update(sc_clip(in0(ModPmIndex), 0.0f, 1.0f), nSamples);
     m_oscPmDampingInterp.update(sc_clip(in0(OscPmDamping), 0.0f, 1.0f), nSamples);
     m_modPmDampingInterp.update(sc_clip(in0(ModPmDamping), 0.0f, 1.0f), nSamples);
     m_oscCyclePosInterp.update(sc_clip(in0(OscCyclePos), 0.0f, 1.0f), nSamples);
@@ -288,11 +316,11 @@ void PulsarXPM::next(int nSamples) {
  
             // Get current parameter values (audio-rate or interpolated control-rate)
             float oscPmIndex = isOscPmIndexAudioRate ?
-                sc_clip(in(OscPmIndex)[i], 0.0f, 10.0f) :
+                sc_clip(in(OscPmIndex)[i], 0.0f, 1.0f) :
                 m_oscPmIndexInterp.process();
  
             float modPmIndex = isModPmIndexAudioRate ?
-                sc_clip(in(ModPmIndex)[i], 0.0f, 10.0f) :
+                sc_clip(in(ModPmIndex)[i], 0.0f, 1.0f) :
                 m_modPmIndexInterp.process();
  
             float oscPmDamping = isOscPmDampingAudioRate ?
@@ -419,11 +447,11 @@ void PulsarXPM::next(int nSamples) {
  
             // Get current parameter values (audio-rate or interpolated control-rate)
             float oscPmIndex = isOscPmIndexAudioRate ?
-                sc_clip(in(OscPmIndex)[i], 0.0f, 10.0f) :
+                sc_clip(in(OscPmIndex)[i], 0.0f, 1.0f) :
                 m_oscPmIndexInterp.process();
  
             float modPmIndex = isModPmIndexAudioRate ?
-                sc_clip(in(ModPmIndex)[i], 0.0f, 10.0f) :
+                sc_clip(in(ModPmIndex)[i], 0.0f, 1.0f) :
                 m_modPmIndexInterp.process();
  
             float oscPmDamping = isOscPmDampingAudioRate ?
@@ -564,9 +592,189 @@ void PulsarXPM::next(int nSamples) {
         }
     }
 }
+// ===== HARMONIC OSCILLATOR WITH PHASE MODULATION FEEDBACK NETWORK =====
+ 
+HarmonicOscPM::HarmonicOscPM() :
+    m_sampleRate(static_cast<float>(sampleRate())),
+    m_oversampleIndex(sc_clip(static_cast<int>(in0(Oversample)), 0, 4)),
+    m_osRatio(1 << m_oversampleIndex)
+{
+    // Check which inputs are audio-rate
+    isOscShiftAudioRate = isAudioRateIn(OscShift);
+    isModShiftAudioRate = isAudioRateIn(ModShift);
+    isDepthAudioRate = isAudioRateIn(Depth);
+    isDampingAudioRate = isAudioRateIn(Damping);
+    isMorphAudioRate = isAudioRateIn(Morph);
+    isExtPmAudioRate = isAudioRateIn(ExtPm);
+ 
+    // Allocate oversampling buffer
+    if (m_oversampleIndex > 0) {
+        BufferUtils::allocBuffer(this, mWorld, m_osRatio, m_outputOSBuffer);
+    }
+ 
+    // Set calc function & compute initial sample
+    set_calc_function<HarmonicOscPM, &HarmonicOscPM::next>();
+ 
+    // Reset state after priming
+    m_harmonicOsc.reset();
+}
+ 
+HarmonicOscPM::~HarmonicOscPM() {
+    RTFree(mWorld, m_outputOSBuffer);
+}
+ 
+void HarmonicOscPM::next(int nSamples) {
+ 
+    // Audio-rate inputs
+    const float* oscPhaseIn = in(OscPhase);
+    const float* modPhaseIn = in(ModPhase);
+ 
+    // Control-rate parameters with smooth interpolation
+    m_oscShiftInterp.update(in0(OscShift), nSamples);
+    m_modShiftInterp.update(in0(ModShift), nSamples);
+    m_depthInterp.update(sc_clip(in0(Depth), 0.0f, 1.0f), nSamples);
+    m_dampingInterp.update(sc_clip(in0(Damping), 0.0f, 1.0f), nSamples);
+    m_morphInterp.update(sc_frac(in0(Morph)), nSamples);
+    m_extPmInterp.update(in0(ExtPm), nSamples);
+ 
+    // Output pointer
+    float* output = out(Out);
+ 
+    if (m_oversampleIndex == 0) {
+ 
+        for (int i = 0; i < nSamples; ++i) {
+ 
+            // Wrap phases between 0 and 1
+            float oscPhase = sc_frac(oscPhaseIn[i]);
+            float modPhase = sc_frac(modPhaseIn[i]);
+ 
+            // Get current parameter values (audio-rate or interpolated control-rate)
+            float oscShift = isOscShiftAudioRate ?
+                in(OscShift)[i] :
+                m_oscShiftInterp.process();
+ 
+            float modShift = isModShiftAudioRate ?
+                in(ModShift)[i] :
+                m_modShiftInterp.process();
+ 
+            float depth = isDepthAudioRate ?
+                sc_clip(in(Depth)[i], 0.0f, 1.0f) :
+                m_depthInterp.process();
+ 
+            float damping = isDampingAudioRate ?
+                sc_clip(in(Damping)[i], 0.0f, 1.0f) :
+                m_dampingInterp.process();
+ 
+            float morph = isMorphAudioRate ?
+                sc_frac(in(Morph)[i]) :
+                m_morphInterp.process();
+ 
+            float extPm = isExtPmAudioRate ?
+                in(ExtPm)[i] :
+                m_extPmInterp.process();
+ 
+            // Derive slopes from incoming ramps
+            float oscSlope = static_cast<float>(m_oscRampToSlope.process(static_cast<double>(oscPhase)));
+            float modSlope = static_cast<float>(m_modRampToSlope.process(static_cast<double>(modPhase)));
+ 
+            // Process harmonic oscillator with phase modulation network
+            output[i] = m_harmonicOsc.process(
+                oscPhase, modPhase,
+                oscSlope, modSlope,
+                oscShift, modShift,
+                damping, depth, morph,
+                extPm,
+                m_sampleRate
+            );
+        }
+    } else {
+ 
+        for (int i = 0; i < nSamples; ++i) {
+ 
+            // Wrap phases between 0 and 1
+            float oscPhase = sc_frac(oscPhaseIn[i]);
+            float modPhase = sc_frac(modPhaseIn[i]);
+ 
+            // Get current parameter values (audio-rate or interpolated control-rate)
+            float oscShift = isOscShiftAudioRate ?
+                in(OscShift)[i] :
+                m_oscShiftInterp.process();
+ 
+            float modShift = isModShiftAudioRate ?
+                in(ModShift)[i] :
+                m_modShiftInterp.process();
+ 
+            float depth = isDepthAudioRate ?
+                sc_clip(in(Depth)[i], 0.0f, 1.0f) :
+                m_depthInterp.process();
+ 
+            float damping = isDampingAudioRate ?
+                sc_clip(in(Damping)[i], 0.0f, 1.0f) :
+                m_dampingInterp.process();
+ 
+            float morph = isMorphAudioRate ?
+                sc_frac(in(Morph)[i]) :
+                m_morphInterp.process();
+ 
+            float extPm = isExtPmAudioRate ?
+                in(ExtPm)[i] :
+                m_extPmInterp.process();
+ 
+            // Derive slopes from incoming ramps
+            float oscSlope = static_cast<float>(m_oscRampToSlope.process(static_cast<double>(oscPhase)));
+            float modSlope = static_cast<float>(m_modRampToSlope.process(static_cast<double>(modPhase)));
+ 
+            // Prepare phases and slopes for oversampling
+            float osOscSlope = oscSlope / static_cast<float>(m_osRatio);
+            float osModSlope = modSlope / static_cast<float>(m_osRatio);
+            float osOscPhase = oscPhase - oscSlope;
+            float osModPhase = modPhase - modSlope;
+ 
+            // Store parameter values for oversampling
+            m_osOscShiftInterp.update(oscShift);
+            m_osModShiftInterp.update(modShift);
+            m_osDepthInterp.update(depth);
+            m_osDampingInterp.update(damping);
+            m_osMorphInterp.update(morph);
+            m_osExtPmInterp.update(extPm);
+ 
+            for (int k = 0; k < m_osRatio; k++) {
+ 
+                // Calculate fractional position for interpolation
+                float frac = static_cast<float>(k + 1) / static_cast<float>(m_osRatio);
+ 
+                // Interpolate parameter values
+                float osOscShift = m_osOscShiftInterp.process(frac);
+                float osModShift = m_osModShiftInterp.process(frac);
+                float osDepth = m_osDepthInterp.process(frac);
+                float osDamping = m_osDampingInterp.process(frac);
+                float osMorph = m_osMorphInterp.process(frac);
+                float osExtPm = m_osExtPmInterp.process(frac);
+ 
+                // Increment phases
+                osOscPhase += osOscSlope;
+                osModPhase += osModSlope;
+ 
+                // Process harmonic oscillator with phase modulation network
+                m_outputOSBuffer[k] = m_harmonicOsc.process(
+                    sc_frac(osOscPhase), sc_frac(osModPhase),
+                    osOscSlope, osModSlope,
+                    osOscShift, osModShift,
+                    osDamping, osDepth, osMorph,
+                    osExtPm,
+                    m_sampleRate
+                );
+            }
+ 
+            // Downsample output
+            output[i] = m_outputOversampling.downsample(m_outputOSBuffer, m_osRatio);
+        }
+    }
+}
 
 void Oscs_setup()
 {
     registerUnit<OscXPM>(ft, "OscXPM", false);
     registerUnit<PulsarXPM>(ft, "PulsarXPM", false);
+    registerUnit<HarmonicOscPM>(ft, "HarmonicOscPM", false);
 }

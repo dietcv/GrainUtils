@@ -575,8 +575,8 @@ struct MorphingFilter {
     // Process audio through state variable filter
     inline float process(float input, float freq, float resonance, float shape, float sampleRate) {
  
-        // Convert resonance (0 - 1) to Q (0.707 - 25.0)
-        float q = 0.707f + sc_squared(resonance) * 24.293f;
+        // Convert resonance (0 - 1) to Q (0.707 - 22.6)
+        float q = 0.707f * std::exp2(resonance * 5.0f);
   
         // Calculate coefficients
         auto coeffs = SVFCoefficients::calculate(freq, q, SVFCoefficients::MORPH, sampleRate, shape);
@@ -603,8 +603,8 @@ struct AllpassChain {
     // Process audio through cascaded allpass filters
     inline float process(float input, float freq, float resonance, float sampleRate) {
 
-        // Convert resonance (0 - 1) to Q (0.707 - 2.0)
-        float q = 0.707f + std::sqrt(sc_clip(resonance, 0.0f, 1.0f)) * 1.293f;
+        // Convert resonance (0 - 1) to Q (0.5 - 2.0)
+        float q = 0.5f * std::exp2(resonance * 2.0f);
         
         // Calculate coefficients
         auto coeffs = SVFCoefficients::calculate(freq, q, SVFCoefficients::ALL_PASS, sampleRate);

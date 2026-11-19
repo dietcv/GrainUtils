@@ -191,3 +191,72 @@ private:
         Out
     };
 };
+
+// ===== HARMONIC OSCILLATOR WITH PHASE MODULATION FEEDBACK NETWORK =====
+ 
+class HarmonicOscPM : public SCUnit {
+public:
+    HarmonicOscPM();
+    ~HarmonicOscPM();
+ 
+private:
+    void next(int nSamples);
+ 
+    // Constants cached at construction
+    const float m_sampleRate;
+    const int m_oversampleIndex;
+    const int m_osRatio;
+ 
+    // Core processing
+    EventUtils::RampToSlope m_oscRampToSlope;
+    EventUtils::RampToSlope m_modRampToSlope;
+    OscUtils::HarmonicOscPM m_harmonicOsc;
+ 
+    // Control-rate interpolation
+    Utils::ParamInterp m_oscShiftInterp;
+    Utils::ParamInterp m_modShiftInterp;
+    Utils::ParamInterp m_depthInterp;
+    Utils::ParamInterp m_dampingInterp;
+    Utils::PhaseInterp m_morphInterp;
+    Utils::ParamInterp m_extPmInterp;
+ 
+    // Oversampling interpolation
+    OversamplingUtils::OSParamInterp m_osOscShiftInterp;
+    OversamplingUtils::OSParamInterp m_osModShiftInterp;
+    OversamplingUtils::OSParamInterp m_osDepthInterp;
+    OversamplingUtils::OSParamInterp m_osDampingInterp;
+    OversamplingUtils::OSPhaseInterp m_osMorphInterp;
+    OversamplingUtils::OSParamInterp m_osExtPmInterp;
+ 
+    // Variable-Oversampling
+    OversamplingUtils::VariableOversampling m_outputOversampling;
+    float* m_outputOSBuffer{nullptr};
+ 
+    // Audio rate flags
+    bool isOscShiftAudioRate;
+    bool isModShiftAudioRate;
+    bool isDepthAudioRate;
+    bool isDampingAudioRate;
+    bool isMorphAudioRate;
+    bool isExtPmAudioRate;
+ 
+    enum InputParams {
+        OscPhase,
+        ModPhase,
+
+        OscShift,
+        ModShift,
+
+        Depth,
+        Damping,
+        Morph,
+
+        ExtPm,
+
+        Oversample
+    };
+ 
+    enum Outputs {
+        Out
+    };
+};

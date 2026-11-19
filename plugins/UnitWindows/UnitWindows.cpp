@@ -213,6 +213,48 @@ void ExponentialWindow::next(int nSamples) {
     }
 }
 
+// ===== UNIVERSAL WINDOW =====
+ 
+UniversalWindow::UniversalWindow() {
+    
+    // Check which inputs are audio-rate
+    isSkewAudioRate = isAudioRateIn(Skew);
+    isShapeAudioRate = isAudioRateIn(Shape);
+    
+    // Set calc function & compute initial sample
+    set_calc_function<UniversalWindow, &UniversalWindow::next>();
+}
+ 
+void UniversalWindow::next(int nSamples) {
+    
+    // Audio-rate input
+    const float* phaseIn = in(Phase);
+    
+    // Control-rate parameters with smooth interpolation
+    m_skewInterp.update(sc_clip(in0(Skew), 0.0f, 1.0f), nSamples);
+    m_shapeInterp.update(sc_clip(in0(Shape), 0.0f, 1.0f), nSamples);
+    
+    // Output pointer
+    float* output = out(Out);
+    
+    for (int i = 0; i < nSamples; ++i) {
+        
+        // Wrap phase between 0 and 1
+        float phase = sc_frac(phaseIn[i]);
+        
+        // Get current parameter values (audio-rate or interpolated control-rate)
+        float skew = isSkewAudioRate ? 
+            sc_clip(in(Skew)[i], 0.0f, 1.0f) : 
+            m_skewInterp.process();
+            
+        float shape = isShapeAudioRate ? 
+            sc_clip(in(Shape)[i], 0.0f, 1.0f) : 
+            m_shapeInterp.process();
+        
+        output[i] = WindowFunctions::universalWindow(phase, skew, shape);
+    }
+}
+
 void UnitWindows_setup()
 {
     registerUnit<HanningWindow>(ft, "HanningWindow", false);
@@ -220,4 +262,5 @@ void UnitWindows_setup()
     registerUnit<TrapezoidalWindow>(ft, "TrapezoidalWindow", false);
     registerUnit<TukeyWindow>(ft, "TukeyWindow", false);
     registerUnit<ExponentialWindow>(ft, "ExponentialWindow", false);
+    registerUnit<UniversalWindow>(ft, "UniversalWindow", false);
 }
